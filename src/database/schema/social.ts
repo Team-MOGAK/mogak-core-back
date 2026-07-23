@@ -14,7 +14,5 @@ export const follows = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
-    unique('follows_follower_following_unique').on(table.followerId, table.followingId),
-  ],
+  (table) => [unique('follows_follower_following_unique').on(table.followerId, table.followingId)],
 );
