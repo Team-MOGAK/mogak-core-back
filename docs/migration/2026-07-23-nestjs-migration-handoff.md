@@ -29,7 +29,7 @@
 - 비어 있거나 없는 `multipartFile`을 허용하고 실제 파일은 현재 비활성 StoragePort에서 `Z006`으로 중단하는 게시글 이미지 경계
 - 전용 `_test` 데이터베이스에서 실행하는 Mogaks·Posts PostgreSQL 통합 테스트와 `test:db` 실행 명령
 
-단위·HTTP 계약 테스트, health e2e, 타입 검사, 린트와 빌드는 통과했다. PostgreSQL 통합 테스트도 전용 `_test` DB에서 실제 migration 후 통과했다. `test:db`는 Vitest 전역 초기화에서 migration을 한 번만 실행해, 병렬 테스트 파일의 스키마 생성 경합을 막는다.
+단위·HTTP 계약 테스트, health e2e, 타입 검사, 린트와 빌드는 통과했다. PostgreSQL 통합 테스트도 전용 `_test` DB에서 실제 migration 후 통과했다. `test:db`는 Jest 전역 초기화에서 migration을 한 번만 실행해, 병렬 테스트 파일의 스키마 생성 경합을 막는다. ESM 전용 `jose`를 실제로 검증하기 위해 테스트는 Jest ESM 런타임으로 실행한다.
 
 ## 2. 대상 저장소와 확인 기준
 

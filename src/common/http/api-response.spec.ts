@@ -1,11 +1,9 @@
 import { HttpStatus } from '@nestjs/common';
-import { describe, expect, it } from 'vitest';
-
 import { AppErrorCode } from './app-error-code';
 import { errorResponse, successResponse } from './api-response';
 
-describe('HTTP response builders', () => {
-  it('keeps the Spring success envelope', () => {
+describe('응답 생성기', () => {
+  it('스프링 성공 응답 포맷을 유지한다', () => {
     expect(
       successResponse({ id: 1 }, HttpStatus.CREATED, new Date('2026-07-23T00:00:00Z')),
     ).toEqual({
@@ -17,7 +15,7 @@ describe('HTTP response builders', () => {
     });
   });
 
-  it('does not include result for an error', () => {
+  it('오류 응답에는 result 필드를 포함하지 않는다', () => {
     expect(errorResponse(AppErrorCode.INVALID_PARAMETER, new Date('2026-07-23T00:00:00Z'))).toEqual(
       {
         time: '2026-07-23 09:00:00',

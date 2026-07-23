@@ -1,11 +1,9 @@
-import { describe, expect, it } from 'vitest';
-
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
 import { DisabledStorageAdapter } from './disabled-storage.adapter';
 
-describe('DisabledStorageAdapter', () => {
-  it('returns the existing storage-disabled error for an upload attempt', async () => {
+describe('비활성화된 저장소 어댑터', () => {
+  it('업로드 시도에 기존 저장소 비활성화 오류를 반환한다', async () => {
     const storage = new DisabledStorageAdapter();
 
     await expect(storage.uploadProfile({} as Express.Multer.File)).rejects.toEqual(
@@ -13,11 +11,11 @@ describe('DisabledStorageAdapter', () => {
     );
   });
 
-  it('does not expose a storage key as a public URL', async () => {
+  it('저장소 키를 공개 URL로 노출하지 않는다', async () => {
     await expect(new DisabledStorageAdapter().resolvePublicUrl('profile/key')).resolves.toBeNull();
   });
 
-  it('returns the same storage-disabled error for post image upload attempts', async () => {
+  it('게시글 이미지 업로드 시도에도 같은 저장소 비활성화 오류를 반환한다', async () => {
     const storage = new DisabledStorageAdapter();
 
     await expect(storage.uploadPostImages([{} as Express.Multer.File])).rejects.toEqual(

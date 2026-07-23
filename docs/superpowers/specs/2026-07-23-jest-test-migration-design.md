@@ -6,13 +6,14 @@ Nest 백엔드의 모든 자동화 테스트 러너를 Vitest에서 Jest로 전�
 
 ## 결정
 
-- Jest 30과 `ts-jest`를 사용한다. Nest의 CommonJS TypeScript 설정과 맞추고, 별도 Babel 설정은 추가하지 않는다.
-- 테스트 파일은 Jest 전역 API인 `describe`, `it`, `expect`, `beforeEach`, `afterEach`, `afterAll`, `jest`를 사용한다. 각 파일의 `vitest` import는 제거한다.
+- Jest 30과 `ts-jest`를 사용한다. 운영 Nest 애플리케이션은 CommonJS 빌드를 유지하되, ESM 전용 `jose`를 실제 실행하기 위해 테스트 전용 TypeScript 설정은 ES2022 모듈을 출력한다. 별도 Babel 설정은 추가하지 않는다.
+- 테스트 파일은 Jest 전역 API인 `describe`, `it`, `expect`, `beforeEach`, `afterEach`, `afterAll`를 사용한다. ESM 테스트에서 mock API가 필요한 파일은 `@jest/globals`의 `jest`를 명시 import한다. 각 파일의 `vitest` import는 제거한다.
 - 모든 테스트 시나리오 제목은 한글 명시문으로 작성한다. `describe`는 대상 또는 상황을, `it`은 기대 결과를 완결된 문장으로 표현한다.
   - 예: `헬스체크 엔드포인트` / `애플리케이션 응답 포맷 없이 정상 상태를 반환한다`
   - 예: `세션 로그아웃` / `로그아웃한 세션은 더 이상 갱신할 수 없다`
-- 기존 `vi.fn`, `vi.mocked`, `vi.resetAllMocks`는 각각 `jest.fn`, `jest.mocked`, `jest.resetAllMocks`로 전환한다. `fetch` 전역 대체는 Jest의 spy/복원 API로 표현해 테스트 뒤 전역 상태를 남기지 않는다.
-- 일반·E2E 테스트와 DB 통합 테스트는 각각 `jest.config.ts`, `jest.db.config.ts`로 분리한다. `test`, `test:e2e`, `test:db` 스크립트 이름은 유지한다.
+- 기존 `vi.fn`, `vi.mocked`, `vi.resetAllMocks`는 각각 Jest 기반 `testMock`, `jest.mocked`, `jest.resetAllMocks`로 전환한다. `fetch` 전역 대체는 Jest의 spy/복원 API로 표현해 테스트 뒤 전역 상태를 남기지 않는다.
+- 기존 repository·service double처럼 구체 함수 타입을 선언하지 않았던 mock은 `test/test-mock.ts`의 테스트 전용 helper를 사용한다. 이 helper는 느슨한 mock 설정만 제공하고, 실제 호출 검증은 원래 port·service 타입을 따르는 `jest.mocked`로 유지한다.
+- 일반·E2E 테스트와 DB 통합 테스트는 각각 `jest.config.ts`, `jest.db.config.ts`로 분리한다. 두 설정은 `ts-jest` ESM preset과 `tsconfig.spec.json`을 공유하고, 스크립트는 Node의 `--experimental-vm-modules`로 Jest를 실행한다. `test`, `test:e2e`, `test:db` 스크립트 이름은 유지한다.
 - DB 설정은 현재와 같이 `.env`를 읽되, 셸·CI가 준 `DATABASE_URL`을 우선한다. 로컬에서는 URL의 DB 이름만 `MOGAK_TEST_DB`로 치환한다. `globalSetup`은 migration을 한 번만 실행하고, `_test`가 아닌 DB는 거부한다.
 - Vitest 패키지와 `vitest.config.ts`, `vitest.db.config.ts`는 제거한다.
 
@@ -22,7 +23,9 @@ Nest 백엔드의 모든 자동화 테스트 러너를 Vitest에서 Jest로 전�
 | --- | --- |
 | `jest.config.ts` | 일반 단위·HTTP·E2E 테스트 선택, 공통 테스트 환경 로드, DB 테스트 제외 |
 | `jest.db.config.ts` | DB 통합 테스트 선택, 로컬 테스트 URL 파생, migration 전역 설정 연결 |
+| `tsconfig.spec.json` | Jest만 사용하는 ES2022 모듈 출력과 bundler module resolution |
 | `test/setup-env.ts` | 일반 테스트에서 필요한 환경 변수 제공 |
+| `test/test-mock.ts` | 기존 테스트 double의 느슨한 return·promise mock 설정을 Jest에서 제공 |
 | `test/database/global-setup.ts` | 테스트 DB 보호 확인과 migration 1회 실행 |
 | `test/database/setup.ts` | 각 DB 테스트 worker의 DB 이름 보호 확인 |
 | `src/**/*.spec.ts`, `test/**/*.spec.ts` | Jest API와 한글 문장형 시나리오로 작성된 테스트 |

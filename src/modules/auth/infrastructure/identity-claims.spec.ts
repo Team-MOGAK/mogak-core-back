@@ -1,11 +1,9 @@
-import { describe, expect, it } from 'vitest';
-
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
 import { identityFromJwtClaims } from './identity-claims';
 
-describe('identityFromJwtClaims', () => {
-  it('normalizes a string email_verified claim from an ID token', () => {
+describe('식별 토큰 클레임 해석', () => {
+  it('식별 토큰의 문자열 이메일 검증 클레임을 정규화한다', () => {
     expect(
       identityFromJwtClaims('GOOGLE', {
         sub: 'google-subject',
@@ -20,7 +18,7 @@ describe('identityFromJwtClaims', () => {
     });
   });
 
-  it('rejects a token without the provider subject', () => {
+  it('공급자 subject가 없는 토큰을 거부한다', () => {
     expect(() => identityFromJwtClaims('APPLE', { email: 'mogak@example.test' })).toThrow(
       new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN),
     );

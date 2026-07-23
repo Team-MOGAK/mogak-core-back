@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { afterAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
 
 import { follows, users } from '../../src/database/schema';
@@ -16,8 +15,8 @@ afterAll(async () => {
   await pool.end();
 });
 
-describe('Social PostgreSQL integration', () => {
-  it('keeps one same-direction follow while preserving an independent reverse direction', async () => {
+describe('소셜 PostgreSQL 통합', () => {
+  it('같은 방향의 팔로우는 하나만 유지하고 반대 방향 팔로우는 독립적으로 보존한다', async () => {
     const [first, second] = await createUsers();
     const insert = () =>
       db

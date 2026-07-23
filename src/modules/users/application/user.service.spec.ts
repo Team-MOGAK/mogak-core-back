@@ -1,5 +1,6 @@
+import { jest } from '@jest/globals';
+import { testMock } from '../../../../test/test-mock';
 import type { ConfigService } from '@nestjs/config';
-import { describe, expect, it, vi } from 'vitest';
 
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
@@ -20,48 +21,48 @@ function currentPendingUser(): AuthenticatedUser {
 
 function tokenService(): TokenService {
   const config = {
-    getOrThrow: vi.fn().mockReturnValue('test-jwt-secret-with-at-least-thirty-two-characters'),
+    getOrThrow: testMock().mockReturnValue('test-jwt-secret-with-at-least-thirty-two-characters'),
   } as unknown as ConfigService<AppEnv, true>;
   return new TokenService(config);
 }
 
 function userRepository(): UserRepository {
   return {
-    existsByNickname: vi.fn(),
-    findById: vi.fn(),
-    findJobByName: vi.fn(),
-    findAddressByName: vi.fn(),
-    completeRegistration: vi.fn(),
-    findProfile: vi.fn(),
-    updateNickname: vi.fn(),
-    updateJob: vi.fn(),
+    existsByNickname: testMock(),
+    findById: testMock(),
+    findJobByName: testMock(),
+    findAddressByName: testMock(),
+    completeRegistration: testMock(),
+    findProfile: testMock(),
+    updateNickname: testMock(),
+    updateJob: testMock(),
   } as unknown as UserRepository;
 }
 
 function consentRepository(): ConsentRepository {
   return {
-    listActiveItems: vi.fn(),
-    findItemsByIds: vi.fn(),
-    upsertUserConsents: vi.fn(),
-    getMarketingConsents: vi.fn(),
-    updateMarketingConsents: vi.fn(),
+    listActiveItems: testMock(),
+    findItemsByIds: testMock(),
+    upsertUserConsents: testMock(),
+    getMarketingConsents: testMock(),
+    updateMarketingConsents: testMock(),
   } as unknown as ConsentRepository;
 }
 
 function storage(): StoragePort {
   return {
-    uploadProfile: vi.fn(),
-    uploadPostImages: vi.fn(),
-    replaceProfile: vi.fn(),
-    deleteProfile: vi.fn(),
-    resolvePublicUrl: vi.fn(),
+    uploadProfile: testMock(),
+    uploadPostImages: testMock(),
+    replaceProfile: testMock(),
+    deleteProfile: testMock(),
+    resolvePublicUrl: testMock(),
   };
 }
 
-describe('UserService', () => {
-  it('rejects an already used nickname', async () => {
+describe('사용자 서비스', () => {
+  it('이미 사용 중인 닉네임을 거부한다', async () => {
     const users = userRepository();
-    vi.mocked(users.existsByNickname).mockResolvedValue(true);
+    jest.mocked(users.existsByNickname).mockResolvedValue(true);
     const service = new UserService(
       users,
       new ConsentService(consentRepository()),
@@ -75,24 +76,24 @@ describe('UserService', () => {
     );
   });
 
-  it('completes a pending user, writes consent state, and replaces its session with USER tokens', async () => {
+  it('대기 사용자를 완료하고 동의 상태를 저장한 뒤 세션을 사용자 토큰으로 교체한다', async () => {
     const users = userRepository();
     const consents = consentRepository();
-    vi.mocked(users.findById).mockResolvedValue({
+    jest.mocked(users.findById).mockResolvedValue({
       id: 7,
       email: 'mogak@example.test',
       nickname: null,
       role: 'PENDING',
     });
-    vi.mocked(users.findJobByName).mockResolvedValue({ id: 2, name: '개발/데이터' });
-    vi.mocked(users.findAddressByName).mockResolvedValue({ id: 3, name: '서울특별시' });
-    vi.mocked(consents.listActiveItems).mockResolvedValue([
-      { id: 1, code: 'MARKETING', required: false, active: true },
-    ]);
-    vi.mocked(consents.findItemsByIds).mockResolvedValue([
-      { id: 1, code: 'MARKETING', required: false, active: true },
-    ]);
-    vi.mocked(users.completeRegistration).mockResolvedValue({
+    jest.mocked(users.findJobByName).mockResolvedValue({ id: 2, name: '개발/데이터' });
+    jest.mocked(users.findAddressByName).mockResolvedValue({ id: 3, name: '서울특별시' });
+    jest
+      .mocked(consents.listActiveItems)
+      .mockResolvedValue([{ id: 1, code: 'MARKETING', required: false, active: true }]);
+    jest
+      .mocked(consents.findItemsByIds)
+      .mockResolvedValue([{ id: 1, code: 'MARKETING', required: false, active: true }]);
+    jest.mocked(users.completeRegistration).mockResolvedValue({
       id: 7,
       nickname: '모각러',
     });

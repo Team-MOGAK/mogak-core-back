@@ -1,7 +1,8 @@
+import { jest } from '@jest/globals';
+import { testMock } from '../../../../test/test-mock';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { configureApp } from '../../../app.setup';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
@@ -12,25 +13,25 @@ import { ConsentController } from './consent.controller';
 import { MetadataController } from './metadata.controller';
 import { UserController } from './user.controller';
 
-describe('users HTTP contract', () => {
+describe('사용자 HTTP 계약', () => {
   let app: INestApplication;
   const users = {
-    verifyNickname: vi.fn(),
-    join: vi.fn(),
-    profile: vi.fn(),
-    updateNickname: vi.fn(),
-    updateJob: vi.fn(),
+    verifyNickname: testMock(),
+    join: testMock(),
+    profile: testMock(),
+    updateNickname: testMock(),
+    updateJob: testMock(),
   };
   const consents = {
-    listActive: vi.fn(),
-    update: vi.fn(),
-    getMarketing: vi.fn(),
-    updateMarketing: vi.fn(),
+    listActive: testMock(),
+    update: testMock(),
+    getMarketing: testMock(),
+    updateMarketing: testMock(),
   };
-  const metadata = { jobs: vi.fn(), addresses: vi.fn() };
+  const metadata = { jobs: testMock(), addresses: testMock() };
 
   beforeEach(async () => {
-    vi.resetAllMocks();
+    jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
       controllers: [UserController, ConsentController, MetadataController],
       providers: [
@@ -60,7 +61,7 @@ describe('users HTTP contract', () => {
     await app?.close();
   });
 
-  it('keeps nickname verification and removes the email-only login path', async () => {
+  it('닉네임 검증을 유지하고 이메일 전용 로그인 경로를 제거한다', async () => {
     await request(app.getHttpServer())
       .post('/api/users/nickname/verify')
       .send({ nickname: '모각러' })
@@ -74,7 +75,7 @@ describe('users HTTP contract', () => {
       .expect(404);
   });
 
-  it('preserves the profile imgUrl response key and metadata name contract', async () => {
+  it('프로필 imgUrl 응답 키와 메타데이터 이름 계약을 보존한다', async () => {
     users.profile.mockResolvedValue({ nickname: '모각러', job: '개발/데이터', imgUrl: null });
     metadata.jobs.mockResolvedValue([{ id: 1, name: '개발/데이터' }]);
 
@@ -90,7 +91,7 @@ describe('users HTTP contract', () => {
       .expect(({ body }) => expect(body.result).toEqual([{ name: '개발/데이터' }]));
   });
 
-  it('rejects an empty marketing patch as an invalid parameter', async () => {
+  it('비어 있는 마케팅 수정 요청을 잘못된 파라미터로 거부한다', async () => {
     await request(app.getHttpServer())
       .patch('/api/users/marketing-consent')
       .send({})

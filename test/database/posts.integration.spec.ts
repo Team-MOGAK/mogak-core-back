@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { afterAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
 
 import {
@@ -29,8 +28,8 @@ afterAll(async () => {
   await pool.end();
 });
 
-describe('Posts PostgreSQL integration', () => {
-  it('hard-deletes a post and every dependent row when its owner is deleted', async () => {
+describe('게시글 PostgreSQL 통합', () => {
+  it('작성자를 삭제하면 게시글과 모든 종속 행을 하드 삭제한다', async () => {
     const fixture = await createPostFixture();
     try {
       await insertPostDependents(fixture);
@@ -46,7 +45,7 @@ describe('Posts PostgreSQL integration', () => {
     }
   });
 
-  it('hard-deletes a post dependent row without deleting its execution', async () => {
+  it('실행은 유지하고 게시글 종속 행만 하드 삭제한다', async () => {
     const fixture = await createPostFixture();
     try {
       await insertPostDependents(fixture);
@@ -61,7 +60,7 @@ describe('Posts PostgreSQL integration', () => {
     }
   });
 
-  it('persists only one post when the same execution is inserted concurrently', async () => {
+  it('같은 실행의 게시글을 동시에 삽입해도 하나만 저장한다', async () => {
     const fixture = await createExecutionFixture();
     const insert = () =>
       db
@@ -83,7 +82,7 @@ describe('Posts PostgreSQL integration', () => {
     }
   });
 
-  it('persists only one like when the same user likes concurrently', async () => {
+  it('같은 사용자가 동시에 좋아요해도 하나만 저장한다', async () => {
     const fixture = await createPostFixture();
     const insert = () =>
       db

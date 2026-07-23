@@ -20,9 +20,9 @@
     "lint": "eslint .",
     "format": "prettier --write \"{src,test}/**/*.{ts,js,mjs}\" \"*.{json,mjs,ts}\"",
     "format:check": "prettier --check \"{src,test}/**/*.{ts,js,mjs}\" \"*.{json,mjs,ts}\"",
-    "test": "vitest run",
-    "test:e2e": "vitest run test",
-    "test:db": "vitest run --config vitest.db.config.ts",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
+    "test:e2e": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.config.ts test",
+    "test:db": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.db.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
@@ -43,21 +43,24 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@jest/globals": "^30.4.1",
     "@nestjs/cli": "^11.0.24",
     "@nestjs/schematics": "^11.1.0",
     "@nestjs/testing": "^11.1.28",
     "@types/express": "^5.0.6",
+    "@types/jest": "^30.0.0",
     "@types/multer": "^2.2.0",
     "@types/node": "^26.1.1",
     "@types/pg": "^8.20.0",
     "@types/supertest": "^7.2.1",
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.7.0",
+    "jest": "^30.4.2",
     "prettier": "^3.9.6",
     "supertest": "^7.2.2",
+    "ts-jest": "^29.4.12",
     "ts-node": "^10.9.2",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.65.0",
-    "vitest": "^4.1.10"
+    "typescript-eslint": "^8.65.0"
   }
 }

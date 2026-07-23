@@ -1,16 +1,15 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-
+import { jest } from '@jest/globals';
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
 import { KakaoIdentityVerifier } from './kakao-identity-verifier';
 
-describe('KakaoIdentityVerifier', () => {
+describe('카카오 식별자 검증기', () => {
   afterEach(() => {
-    vi.unstubAllGlobals();
+    jest.restoreAllMocks();
   });
 
-  it('maps a verified Kakao account response to a social identity', async () => {
-    const fetch = vi.fn().mockResolvedValue(
+  it('검증된 카카오 계정 응답을 소셜 식별자로 변환한다', async () => {
+    const fetch = jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
         JSON.stringify({
           id: 12345,
@@ -23,8 +22,6 @@ describe('KakaoIdentityVerifier', () => {
         { status: 200 },
       ),
     );
-    vi.stubGlobal('fetch', fetch);
-
     await expect(new KakaoIdentityVerifier().verify('kakao-access-token')).resolves.toEqual({
       provider: 'KAKAO',
       providerUserId: '12345',
@@ -37,11 +34,8 @@ describe('KakaoIdentityVerifier', () => {
     );
   });
 
-  it('does not expose an upstream response when the token is rejected', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(new Response('invalid token', { status: 401 })),
-    );
+  it('토큰이 거부되면 외부 응답을 노출하지 않는다', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response('invalid token', { status: 401 }));
 
     await expect(new KakaoIdentityVerifier().verify('kakao-access-token')).rejects.toEqual(
       new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN),

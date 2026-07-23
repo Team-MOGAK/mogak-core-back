@@ -1,5 +1,4 @@
 import { getTableConfig } from 'drizzle-orm/pg-core';
-import { describe, expect, it } from 'vitest';
 
 import * as schema from './index';
 
@@ -10,8 +9,8 @@ type SocialSchema = Readonly<{
 
 const socialSchema = schema as Partial<SocialSchema>;
 
-describe('social schema', () => {
-  it('uses bigint user ownership columns for follows', () => {
+describe('소셜 데이터베이스 스키마', () => {
+  it('팔로우에 bigint 사용자 소유 식별자를 사용한다', () => {
     expect(socialSchema.follows).toBeDefined();
     if (socialSchema.follows === undefined) return;
 
@@ -20,7 +19,7 @@ describe('social schema', () => {
     expect(socialSchema.follows.followingId.notNull).toBe(true);
   });
 
-  it('adds only the natural directional follow uniqueness rule', () => {
+  it('방향성 팔로우에 필요한 자연 고유성 규칙만 추가한다', () => {
     expect(socialSchema.follows).toBeDefined();
     if (socialSchema.follows === undefined) return;
 

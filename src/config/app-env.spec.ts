@@ -1,9 +1,7 @@
-import { describe, expect, it } from 'vitest';
-
 import { parseAppEnv } from './app-env';
 
-describe('parseAppEnv', () => {
-  it('uses safe development defaults', () => {
+describe('애플리케이션 환경 변수', () => {
+  it('안전한 개발 기본값을 사용한다', () => {
     expect(
       parseAppEnv({
         DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/mogak',
@@ -21,11 +19,11 @@ describe('parseAppEnv', () => {
     });
   });
 
-  it('fails before bootstrap without DATABASE_URL', () => {
+  it('데이터베이스 URL이 없으면 애플리케이션 시작 전에 실패한다', () => {
     expect(() => parseAppEnv({})).toThrow('DATABASE_URL');
   });
 
-  it('rejects a JWT secret shorter than 32 characters', () => {
+  it('32자보다 짧은 JWT 비밀키를 거부한다', () => {
     expect(() =>
       parseAppEnv({
         DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/mogak',

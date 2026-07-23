@@ -1,7 +1,8 @@
+import { jest } from '@jest/globals';
+import { testMock } from '../../../../test/test-mock';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { configureApp } from '../../../app.setup';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
@@ -9,23 +10,23 @@ import { MogaksService } from '../application/mogaks.service';
 import { MogaksMetadataController } from './mogaks-metadata.controller';
 import { ModaratsMogaksController } from './modarats-mogaks.controller';
 
-describe('Modarat and Mogak HTTP contract', () => {
+describe('모다랏과 모각 HTTP 계약', () => {
   let app: INestApplication;
   const mogaks = {
-    createModarat: vi.fn(),
-    listModarats: vi.fn(),
-    getModarat: vi.fn(),
-    updateModarat: vi.fn(),
-    deleteModarat: vi.fn(),
-    createMogak: vi.fn(),
-    listMogaks: vi.fn(),
-    updateMogak: vi.fn(),
-    deleteMogak: vi.fn(),
-    listCategories: vi.fn(),
+    createModarat: testMock(),
+    listModarats: testMock(),
+    getModarat: testMock(),
+    updateModarat: testMock(),
+    deleteModarat: testMock(),
+    createMogak: testMock(),
+    listMogaks: testMock(),
+    updateMogak: testMock(),
+    deleteMogak: testMock(),
+    listCategories: testMock(),
   };
 
   beforeEach(async () => {
-    vi.resetAllMocks();
+    jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
       controllers: [ModaratsMogaksController, MogaksMetadataController],
       providers: [{ provide: MogaksService, useValue: mogaks }],
@@ -51,7 +52,7 @@ describe('Modarat and Mogak HTTP contract', () => {
     await app?.close();
   });
 
-  it('creates Modarats with a created BaseResponse envelope and retains its empty delete body', async () => {
+  it('생성 응답 포맷으로 모다랏을 만들고 빈 삭제 본문을 유지한다', async () => {
     mogaks.createModarat.mockResolvedValue({ id: 3, title: '여름 목표', color: 'blue' });
 
     await request(app.getHttpServer())
@@ -66,7 +67,7 @@ describe('Modarat and Mogak HTTP contract', () => {
     expect(mogaks.deleteModarat).toHaveBeenCalledWith(7, 3);
   });
 
-  it('accepts flattened category input and returns server-owned category metadata', async () => {
+  it('평면 카테고리 입력을 받고 서버 소유 카테고리 메타데이터를 반환한다', async () => {
     mogaks.createMogak.mockResolvedValue({
       id: 9,
       title: '정보처리기사',
@@ -96,7 +97,7 @@ describe('Modarat and Mogak HTTP contract', () => {
       );
   });
 
-  it('keeps the existing color metadata path and response shape', async () => {
+  it('기존 색상 메타데이터 경로와 응답 형태를 유지한다', async () => {
     await request(app.getHttpServer())
       .get('/api/metadata/colors')
       .expect(200)

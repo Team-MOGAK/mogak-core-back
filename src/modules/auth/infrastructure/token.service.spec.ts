@@ -1,6 +1,6 @@
 import type { ConfigService } from '@nestjs/config';
-import { describe, expect, it, vi } from 'vitest';
 
+import { testMock } from '../../../../test/test-mock';
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
 import type { AppEnv } from '../../../config/app-env';
@@ -10,14 +10,14 @@ const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
 function createService(): TokenService {
   const config = {
-    getOrThrow: vi.fn().mockReturnValue('test-jwt-secret-with-at-least-thirty-two-characters'),
+    getOrThrow: testMock().mockReturnValue('test-jwt-secret-with-at-least-thirty-two-characters'),
   } as unknown as ConfigService<AppEnv, true>;
 
   return new TokenService(config);
 }
 
-describe('TokenService', () => {
-  it('puts user, role, access type, and session ID in access tokens', async () => {
+describe('토큰 서비스', () => {
+  it('액세스 토큰에 사용자와 역할과 액세스 종류와 세션 식별자를 담는다', async () => {
     const service = createService();
 
     const tokens = await service.issue({
@@ -35,7 +35,7 @@ describe('TokenService', () => {
     });
   });
 
-  it('rejects an access token at the refresh-token boundary', async () => {
+  it('리프레시 토큰 경계에서 액세스 토큰을 거부한다', async () => {
     const service = createService();
     const tokens = await service.issue({ userId: 7, role: 'USER', sessionId: SESSION_ID });
 
@@ -44,7 +44,7 @@ describe('TokenService', () => {
     );
   });
 
-  it('hashes refresh tokens without preserving their raw value', () => {
+  it('원문 값을 보존하지 않고 리프레시 토큰을 해시한다', () => {
     const service = createService();
 
     expect(service.hashRefreshToken('raw-refresh-token')).toBe(

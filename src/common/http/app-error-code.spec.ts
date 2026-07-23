@@ -1,10 +1,8 @@
 import { HttpStatus } from '@nestjs/common';
-import { describe, expect, it } from 'vitest';
-
 import { AppErrorCode } from './app-error-code';
 
-describe('AppErrorCode', () => {
-  it('keeps the existing social-account link-required contract', () => {
+describe('애플리케이션 오류 코드', () => {
+  it('기존 소셜 계정 연결 필요 오류 계약을 유지한다', () => {
     expect(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED).toMatchObject({
       httpStatus: HttpStatus.CONFLICT,
       code: 'U012',
@@ -12,7 +10,7 @@ describe('AppErrorCode', () => {
     });
   });
 
-  it('keeps the existing logged-out token contract', () => {
+  it('기존 로그아웃 토큰 오류 계약을 유지한다', () => {
     expect(AppErrorCode.LOGOUT_TOKEN).toMatchObject({
       httpStatus: HttpStatus.FORBIDDEN,
       code: 'T005',
@@ -20,7 +18,7 @@ describe('AppErrorCode', () => {
     });
   });
 
-  it('keeps the public Mogak and Jogak error contracts needed by virtual executions', () => {
+  it('가상 실행에 필요한 공개 모각과 조각 오류 계약을 유지한다', () => {
     const codes = AppErrorCode as Record<string, unknown>;
 
     expect(codes.MODARAT_NOT_FOUND).toMatchObject({
@@ -80,7 +78,7 @@ describe('AppErrorCode', () => {
     });
   });
 
-  it('keeps the public Posts and Comments error contracts', () => {
+  it('공개 게시글과 댓글 오류 계약을 유지한다', () => {
     const codes = AppErrorCode as Record<string, unknown>;
 
     expect(codes.POST_CONTENTS_TOO_LONG).toMatchObject({
@@ -110,7 +108,7 @@ describe('AppErrorCode', () => {
     });
   });
 
-  it('keeps the public follow error contracts', () => {
+  it('공개 팔로우 오류 계약을 유지한다', () => {
     const codes = AppErrorCode as Record<string, unknown>;
 
     expect(codes.FOLLOW_ALREADY_EXISTS).toMatchObject({

@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 
 import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { afterAll, describe, expect, it } from 'vitest';
 import { Pool } from 'pg';
 
 import {
@@ -26,8 +25,8 @@ afterAll(async () => {
   await pool.end();
 });
 
-describe('Mogaks PostgreSQL integration', () => {
-  it('hard-deletes the complete user-owned Mogak hierarchy through foreign-key cascades', async () => {
+describe('모각 PostgreSQL 통합', () => {
+  it('사용자를 삭제하면 소유한 모각 계층 전체를 외래키 cascade로 하드 삭제한다', async () => {
     const fixture = await createJogakFixture();
     await db.insert(jogakExecutions).values({
       jogakId: fixture.jogakId,
@@ -49,7 +48,7 @@ describe('Mogaks PostgreSQL integration', () => {
     );
   });
 
-  it('persists only one execution for concurrent same-occurrence inserts', async () => {
+  it('같은 실행 발생을 동시에 삽입해도 하나만 저장한다', async () => {
     const fixture = await createJogakFixture();
     const insert = () =>
       db
@@ -72,7 +71,7 @@ describe('Mogaks PostgreSQL integration', () => {
     await db.delete(users).where(eq(users.id, fixture.userId));
   });
 
-  it('preserves an execution title snapshot after the Jogak title changes', async () => {
+  it('조각 제목이 바뀐 뒤에도 실행 제목 스냅샷을 유지한다', async () => {
     const fixture = await createJogakFixture();
     await db.insert(jogakExecutions).values({
       jogakId: fixture.jogakId,

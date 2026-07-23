@@ -1,5 +1,4 @@
 import { getTableConfig } from 'drizzle-orm/pg-core';
-import { describe, expect, it } from 'vitest';
 
 import * as schema from './index';
 
@@ -19,8 +18,8 @@ function uniqueConstraintNames(table: Parameters<typeof getTableConfig>[0]): str
     .filter((name): name is string => name !== undefined);
 }
 
-describe('posts schema', () => {
-  it('uses bigint ownership columns for the execution, post author, comments, and likes', () => {
+describe('게시글 데이터베이스 스키마', () => {
+  it('실행과 게시글 작성자와 댓글과 좋아요에 bigint 소유 식별자를 사용한다', () => {
     expect(postsSchema.posts).toBeDefined();
     expect(postsSchema.postImages).toBeDefined();
     expect(postsSchema.postComments).toBeDefined();
@@ -47,7 +46,7 @@ describe('posts schema', () => {
     expect(postsSchema.postLikes.userId.notNull).toBe(true);
   });
 
-  it('adds only the execution-post and post-user natural uniqueness rules', () => {
+  it('실행 게시글과 게시글 사용자에 필요한 자연 고유성 규칙만 추가한다', () => {
     expect(postsSchema.posts).toBeDefined();
     expect(postsSchema.postLikes).toBeDefined();
 

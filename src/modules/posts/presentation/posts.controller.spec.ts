@@ -1,8 +1,9 @@
+import { jest } from '@jest/globals';
+import { testMock } from '../../../../test/test-mock';
 import type { INestApplication } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { configureApp } from '../../../app.setup';
 import { AppErrorCode } from '../../../common/http/app-error-code';
@@ -12,25 +13,25 @@ import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { PostsService } from '../application/posts.service';
 import { PostsController } from './posts.controller';
 
-describe('Posts HTTP contract', () => {
+describe('게시글 HTTP 계약', () => {
   let app: INestApplication;
   const posts = {
-    createPost: vi.fn(),
-    listMogakPosts: vi.fn(),
-    getPostByJogakAndDate: vi.fn(),
-    getPost: vi.fn(),
-    updatePost: vi.fn(),
-    deletePost: vi.fn(),
-    createComment: vi.fn(),
-    listComments: vi.fn(),
-    updateComment: vi.fn(),
-    deleteComment: vi.fn(),
-    toggleLike: vi.fn(),
+    createPost: testMock(),
+    listMogakPosts: testMock(),
+    getPostByJogakAndDate: testMock(),
+    getPost: testMock(),
+    updatePost: testMock(),
+    deletePost: testMock(),
+    createComment: testMock(),
+    listComments: testMock(),
+    updateComment: testMock(),
+    deleteComment: testMock(),
+    toggleLike: testMock(),
   };
-  const storage = { uploadPostImages: vi.fn() } as unknown as StoragePort;
+  const storage = { uploadPostImages: testMock() } as unknown as StoragePort;
 
   beforeEach(async () => {
-    vi.resetAllMocks();
+    jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
       controllers: [PostsController],
       providers: [
@@ -59,7 +60,7 @@ describe('Posts HTTP contract', () => {
     await app?.close();
   });
 
-  it('keeps the post creation path and targetDate while omitting DailyJogak IDs', async () => {
+  it('일간 조각 식별자는 제외하고 게시글 생성 경로와 targetDate를 유지한다', async () => {
     posts.createPost.mockResolvedValue({
       id: 31,
       mogakId: 3,
@@ -85,7 +86,7 @@ describe('Posts HTTP contract', () => {
     });
   });
 
-  it('defaults the Mogak feed page to zero when only its required size is supplied', async () => {
+  it('필수 size만 주어지면 모각 피드 페이지를 0으로 기본 설정한다', async () => {
     posts.listMogakPosts.mockResolvedValue({
       content: [],
       size: 10,
@@ -101,7 +102,7 @@ describe('Posts HTTP contract', () => {
     expect(posts.listMogakPosts).toHaveBeenCalledWith(7, 3, 0, 10);
   });
 
-  it('reads a post through the retained Jogak and targetDate path', async () => {
+  it('유지된 조각과 targetDate 경로로 게시글을 조회한다', async () => {
     posts.getPostByJogakAndDate.mockResolvedValue({
       postId: 31,
       jogakId: 11,
@@ -116,7 +117,7 @@ describe('Posts HTTP contract', () => {
     expect(posts.getPostByJogakAndDate).toHaveBeenCalledWith(7, 11, '2026-07-23');
   });
 
-  it('accepts an empty multipart image field but rejects a real image through the Storage boundary', async () => {
+  it('비어 있는 multipart 이미지 필드는 받고 실제 이미지는 저장소 경계에서 거부한다', async () => {
     posts.createPost.mockResolvedValue({ id: 31 });
 
     await request(app.getHttpServer())
@@ -126,9 +127,9 @@ describe('Posts HTTP contract', () => {
       .expect(200);
     expect(storage.uploadPostImages).not.toHaveBeenCalled();
 
-    vi.mocked(storage.uploadPostImages).mockRejectedValue(
-      new AppException(AppErrorCode.STORAGE_DISABLED),
-    );
+    jest
+      .mocked(storage.uploadPostImages)
+      .mockRejectedValue(new AppException(AppErrorCode.STORAGE_DISABLED));
     await request(app.getHttpServer())
       .post('/api/jogaks/11/posts')
       .field('request', JSON.stringify({ targetDate: '2026-07-23', contents: '오늘 회고' }))
@@ -138,7 +139,7 @@ describe('Posts HTTP contract', () => {
     expect(posts.createPost).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps comment and like paths while retaining the approved nested comment author', async () => {
+  it('승인된 중첩 댓글 작성자를 유지하며 댓글과 좋아요 경로를 유지한다', async () => {
     posts.listComments.mockResolvedValue({
       comments: [
         {
@@ -164,13 +165,13 @@ describe('Posts HTTP contract', () => {
     expect(posts.toggleLike).toHaveBeenCalledWith(7, 31);
   });
 
-  it('requires the same access-token guard for comment listing as the legacy API security policy', () => {
+  it('기존 API 보안 정책과 같은 액세스 토큰 가드를 댓글 목록에 적용한다', () => {
     expect(Reflect.getMetadata(GUARDS_METADATA, PostsController.prototype.listComments)).toContain(
       AccessTokenGuard,
     );
   });
 
-  it('keeps post read, update, and delete responses on their legacy paths', async () => {
+  it('기존 경로에서 게시글 조회와 수정과 삭제 응답을 유지한다', async () => {
     posts.getPost.mockResolvedValue({ postId: 31, contents: '오늘 회고' });
     posts.updatePost.mockResolvedValue({
       postId: 31,
@@ -199,7 +200,7 @@ describe('Posts HTTP contract', () => {
     expect(posts.deletePost).toHaveBeenCalledWith(7, 31);
   });
 
-  it('keeps comment creation, update, and deletion contracts separate from the list item shape', async () => {
+  it('댓글 생성과 수정과 삭제 계약을 목록 항목 형태와 분리해 유지한다', async () => {
     const author = { userId: 7, nickname: '작성자', profileImageUrl: null, job: '개발/데이터' };
     posts.createComment.mockResolvedValue({
       id: 41,

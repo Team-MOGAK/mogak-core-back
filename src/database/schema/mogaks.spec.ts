@@ -1,5 +1,4 @@
 import { getTableConfig } from 'drizzle-orm/pg-core';
-import { describe, expect, it } from 'vitest';
 
 import * as schema from './index';
 
@@ -18,8 +17,8 @@ function uniqueConstraintNames(table: Parameters<typeof getTableConfig>[0]): str
     .filter((name): name is string => name !== undefined);
 }
 
-describe('mogaks schema', () => {
-  it('uses relational bigint IDs for categories, schedule weekdays, and executions', () => {
+describe('모각 데이터베이스 스키마', () => {
+  it('카테고리와 일정 요일과 실행에 관계형 bigint 식별자를 사용한다', () => {
     expect(mogaks.mogakCategories).toBeDefined();
     expect(mogaks.jogakScheduleWeekdays).toBeDefined();
     expect(mogaks.jogakExecutions).toBeDefined();
@@ -39,7 +38,7 @@ describe('mogaks schema', () => {
     expect(mogaks.jogakExecutions.scheduledDate.notNull).toBe(true);
   });
 
-  it('adds only the category and occurrence uniqueness rules required for correctness', () => {
+  it('정합성에 필요한 카테고리와 실행 발생 고유성 규칙만 추가한다', () => {
     expect(mogaks.mogakCategories).toBeDefined();
     expect(mogaks.jogakScheduleWeekdays).toBeDefined();
     expect(mogaks.jogakExecutions).toBeDefined();

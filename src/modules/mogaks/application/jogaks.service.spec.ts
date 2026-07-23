@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-
+import { jest } from '@jest/globals';
+import { testMock } from '../../../../test/test-mock';
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
 import type { MogaksRepository } from '../infrastructure/mogaks.repository';
@@ -7,20 +7,20 @@ import { JogaksService } from './jogaks.service';
 
 function repository(): MogaksRepository {
   return {
-    findOwnedMogak: vi.fn(),
-    findOwnedJogak: vi.fn(),
-    countJogaksWithCurrentOrFutureSchedule: vi.fn(),
-    createJogakWithSchedule: vi.fn(),
-    listOccurrenceScheduleRows: vi.fn(),
-    listScheduleRowsForOwnedJogak: vi.fn(),
-    listExecutionsForJogaks: vi.fn(),
-    listSuccessCounts: vi.fn(),
-    insertExecution: vi.fn(),
-    findExecution: vi.fn(),
-    updateExecutionStatus: vi.fn(),
-    updateOwnedJogakTitle: vi.fn(),
-    replaceOwnedJogakSchedule: vi.fn(),
-    deleteOwnedJogak: vi.fn(),
+    findOwnedMogak: testMock(),
+    findOwnedJogak: testMock(),
+    countJogaksWithCurrentOrFutureSchedule: testMock(),
+    createJogakWithSchedule: testMock(),
+    listOccurrenceScheduleRows: testMock(),
+    listScheduleRowsForOwnedJogak: testMock(),
+    listExecutionsForJogaks: testMock(),
+    listSuccessCounts: testMock(),
+    insertExecution: testMock(),
+    findExecution: testMock(),
+    updateExecutionStatus: testMock(),
+    updateOwnedJogakTitle: testMock(),
+    replaceOwnedJogakSchedule: testMock(),
+    deleteOwnedJogak: testMock(),
   } as unknown as MogaksRepository;
 }
 
@@ -45,12 +45,12 @@ const ownedJogak = {
   customCategoryName: null,
 };
 
-describe('JogaksService', () => {
-  it('creates a WEEKLY Jogak from a validated schedule instead of DailyJogak rows', async () => {
+describe('조각 서비스', () => {
+  it('일간 조각 행 대신 검증된 일정으로 주간 조각을 생성한다', async () => {
     const mogaks = repository();
-    vi.mocked(mogaks.findOwnedMogak).mockResolvedValue(ownedMogak);
-    vi.mocked(mogaks.countJogaksWithCurrentOrFutureSchedule).mockResolvedValue(0);
-    vi.mocked(mogaks.createJogakWithSchedule).mockResolvedValue({
+    jest.mocked(mogaks.findOwnedMogak).mockResolvedValue(ownedMogak);
+    jest.mocked(mogaks.countJogaksWithCurrentOrFutureSchedule).mockResolvedValue(0);
+    jest.mocked(mogaks.createJogakWithSchedule).mockResolvedValue({
       jogakId: 11,
       mogakId: 3,
       mogakTitle: '여름 목표',
@@ -89,7 +89,7 @@ describe('JogaksService', () => {
     );
   });
 
-  it('rejects a weekly schedule without weekdays before writing a Jogak', async () => {
+  it('요일 없는 주간 일정을 조각 저장 전에 거부한다', async () => {
     const service = new JogaksService(repository(), () => '2026-07-23');
 
     await expect(
@@ -101,9 +101,9 @@ describe('JogaksService', () => {
     ).rejects.toEqual(new AppException(AppErrorCode.ROUTINE_WEEKDAYS_REQUIRED));
   });
 
-  it('projects a PENDING occurrence without creating an execution row', async () => {
+  it('실행 행을 만들지 않고 대기 발생을 조회 결과로 구성한다', async () => {
     const mogaks = repository();
-    vi.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
+    jest.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
       {
         scheduleId: 5,
         jogakId: 11,
@@ -120,8 +120,8 @@ describe('JogaksService', () => {
         weekday: 'THURSDAY',
       },
     ]);
-    vi.mocked(mogaks.listExecutionsForJogaks).mockResolvedValue([]);
-    vi.mocked(mogaks.listSuccessCounts).mockResolvedValue([{ jogakId: 11, achievements: 3 }]);
+    jest.mocked(mogaks.listExecutionsForJogaks).mockResolvedValue([]);
+    jest.mocked(mogaks.listSuccessCounts).mockResolvedValue([{ jogakId: 11, achievements: 3 }]);
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
     await expect(service.listDay(7, '2026-07-23')).resolves.toEqual({
@@ -138,10 +138,10 @@ describe('JogaksService', () => {
     expect(mogaks.insertExecution).not.toHaveBeenCalled();
   });
 
-  it('returns an idempotent existing execution after a concurrent insert conflict', async () => {
+  it('동시 삽입 충돌 뒤 기존 실행을 멱등하게 반환한다', async () => {
     const mogaks = repository();
-    vi.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
-    vi.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
+    jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    jest.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
       {
         scheduleId: 5,
         jogakId: 11,
@@ -158,8 +158,8 @@ describe('JogaksService', () => {
         weekday: 'THURSDAY',
       },
     ]);
-    vi.mocked(mogaks.insertExecution).mockResolvedValue(null);
-    vi.mocked(mogaks.findExecution).mockResolvedValue({
+    jest.mocked(mogaks.insertExecution).mockResolvedValue(null);
+    jest.mocked(mogaks.findExecution).mockResolvedValue({
       id: 19,
       jogakId: 11,
       scheduledDate: '2026-07-23',
@@ -175,10 +175,10 @@ describe('JogaksService', () => {
     expect(mogaks.updateExecutionStatus).not.toHaveBeenCalled();
   });
 
-  it('resolves an owned virtual occurrence for a post without creating or changing an execution', async () => {
+  it('실행을 만들거나 바꾸지 않고 게시글용 소유 가상 발생을 해석한다', async () => {
     const mogaks = repository();
-    vi.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
-    vi.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
+    jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    jest.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
       {
         scheduleId: 5,
         jogakId: 11,
@@ -206,10 +206,10 @@ describe('JogaksService', () => {
     expect(mogaks.updateExecutionStatus).not.toHaveBeenCalled();
   });
 
-  it('rejects an attempt to reopen a completed execution', async () => {
+  it('완료된 실행을 다시 여는 시도를 거부한다', async () => {
     const mogaks = repository();
-    vi.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
-    vi.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
+    jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    jest.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
       {
         scheduleId: 5,
         jogakId: 11,
@@ -226,8 +226,8 @@ describe('JogaksService', () => {
         weekday: 'THURSDAY',
       },
     ]);
-    vi.mocked(mogaks.insertExecution).mockResolvedValue(null);
-    vi.mocked(mogaks.findExecution).mockResolvedValue({
+    jest.mocked(mogaks.insertExecution).mockResolvedValue(null);
+    jest.mocked(mogaks.findExecution).mockResolvedValue({
       id: 19,
       jogakId: 11,
       scheduledDate: '2026-07-23',
@@ -241,9 +241,9 @@ describe('JogaksService', () => {
     );
   });
 
-  it('updates only the current Jogak title without rewriting execution snapshots', async () => {
+  it('실행 스냅샷을 덮어쓰지 않고 현재 조각 제목만 수정한다', async () => {
     const mogaks = repository();
-    vi.mocked(mogaks.updateOwnedJogakTitle).mockResolvedValue({
+    jest.mocked(mogaks.updateOwnedJogakTitle).mockResolvedValue({
       ...ownedJogak,
       title: '수정된 문제 풀이',
     });
@@ -261,10 +261,10 @@ describe('JogaksService', () => {
     );
   });
 
-  it('keeps legacy schedule fields in Jogak detail while exposing schedule history', async () => {
+  it('조각 상세에서 기존 일정 필드를 유지하며 일정 이력을 노출한다', async () => {
     const mogaks = repository();
-    vi.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
-    vi.mocked(mogaks.listScheduleRowsForOwnedJogak).mockResolvedValue([
+    jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    jest.mocked(mogaks.listScheduleRowsForOwnedJogak).mockResolvedValue([
       {
         scheduleId: 5,
         jogakId: 11,
@@ -281,7 +281,7 @@ describe('JogaksService', () => {
         weekday: 'MONDAY',
       },
     ]);
-    vi.mocked(mogaks.listSuccessCounts).mockResolvedValue([{ jogakId: 11, achievements: 3 }]);
+    jest.mocked(mogaks.listSuccessCounts).mockResolvedValue([{ jogakId: 11, achievements: 3 }]);
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
     await expect(service.getDetail(7, 11)).resolves.toMatchObject({
@@ -302,9 +302,9 @@ describe('JogaksService', () => {
     });
   });
 
-  it('does not report a successful Jogak delete when the owner predicate does not match', async () => {
+  it('소유 조건이 맞지 않으면 조각 삭제를 성공으로 반환하지 않는다', async () => {
     const mogaks = repository();
-    vi.mocked(mogaks.deleteOwnedJogak).mockResolvedValue(false);
+    jest.mocked(mogaks.deleteOwnedJogak).mockResolvedValue(false);
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
     await expect(service.delete(7, 11)).rejects.toEqual(
@@ -312,9 +312,9 @@ describe('JogaksService', () => {
     );
   });
 
-  it('replaces a future schedule without rewriting an existing execution snapshot', async () => {
+  it('기존 실행 스냅샷을 덮어쓰지 않고 미래 일정을 교체한다', async () => {
     const mogaks = repository();
-    vi.mocked(mogaks.replaceOwnedJogakSchedule).mockResolvedValue({
+    jest.mocked(mogaks.replaceOwnedJogakSchedule).mockResolvedValue({
       ...ownedJogak,
       title: '수정된 문제 풀이',
     });

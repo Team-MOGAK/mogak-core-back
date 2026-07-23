@@ -1,29 +1,30 @@
+import { jest } from '@jest/globals';
+import { testMock } from '../../../../test/test-mock';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { configureApp } from '../../../app.setup';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { JogaksService } from '../application/jogaks.service';
 import { JogaksController } from './jogaks.controller';
 
-describe('Jogak HTTP contract', () => {
+describe('조각 HTTP 계약', () => {
   let app: INestApplication;
   const jogaks = {
-    create: vi.fn(),
-    listDay: vi.fn(),
-    listOneTime: vi.fn(),
-    listRoutines: vi.fn(),
-    listMogakDay: vi.fn(),
-    getDetail: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-    commandExecution: vi.fn(),
+    create: testMock(),
+    listDay: testMock(),
+    listOneTime: testMock(),
+    listRoutines: testMock(),
+    listMogakDay: testMock(),
+    getDetail: testMock(),
+    update: testMock(),
+    delete: testMock(),
+    commandExecution: testMock(),
   };
 
   beforeEach(async () => {
-    vi.resetAllMocks();
+    jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
       controllers: [JogaksController],
       providers: [{ provide: JogaksService, useValue: jogaks }],
@@ -49,7 +50,7 @@ describe('Jogak HTTP contract', () => {
     await app?.close();
   });
 
-  it('returns a virtual occurrence identified by Jogak ID and scheduled date', async () => {
+  it('조각 식별자와 예정일로 식별한 가상 발생을 반환한다', async () => {
     jogaks.listDay.mockResolvedValue({
       size: 1,
       jogaks: [{ jogakId: 11, scheduledDate: '2026-07-23', status: 'PENDING' }],
@@ -67,7 +68,7 @@ describe('Jogak HTTP contract', () => {
     expect(jogaks.listDay).toHaveBeenCalledWith(7, '2026-07-23');
   });
 
-  it('keeps Jogak creation and date-list paths while removing DailyJogak IDs', async () => {
+  it('일간 조각 식별자는 제거하고 조각 생성과 날짜 조회 경로를 유지한다', async () => {
     jogaks.create.mockResolvedValue({
       jogakId: 11,
       schedule: { scheduleType: 'WEEKLY', effectiveFrom: '2026-07-20', weekdays: ['MONDAY'] },
@@ -138,7 +139,7 @@ describe('Jogak HTTP contract', () => {
       .expect(({ body }) => expect(body.result[0].jogakId).toBe(11));
   });
 
-  it('creates the first execution with POST and rejects the old daily-jogak route', async () => {
+  it('생성 요청으로 첫 실행을 만들고 기존 일간 조각 경로를 거부한다', async () => {
     jogaks.commandExecution.mockResolvedValue({
       created: true,
       execution: { jogakId: 11, scheduledDate: '2026-07-23', status: 'IN_PROGRESS' },
@@ -153,7 +154,7 @@ describe('Jogak HTTP contract', () => {
     await request(app.getHttpServer()).put('/api/daily-jogaks/19/success').expect(404);
   });
 
-  it('keeps authenticated Jogak detail, title update, and hard-delete paths', async () => {
+  it('인증된 조각 상세와 제목 수정과 하드 삭제 경로를 유지한다', async () => {
     jogaks.getDetail.mockResolvedValue({ jogakId: 11, title: '문제 풀이' });
     jogaks.update.mockResolvedValue({ jogakId: 11, title: '수정된 문제 풀이' });
 

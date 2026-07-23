@@ -1,5 +1,5 @@
+import { testMock } from '../../../../test/test-mock';
 import type { ExecutionContext } from '@nestjs/common';
-import { describe, expect, it, vi } from 'vitest';
 
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
@@ -15,13 +15,17 @@ function executionContext(request: Record<string, unknown>): ExecutionContext {
   } as unknown as ExecutionContext;
 }
 
-describe('AccessTokenGuard', () => {
-  it('attaches access claims when the referenced session is active', async () => {
+describe('액세스 토큰 가드', () => {
+  it('참조한 세션이 활성 상태이면 액세스 클레임을 연결한다', async () => {
     const tokens = {
-      verifyAccess: vi.fn().mockResolvedValue({ userId: 3, role: 'USER', sessionId: SESSION_ID }),
+      verifyAccess: testMock().mockResolvedValue({
+        userId: 3,
+        role: 'USER',
+        sessionId: SESSION_ID,
+      }),
     } as unknown as TokenService;
     const sessions = {
-      findActiveById: vi.fn().mockResolvedValue({ id: SESSION_ID, userId: 3 }),
+      findActiveById: testMock().mockResolvedValue({ id: SESSION_ID, userId: 3 }),
     } as unknown as AuthSessionsRepository;
     const guard = new AccessTokenGuard(tokens, sessions);
     const request = { headers: { authorization: 'Bearer access-token' } };
@@ -30,12 +34,16 @@ describe('AccessTokenGuard', () => {
     expect(request).toMatchObject({ user: { userId: 3, role: 'USER', sessionId: SESSION_ID } });
   });
 
-  it('returns T005 after the current session has been logged out', async () => {
+  it('현재 세션이 로그아웃된 뒤에는 T005 오류를 반환한다', async () => {
     const tokens = {
-      verifyAccess: vi.fn().mockResolvedValue({ userId: 3, role: 'USER', sessionId: SESSION_ID }),
+      verifyAccess: testMock().mockResolvedValue({
+        userId: 3,
+        role: 'USER',
+        sessionId: SESSION_ID,
+      }),
     } as unknown as TokenService;
     const sessions = {
-      findActiveById: vi.fn().mockResolvedValue(null),
+      findActiveById: testMock().mockResolvedValue(null),
     } as unknown as AuthSessionsRepository;
     const guard = new AccessTokenGuard(tokens, sessions);
 

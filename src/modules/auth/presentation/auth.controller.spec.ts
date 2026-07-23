@@ -1,24 +1,25 @@
+import { jest } from '@jest/globals';
+import { testMock } from '../../../../test/test-mock';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { configureApp } from '../../../app.setup';
 import { AuthService } from '../application/auth.service';
 import { AccessTokenGuard } from './access-token.guard';
 import { AuthController } from './auth.controller';
 
-describe('AuthController', () => {
+describe('인증 HTTP 계약', () => {
   let app: INestApplication;
   const authService = {
-    login: vi.fn(),
-    refresh: vi.fn(),
-    logout: vi.fn(),
-    withdraw: vi.fn(),
+    login: testMock(),
+    refresh: testMock(),
+    logout: testMock(),
+    withdraw: testMock(),
   };
 
   beforeEach(async () => {
-    vi.resetAllMocks();
+    jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
       controllers: [AuthController],
       providers: [{ provide: AuthService, useValue: authService }],
@@ -35,7 +36,7 @@ describe('AuthController', () => {
     await app?.close();
   });
 
-  it('keeps the legacy Apple login path and response envelope', async () => {
+  it('기존 애플 로그인 경로와 응답 포맷을 유지한다', async () => {
     authService.login.mockResolvedValue({
       isRegistered: false,
       userId: 7,
@@ -57,7 +58,7 @@ describe('AuthController', () => {
     expect(authService.login).toHaveBeenCalledWith('APPLE', 'apple-id-token');
   });
 
-  it('keeps RefreshToken header and the legacy 201/success envelope combination', async () => {
+  it('리프레시 토큰 헤더와 기존 201 성공 응답 조합을 유지한다', async () => {
     authService.refresh.mockResolvedValue({
       accessToken: 'next-access',
       refreshToken: 'next-refresh',

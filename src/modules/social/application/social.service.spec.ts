@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { jest } from '@jest/globals';
+import { testMock } from '../../../../test/test-mock';
 
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
@@ -7,36 +8,36 @@ import { SocialService } from './social.service';
 
 function repository(): SocialRepository {
   return {
-    findUserByNickname: vi.fn(),
-    createFollow: vi.fn(),
-    deleteFollow: vi.fn(),
-    countMotos: vi.fn(),
-    countMentors: vi.fn(),
-    listMotos: vi.fn(),
-    listMentors: vi.fn(),
-    findAddressName: vi.fn(),
-    listPacemakerPosts: vi.fn(),
-    listNetworkPosts: vi.fn(),
-    listImages: vi.fn(),
-    listComments: vi.fn(),
+    findUserByNickname: testMock(),
+    createFollow: testMock(),
+    deleteFollow: testMock(),
+    countMotos: testMock(),
+    countMentors: testMock(),
+    listMotos: testMock(),
+    listMentors: testMock(),
+    findAddressName: testMock(),
+    listPacemakerPosts: testMock(),
+    listNetworkPosts: testMock(),
+    listImages: testMock(),
+    listComments: testMock(),
   } as unknown as SocialRepository;
 }
 
-describe('SocialService follows', () => {
-  it('keeps nickname as the follow input while storing only two user IDs', async () => {
+describe('소셜 팔로우 서비스', () => {
+  it('팔로우 입력으로 닉네임을 유지하고 사용자 식별자 두 개만 저장한다', async () => {
     const social = repository();
-    vi.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
-    vi.mocked(social.createFollow).mockResolvedValue(true);
+    jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
+    jest.mocked(social.createFollow).mockResolvedValue(true);
     const service = new SocialService(social);
 
     await expect(service.follow(7, '모각러')).resolves.toBeUndefined();
     expect(social.createFollow).toHaveBeenCalledWith({ followerId: 7, followingId: 8 });
   });
 
-  it('maps an insert conflict to F001 without a pre-read lock', async () => {
+  it('사전 조회 lock 없이 삽입 충돌을 F001 오류로 변환한다', async () => {
     const social = repository();
-    vi.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
-    vi.mocked(social.createFollow).mockResolvedValue(false);
+    jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
+    jest.mocked(social.createFollow).mockResolvedValue(false);
     const service = new SocialService(social);
 
     await expect(service.follow(7, '모각러')).rejects.toEqual(
@@ -44,9 +45,9 @@ describe('SocialService follows', () => {
     );
   });
 
-  it('rejects self-follow before writing', async () => {
+  it('저장 전에 자기 자신 팔로우를 거부한다', async () => {
     const social = repository();
-    vi.mocked(social.findUserByNickname).mockResolvedValue({ id: 7 });
+    jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 7 });
     const service = new SocialService(social);
 
     await expect(service.follow(7, '나')).rejects.toEqual(
@@ -55,10 +56,10 @@ describe('SocialService follows', () => {
     expect(social.createFollow).not.toHaveBeenCalled();
   });
 
-  it('maps an absent owned delete to F002', async () => {
+  it('소유한 삭제 대상이 없으면 F002 오류로 변환한다', async () => {
     const social = repository();
-    vi.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
-    vi.mocked(social.deleteFollow).mockResolvedValue(false);
+    jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
+    jest.mocked(social.deleteFollow).mockResolvedValue(false);
     const service = new SocialService(social);
 
     await expect(service.unfollow(7, '모각러')).rejects.toEqual(
@@ -66,21 +67,21 @@ describe('SocialService follows', () => {
     );
   });
 
-  it('returns mentor and moto counts from source rows', async () => {
+  it('원본 행에서 멘토와 모토 수를 계산해 반환한다', async () => {
     const social = repository();
-    vi.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
-    vi.mocked(social.countMentors).mockResolvedValue(3);
-    vi.mocked(social.countMotos).mockResolvedValue(5);
+    jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
+    jest.mocked(social.countMentors).mockResolvedValue(3);
+    jest.mocked(social.countMotos).mockResolvedValue(5);
     const service = new SocialService(social);
 
     await expect(service.getFollowCounts('모각러')).resolves.toEqual({ mentorCnt: 3, motoCnt: 5 });
   });
 
-  it('returns mentor and moto user summaries through explicit relationship directions', async () => {
+  it('명시적인 관계 방향을 통해 멘토와 모토 사용자 요약을 반환한다', async () => {
     const social = repository();
-    vi.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
-    vi.mocked(social.listMotos).mockResolvedValue([{ nickname: '팔로워', job: '개발/데이터' }]);
-    vi.mocked(social.listMentors).mockResolvedValue([{ nickname: '팔로잉', job: null }]);
+    jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
+    jest.mocked(social.listMotos).mockResolvedValue([{ nickname: '팔로워', job: '개발/데이터' }]);
+    jest.mocked(social.listMentors).mockResolvedValue([{ nickname: '팔로잉', job: null }]);
     const service = new SocialService(social);
 
     await expect(service.listMotos('모각러')).resolves.toEqual([
@@ -91,10 +92,10 @@ describe('SocialService follows', () => {
     ]);
   });
 
-  it('uses the authenticated address, derived counts, and nested author for network posts', async () => {
+  it('인증 사용자의 주소와 계산한 수와 중첩 작성자로 네트워크 게시글을 반환한다', async () => {
     const social = repository();
-    vi.mocked(social.findAddressName).mockResolvedValue('서울');
-    vi.mocked(social.listNetworkPosts).mockResolvedValue([
+    jest.mocked(social.findAddressName).mockResolvedValue('서울');
+    jest.mocked(social.listNetworkPosts).mockResolvedValue([
       {
         id: 31,
         authorId: 8,
@@ -106,8 +107,8 @@ describe('SocialService follows', () => {
         commentCount: 2,
       },
     ]);
-    vi.mocked(social.listImages).mockResolvedValue([]);
-    vi.mocked(social.listComments).mockResolvedValue([]);
+    jest.mocked(social.listImages).mockResolvedValue([]);
+    jest.mocked(social.listComments).mockResolvedValue([]);
     const service = new SocialService(social);
 
     await expect(service.listNetworkPosts(7, 0, 10, 'likeCnt')).resolves.toMatchObject({
@@ -128,7 +129,7 @@ describe('SocialService follows', () => {
     });
   });
 
-  it('rejects an unsupported network sort before querying posts', async () => {
+  it('게시글을 조회하기 전에 지원하지 않는 네트워크 정렬을 거부한다', async () => {
     const social = repository();
     const service = new SocialService(social);
 

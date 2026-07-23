@@ -1,27 +1,28 @@
+import { jest } from '@jest/globals';
+import { testMock } from '../../../../test/test-mock';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { configureApp } from '../../../app.setup';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { SocialService } from '../application/social.service';
 import { SocialController } from './social.controller';
 
-describe('Social HTTP contract', () => {
+describe('소셜 HTTP 계약', () => {
   let app: INestApplication;
   const social = {
-    follow: vi.fn(),
-    unfollow: vi.fn(),
-    getFollowCounts: vi.fn(),
-    listMotos: vi.fn(),
-    listMentors: vi.fn(),
-    listPacemakerPosts: vi.fn(),
-    listNetworkPosts: vi.fn(),
+    follow: testMock(),
+    unfollow: testMock(),
+    getFollowCounts: testMock(),
+    listMotos: testMock(),
+    listMentors: testMock(),
+    listPacemakerPosts: testMock(),
+    listNetworkPosts: testMock(),
   };
 
   beforeEach(async () => {
-    vi.resetAllMocks();
+    jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
       controllers: [SocialController],
       providers: [{ provide: SocialService, useValue: social }],
@@ -46,7 +47,7 @@ describe('Social HTTP contract', () => {
     await app?.close();
   });
 
-  it('keeps nickname follow and unfollow paths with the actual SUCCESS result', async () => {
+  it('실제 SUCCESS 결과와 닉네임 팔로우와 언팔로우 경로를 유지한다', async () => {
     await request(app.getHttpServer())
       .post('/api/users/follows/모각러')
       .expect(200)
@@ -59,7 +60,7 @@ describe('Social HTTP contract', () => {
     expect(social.unfollow).toHaveBeenCalledWith(7, '모각러');
   });
 
-  it('keeps network defaults and approved nested author response', async () => {
+  it('네트워크 기본값과 승인된 중첩 작성자 응답을 유지한다', async () => {
     social.listNetworkPosts.mockResolvedValue({
       content: [{ postId: 31, author: { userId: 8, nickname: '모각러' } }],
     });
@@ -70,7 +71,7 @@ describe('Social HTTP contract', () => {
     expect(social.listNetworkPosts).toHaveBeenCalledWith(7, 0, 10, 'createdAt', undefined);
   });
 
-  it('keeps the Pacemaker cursor parameter and rejects the removed per-post like path', async () => {
+  it('페이스메이커 cursor 파라미터를 유지하고 제거한 게시글별 좋아요 경로를 거부한다', async () => {
     social.listPacemakerPosts.mockResolvedValue([]);
     await request(app.getHttpServer()).get('/api/posts/pacemakers?cursor=0&size=10').expect(200);
     await request(app.getHttpServer()).post('/api/posts/31/like').expect(404);

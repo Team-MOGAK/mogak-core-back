@@ -1,5 +1,4 @@
 import { getTableConfig } from 'drizzle-orm/pg-core';
-import { describe, expect, it } from 'vitest';
 
 import { authSessions, consentItems, socialAccounts, userConsents, users } from './users';
 
@@ -9,14 +8,14 @@ function uniqueConstraintNames(table: Parameters<typeof getTableConfig>[0]): str
     .filter((name): name is string => name !== undefined);
 }
 
-describe('users/auth schema', () => {
-  it('uses relational bigint IDs and UUID session IDs', () => {
+describe('사용자와 인증 데이터베이스 스키마', () => {
+  it('관계형 bigint 식별자와 UUID 세션 식별자를 사용한다', () => {
     expect(users.id.dataType).toBe('number');
     expect(authSessions.id.dataType).toBe('string');
     expect(userConsents.userId.notNull).toBe(true);
   });
 
-  it('defines only the user and consent uniqueness rules required for correctness', () => {
+  it('정합성에 필요한 사용자와 동의 고유성 규칙만 정의한다', () => {
     expect(uniqueConstraintNames(users)).toEqual(
       expect.arrayContaining(['users_nickname_unique', 'users_email_unique']),
     );
