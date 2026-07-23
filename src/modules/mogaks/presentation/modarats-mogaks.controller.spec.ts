@@ -95,4 +95,22 @@ describe('Modarat and Mogak HTTP contract', () => {
         expect(body.result).toEqual([{ code: 'CERTIFICATION', name: '자격증' }]),
       );
   });
+
+  it('keeps the existing color metadata path and response shape', async () => {
+    await request(app.getHttpServer())
+      .get('/api/metadata/colors')
+      .expect(200)
+      .expect(({ body }) =>
+        expect(body.result).toEqual([
+          { name: '#475FFD' },
+          { name: '#FF4C77' },
+          { name: '#F98A08' },
+          { name: '#11D796' },
+          { name: '#FF6827' },
+          { name: '#9C31FF' },
+          { name: '#21CAFF' },
+          { name: '#FF2F2F' },
+        ]),
+      );
+  });
 });

@@ -21,7 +21,7 @@
 - `users`, `jobs`, `addresses`, `consent_items`, `user_consents`, `social_accounts`, `auth_sessions`의 첫 Drizzle migration과 공개 메타데이터 seed
 - Apple·Google·Kakao 소셜 로그인 검증, `auth_sessions` 기반 동시 로그인, refresh token hash 조건부 회전
 - access JWT의 session id 검증, 현재 기기 로그아웃, FK cascade를 이용한 회원 hard delete API
-- 사용자 가입, 프로필, 닉네임, 직업, 동의, 직업·주소 메타데이터 API와 비활성 StoragePort 경계
+- 사용자 가입, 프로필, 닉네임, 직업, 동의, 직업·주소·카테고리·색상 메타데이터 API와 비활성 StoragePort 경계
 - `mogaks`의 Modarat·Mogak·공식 카테고리, Jogak 일정, 가상 날짜별 발생 건, 실행 상태와 hard delete API
 - 실행은 `(jogak_id, scheduled_date)` UNIQUE와 `ON CONFLICT DO NOTHING`/조건부 update로 멱등 처리하며, `achievements`는 `SUCCESS` 실행 원본 행에서 집계
 - `posts`의 실행 기반 게시글, 댓글, 좋아요, 파생 카운트, hard delete와 기존 HTTP 경로
@@ -701,7 +701,7 @@ Mogak 카테고리는 공식 카테고리 또는 일회성 사용자 커스텀 �
 - 기존 follow count, motos, mentors 경로
 - `POST /api/jogaks/{jogakId}/posts`
 - 기존 게시글 상세, 수정, 삭제, 댓글, 좋아요 경로
-- 기존 직업, 주소, 카테고리 metadata 경로
+- 기존 직업, 주소, 카테고리, 색상 metadata 경로
 - 기존 사용자 동의 API 경로
 
 팔로우 대상은 UX상 nickname으로 입력받는다. 내부 `follows` 테이블만 user ID를 저장한다.
