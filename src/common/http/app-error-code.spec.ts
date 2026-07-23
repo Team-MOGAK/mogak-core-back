@@ -79,4 +79,34 @@ describe('AppErrorCode', () => {
       message: '잘못된 상태 변경입니다',
     });
   });
+
+  it('keeps the public Posts and Comments error contracts', () => {
+    const codes = AppErrorCode as Record<string, unknown>;
+
+    expect(codes.POST_CONTENTS_TOO_LONG).toMatchObject({
+      httpStatus: HttpStatus.BAD_REQUEST,
+      code: 'P001',
+      message: '최대 글자수 350자를 초과하였습니다',
+    });
+    expect(codes.POST_NOT_FOUND).toMatchObject({
+      httpStatus: HttpStatus.NOT_FOUND,
+      code: 'P003',
+      message: '존재하지 않는 게시물입니다',
+    });
+    expect(codes.POST_ALREADY_EXISTS).toMatchObject({
+      httpStatus: HttpStatus.CONFLICT,
+      code: 'P005',
+      message: '이미 존재하는 회고록입니다',
+    });
+    expect(codes.COMMENT_CONTENTS_TOO_LONG).toMatchObject({
+      httpStatus: HttpStatus.BAD_REQUEST,
+      code: 'C001',
+      message: '최대 글자수 200자를 초과하였습니다',
+    });
+    expect(codes.COMMENT_NOT_FOUND).toMatchObject({
+      httpStatus: HttpStatus.NOT_FOUND,
+      code: 'C002',
+      message: '존재하지 않는 댓글입니다',
+    });
+  });
 });

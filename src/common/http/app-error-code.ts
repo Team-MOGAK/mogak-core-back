@@ -142,6 +142,31 @@ export const AppErrorCode = {
     code: 'J017',
     message: '유효하지 않은 실천 날짜입니다',
   },
+  POST_CONTENTS_TOO_LONG: {
+    httpStatus: HttpStatus.BAD_REQUEST,
+    code: 'P001',
+    message: '최대 글자수 350자를 초과하였습니다',
+  },
+  POST_NOT_FOUND: {
+    httpStatus: HttpStatus.NOT_FOUND,
+    code: 'P003',
+    message: '존재하지 않는 게시물입니다',
+  },
+  POST_ALREADY_EXISTS: {
+    httpStatus: HttpStatus.CONFLICT,
+    code: 'P005',
+    message: '이미 존재하는 회고록입니다',
+  },
+  COMMENT_CONTENTS_TOO_LONG: {
+    httpStatus: HttpStatus.BAD_REQUEST,
+    code: 'C001',
+    message: '최대 글자수 200자를 초과하였습니다',
+  },
+  COMMENT_NOT_FOUND: {
+    httpStatus: HttpStatus.NOT_FOUND,
+    code: 'C002',
+    message: '존재하지 않는 댓글입니다',
+  },
   BAD_REQUEST: {
     httpStatus: HttpStatus.BAD_REQUEST,
     code: 'Z002',
