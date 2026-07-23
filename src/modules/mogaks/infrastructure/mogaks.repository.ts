@@ -484,6 +484,21 @@ export class MogaksRepository {
       .where(and(...conditions));
   }
 
+  async listScheduleRowsForOwnedJogak(
+    userId: number,
+    jogakId: number,
+  ): Promise<OccurrenceScheduleRow[]> {
+    return this.db
+      .select(occurrenceScheduleProjection())
+      .from(jogakSchedules)
+      .innerJoin(jogaks, eq(jogakSchedules.jogakId, jogaks.id))
+      .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+      .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+      .leftJoin(mogakCategories, eq(mogaks.categoryId, mogakCategories.id))
+      .leftJoin(jogakScheduleWeekdays, eq(jogakScheduleWeekdays.scheduleId, jogakSchedules.id))
+      .where(and(eq(jogaks.id, jogakId), eq(modarats.userId, userId)));
+  }
+
   async listExecutionsForJogaks(
     jogakIds: readonly number[],
     startDate: string,

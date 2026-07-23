@@ -126,6 +126,19 @@ export class JogaksService {
   async getDetail(userId: number, jogakId: number) {
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
     if (jogak === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+    const schedules = groupScheduleRows(
+      await this.repository.listScheduleRowsForOwnedJogak(userId, jogakId),
+    );
+    const today = this.today();
+    const currentOrLatest =
+      schedules
+        .filter(
+          (schedule) =>
+            schedule.effectiveFrom <= today &&
+            (schedule.effectiveTo === null || schedule.effectiveTo >= today),
+        )
+        .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0] ??
+      schedules.sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0];
     return {
       jogakId: jogak.id,
       mogakId: jogak.mogakId,
@@ -133,6 +146,16 @@ export class JogaksService {
       category: categoryOf(jogak.categoryCode, jogak.categoryName, jogak.customCategoryName),
       title: jogak.title,
       color: jogak.color,
+      isRoutine: currentOrLatest?.scheduleType === 'WEEKLY',
+      days: currentOrLatest?.weekdays ?? [],
+      startDate: currentOrLatest?.effectiveFrom ?? null,
+      endDate: currentOrLatest?.effectiveTo ?? null,
+      schedules: schedules.map((schedule) => ({
+        scheduleType: schedule.scheduleType,
+        effectiveFrom: schedule.effectiveFrom,
+        effectiveTo: schedule.effectiveTo,
+        weekdays: schedule.weekdays,
+      })),
     };
   }
 

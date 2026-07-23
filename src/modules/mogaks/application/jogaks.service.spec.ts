@@ -12,6 +12,7 @@ function repository(): MogaksRepository {
     countJogaksWithCurrentOrFutureSchedule: vi.fn(),
     createJogakWithSchedule: vi.fn(),
     listOccurrenceScheduleRows: vi.fn(),
+    listScheduleRowsForOwnedJogak: vi.fn(),
     listExecutionsForJogaks: vi.fn(),
     insertExecution: vi.fn(),
     findExecution: vi.fn(),
@@ -224,6 +225,45 @@ describe('JogaksService', () => {
       '수정된 문제 풀이',
       expect.any(Date),
     );
+  });
+
+  it('keeps legacy schedule fields in Jogak detail while exposing schedule history', async () => {
+    const mogaks = repository();
+    vi.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    vi.mocked(mogaks.listScheduleRowsForOwnedJogak).mockResolvedValue([
+      {
+        scheduleId: 5,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'WEEKLY',
+        effectiveFrom: '2026-07-20',
+        effectiveTo: '2026-08-31',
+        weekday: 'MONDAY',
+      },
+    ]);
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await expect(service.getDetail(7, 11)).resolves.toMatchObject({
+      jogakId: 11,
+      isRoutine: true,
+      days: ['MONDAY'],
+      startDate: '2026-07-20',
+      endDate: '2026-08-31',
+      schedules: [
+        {
+          scheduleType: 'WEEKLY',
+          effectiveFrom: '2026-07-20',
+          effectiveTo: '2026-08-31',
+          weekdays: ['MONDAY'],
+        },
+      ],
+    });
   });
 
   it('does not report a successful Jogak delete when the owner predicate does not match', async () => {
