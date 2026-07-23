@@ -154,7 +154,7 @@ DATABASE_URL=postgresql://invalid:invalid@127.0.0.1:1/other_test pnpm test:db
 
 Expected: first command passes through `.env.test`; second command attempts the explicitly supplied URL rather than silently replacing it with `.env.test`.
 
-- [ ] **Step 4: Commit the test-environment selection**
+- [x] **Step 4: Commit the test-environment selection**
 
 ```bash
 git add vitest.db.config.ts
@@ -207,7 +207,7 @@ pnpm test
 
 Expected: every command exits 0; the full suite reports zero failures.
 
-- [ ] **Step 4: Commit docs and final verification state**
+- [x] **Step 4: Commit docs and final verification state**
 
 ```bash
 git add docs/migration/2026-07-23-nestjs-migration-handoff.md README.md
