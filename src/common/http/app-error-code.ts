@@ -167,6 +167,16 @@ export const AppErrorCode = {
     code: 'C002',
     message: '존재하지 않는 댓글입니다',
   },
+  FOLLOW_ALREADY_EXISTS: {
+    httpStatus: HttpStatus.CONFLICT,
+    code: 'F001',
+    message: '이미 존재하는 팔로우입니다',
+  },
+  FOLLOW_NOT_FOUND: {
+    httpStatus: HttpStatus.NOT_FOUND,
+    code: 'F002',
+    message: '존재하지 않는 팔로우입니다',
+  },
   BAD_REQUEST: {
     httpStatus: HttpStatus.BAD_REQUEST,
     code: 'Z002',

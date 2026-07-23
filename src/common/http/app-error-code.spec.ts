@@ -109,4 +109,19 @@ describe('AppErrorCode', () => {
       message: '존재하지 않는 댓글입니다',
     });
   });
+
+  it('keeps the public follow error contracts', () => {
+    const codes = AppErrorCode as Record<string, unknown>;
+
+    expect(codes.FOLLOW_ALREADY_EXISTS).toMatchObject({
+      httpStatus: HttpStatus.CONFLICT,
+      code: 'F001',
+      message: '이미 존재하는 팔로우입니다',
+    });
+    expect(codes.FOLLOW_NOT_FOUND).toMatchObject({
+      httpStatus: HttpStatus.NOT_FOUND,
+      code: 'F002',
+      message: '존재하지 않는 팔로우입니다',
+    });
+  });
 });
