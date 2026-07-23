@@ -24,6 +24,7 @@ import {
   IsPositive,
   IsString,
   Length,
+  Matches,
   ValidateNested,
 } from 'class-validator';
 import type { Response } from 'express';
@@ -34,6 +35,7 @@ import { AppException } from '../../../common/http/app.exception';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
+import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { JogaksService } from '../application/jogaks.service';
 import type { StoredExecutionStatus } from '../domain/occurrence';
 
@@ -76,6 +78,7 @@ class CreateJogakRequest {
 
   @IsString()
   @IsNotEmpty()
+  @Matches(/\S/)
   @Length(1, 100)
   title!: string;
 
@@ -105,6 +108,7 @@ class CreateJogakRequest {
 class UpdateJogakRequest {
   @IsString()
   @IsNotEmpty()
+  @Matches(/\S/)
   @Length(1, 100)
   title!: string;
 
@@ -119,7 +123,7 @@ export class JogaksController {
   constructor(@Inject(JogaksService) private readonly jogaks: JogaksService) {}
 
   @Post('jogaks')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @HttpCode(HttpStatus.CREATED)
   async create(@CurrentUser() user: AuthenticatedUser, @Body() request: CreateJogakRequest) {
     return successResponse(
@@ -133,13 +137,13 @@ export class JogaksController {
   }
 
   @Get('jogaks/daily')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async listOneTime(@CurrentUser() user: AuthenticatedUser, @Query() query: DateQuery) {
     return successResponse(await this.jogaks.listOneTime(user.userId, query.date));
   }
 
   @Get('jogaks/routines')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async listRoutines(@CurrentUser() user: AuthenticatedUser, @Query() query: DateRangeQuery) {
     return successResponse(
       await this.jogaks.listRoutines(user.userId, query.startDay, query.endDay),
@@ -147,7 +151,7 @@ export class JogaksController {
   }
 
   @Get('mogaks/:mogakId/jogaks')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async listMogakDay(
     @CurrentUser() user: AuthenticatedUser,
     @Param('mogakId') mogakId: string,
@@ -159,19 +163,19 @@ export class JogaksController {
   }
 
   @Get('jogaks')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async listDay(@CurrentUser() user: AuthenticatedUser, @Query() query: DateQuery) {
     return successResponse(await this.jogaks.listDay(user.userId, query.date));
   }
 
   @Get('jogaks/:jogakId')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async getDetail(@CurrentUser() user: AuthenticatedUser, @Param('jogakId') jogakId: string) {
     return successResponse(await this.jogaks.getDetail(user.userId, asSafeId(jogakId)));
   }
 
   @Put('jogaks/:jogakId')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async update(
     @CurrentUser() user: AuthenticatedUser,
     @Param('jogakId') jogakId: string,
@@ -188,14 +192,14 @@ export class JogaksController {
   }
 
   @Delete('jogaks/:jogakId')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async delete(@CurrentUser() user: AuthenticatedUser, @Param('jogakId') jogakId: string) {
     await this.jogaks.delete(user.userId, asSafeId(jogakId));
     return successResponse({});
   }
 
   @Post('jogaks/:jogakId/executions/:scheduledDate/start')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async start(
     @CurrentUser() user: AuthenticatedUser,
     @Param('jogakId') jogakId: string,
@@ -206,7 +210,7 @@ export class JogaksController {
   }
 
   @Post('jogaks/:jogakId/executions/:scheduledDate/success')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async success(
     @CurrentUser() user: AuthenticatedUser,
     @Param('jogakId') jogakId: string,
@@ -217,7 +221,7 @@ export class JogaksController {
   }
 
   @Post('jogaks/:jogakId/executions/:scheduledDate/fail')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async fail(
     @CurrentUser() user: AuthenticatedUser,
     @Param('jogakId') jogakId: string,

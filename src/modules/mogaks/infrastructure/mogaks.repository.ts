@@ -347,28 +347,39 @@ export class MogaksRepository {
     if (owned === null) return null;
 
     return this.db.transaction(async (tx) => {
-      const activeSchedules = await tx
+      const schedules = await tx
         .select({
           id: jogakSchedules.id,
           effectiveFrom: jogakSchedules.effectiveFrom,
+          effectiveTo: jogakSchedules.effectiveTo,
         })
         .from(jogakSchedules)
-        .where(
-          and(
-            eq(jogakSchedules.jogakId, input.jogakId),
-            lte(jogakSchedules.effectiveFrom, input.schedule.effectiveFrom),
-            or(
-              isNull(jogakSchedules.effectiveTo),
-              gte(jogakSchedules.effectiveTo, input.schedule.effectiveFrom),
-            ),
-          ),
-        );
-      const active = activeSchedules.sort((left, right) =>
-        right.effectiveFrom.localeCompare(left.effectiveFrom),
-      )[0];
-      if (active !== undefined && active.effectiveFrom >= input.schedule.effectiveFrom) {
+        .where(eq(jogakSchedules.jogakId, input.jogakId));
+      if (schedules.some((schedule) => schedule.effectiveFrom === input.schedule.effectiveFrom)) {
         return 'INVALID_EFFECTIVE_FROM';
       }
+
+      const active = schedules
+        .filter(
+          (schedule) =>
+            schedule.effectiveFrom < input.schedule.effectiveFrom &&
+            (schedule.effectiveTo === null || schedule.effectiveTo >= input.schedule.effectiveFrom),
+        )
+        .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0];
+      const successor = schedules
+        .filter((schedule) => schedule.effectiveFrom > input.schedule.effectiveFrom)
+        .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom))[0];
+      if (
+        successor !== undefined &&
+        input.schedule.effectiveTo !== null &&
+        input.schedule.effectiveTo >= successor.effectiveFrom
+      ) {
+        return 'INVALID_EFFECTIVE_FROM';
+      }
+
+      const effectiveTo =
+        input.schedule.effectiveTo ??
+        (successor === undefined ? null : previousDate(successor.effectiveFrom));
 
       if (active !== undefined) {
         await tx
@@ -386,7 +397,7 @@ export class MogaksRepository {
           jogakId: input.jogakId,
           scheduleType: input.schedule.scheduleType,
           effectiveFrom: input.schedule.effectiveFrom,
-          effectiveTo: input.schedule.effectiveTo,
+          effectiveTo,
         })
         .returning({ id: jogakSchedules.id });
       if (createdSchedule === undefined)

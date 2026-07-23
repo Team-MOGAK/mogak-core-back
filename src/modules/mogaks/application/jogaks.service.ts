@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
+import { requiredTrimmed } from '../../../common/validation/required-text';
 import { decideExecutionTransition } from '../domain/execution-transition';
 import {
   compareDateOnly,
@@ -84,7 +85,7 @@ export class JogaksService {
 
     const created = await this.repository.createJogakWithSchedule({
       mogak,
-      title: input.title.trim(),
+      title: requiredTrimmed(input.title),
       schedule,
     });
     return {
@@ -167,7 +168,7 @@ export class JogaksService {
     jogakId: number,
     input: Readonly<{ title: string; schedule?: ScheduleInput }>,
   ) {
-    const title = input.title.trim();
+    const title = requiredTrimmed(input.title);
     const updated =
       input.schedule === undefined
         ? await this.repository.updateOwnedJogakTitle(userId, jogakId, title, new Date())
@@ -208,9 +209,11 @@ export class JogaksService {
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
     if (jogak === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
-    if (!schedules.some((schedule) => occursOn(schedule, scheduledDate))) {
+    const occurrenceSchedule = schedules.find((schedule) => occursOn(schedule, scheduledDate));
+    if (occurrenceSchedule === undefined) {
       throw new AppException(AppErrorCode.INVALID_TARGET_DATE);
     }
+    const isRoutine = occurrenceSchedule.scheduleType === 'WEEKLY';
 
     const inserted = await this.repository.insertExecution({
       jogakId,
@@ -219,14 +222,14 @@ export class JogaksService {
       jogakTitleSnapshot: jogak.title,
     });
     if (inserted !== null) {
-      return { created: true, execution: toExecutionResponse(inserted, jogak) };
+      return { created: true, execution: toExecutionResponse(inserted, jogak, isRoutine) };
     }
 
     const existing = await this.repository.findExecution(jogakId, scheduledDate);
     if (existing === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
     return {
       created: false,
-      execution: await this.transitionExisting(existing, desiredStatus, jogak, true),
+      execution: await this.transitionExisting(existing, desiredStatus, jogak, isRoutine, true),
     };
   }
 
@@ -316,10 +319,11 @@ export class JogaksService {
     existing: ExecutionRecord,
     desiredStatus: StoredExecutionStatus,
     jogak: OwnedJogakRecord,
+    isRoutine: boolean,
     retryOnce: boolean,
   ): Promise<ExecutionResponse> {
     const transition = decideExecutionTransition(existing.status, desiredStatus);
-    if (transition.type === 'NOOP') return toExecutionResponse(existing, jogak);
+    if (transition.type === 'NOOP') return toExecutionResponse(existing, jogak, isRoutine);
     if (transition.type === 'REJECT') {
       throw new AppException(AppErrorCode.INVALID_EXECUTION_TRANSITION);
     }
@@ -330,20 +334,22 @@ export class JogaksService {
       desiredStatus,
       now: new Date(),
     });
-    if (updated !== null) return toExecutionResponse(updated, jogak);
+    if (updated !== null) return toExecutionResponse(updated, jogak, isRoutine);
     const current = await this.repository.findExecution(existing.jogakId, existing.scheduledDate);
     if (current === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
-    if (!retryOnce) return this.resolveAfterLostTransition(current, desiredStatus, jogak);
-    return this.transitionExisting(current, desiredStatus, jogak, false);
+    if (!retryOnce)
+      return this.resolveAfterLostTransition(current, desiredStatus, jogak, isRoutine);
+    return this.transitionExisting(current, desiredStatus, jogak, isRoutine, false);
   }
 
   private resolveAfterLostTransition(
     current: ExecutionRecord,
     desiredStatus: StoredExecutionStatus,
     jogak: OwnedJogakRecord,
+    isRoutine: boolean,
   ): ExecutionResponse {
     const transition = decideExecutionTransition(current.status, desiredStatus);
-    if (transition.type === 'NOOP') return toExecutionResponse(current, jogak);
+    if (transition.type === 'NOOP') return toExecutionResponse(current, jogak, isRoutine);
     if (transition.type === 'REJECT') {
       throw new AppException(AppErrorCode.INVALID_EXECUTION_TRANSITION);
     }
@@ -422,7 +428,11 @@ function groupScheduleRows(rows: readonly OccurrenceScheduleRow[]): ScheduleReco
   return [...schedules.values()];
 }
 
-function toExecutionResponse(execution: ExecutionRecord, jogak: OwnedJogakRecord) {
+function toExecutionResponse(
+  execution: ExecutionRecord,
+  jogak: OwnedJogakRecord,
+  isRoutine: boolean,
+) {
   return {
     executionId: execution.id,
     jogakId: execution.jogakId,
@@ -431,7 +441,7 @@ function toExecutionResponse(execution: ExecutionRecord, jogak: OwnedJogakRecord
     title: execution.jogakTitleSnapshot,
     mogakTitle: jogak.mogakTitle,
     category: categoryOf(jogak.categoryCode, jogak.categoryName, jogak.customCategoryName),
-    isRoutine: true,
+    isRoutine,
   };
 }
 

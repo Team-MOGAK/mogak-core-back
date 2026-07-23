@@ -6,6 +6,7 @@ import request from 'supertest';
 
 import { configureApp } from '../../../app.setup';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
+import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { JogaksService } from '../application/jogaks.service';
 import { JogaksController } from './jogaks.controller';
 
@@ -27,7 +28,7 @@ describe('조각 HTTP 계약', () => {
     jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
       controllers: [JogaksController],
-      providers: [{ provide: JogaksService, useValue: jogaks }],
+      providers: [{ provide: JogaksService, useValue: jogaks }, RegisteredUserGuard],
     })
       .overrideGuard(AccessTokenGuard)
       .useValue({

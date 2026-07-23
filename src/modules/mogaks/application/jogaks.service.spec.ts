@@ -138,6 +138,40 @@ describe('조각 서비스', () => {
     expect(mogaks.insertExecution).not.toHaveBeenCalled();
   });
 
+  it('한 번 일정의 실행 응답을 루틴으로 표시하지 않는다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    jest.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
+      {
+        scheduleId: 5,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'ONCE',
+        effectiveFrom: '2026-07-23',
+        effectiveTo: null,
+        weekday: null,
+      },
+    ]);
+    jest.mocked(mogaks.insertExecution).mockResolvedValue({
+      id: 19,
+      jogakId: 11,
+      scheduledDate: '2026-07-23',
+      status: 'IN_PROGRESS',
+      jogakTitleSnapshot: '문제 풀이',
+    });
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await expect(service.commandExecution(7, 11, '2026-07-23', 'IN_PROGRESS')).resolves.toEqual(
+      expect.objectContaining({ execution: expect.objectContaining({ isRoutine: false }) }),
+    );
+  });
+
   it('동시 삽입 충돌 뒤 기존 실행을 멱등하게 반환한다', async () => {
     const mogaks = repository();
     jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);

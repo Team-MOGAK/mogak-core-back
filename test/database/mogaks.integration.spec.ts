@@ -4,14 +4,18 @@ import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
+import type { Database } from '../../src/database/database.provider';
 import {
   jogakExecutions,
   jogakSchedules,
+  jogakScheduleWeekdays,
   jogaks,
   modarats,
   mogaks,
   users,
 } from '../../src/database/schema';
+import { JogaksService } from '../../src/modules/mogaks/application/jogaks.service';
+import { MogaksRepository } from '../../src/modules/mogaks/infrastructure/mogaks.repository';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {
@@ -97,9 +101,70 @@ describe('모각 PostgreSQL 통합', () => {
 
     await db.delete(users).where(eq(users.id, fixture.userId));
   });
+
+  it('후속 일정 전까지만 교체 일정을 저장해 가상 발생 중복을 만들지 않는다', async () => {
+    const fixture = await createJogakFixture({
+      scheduleType: 'WEEKLY',
+      effectiveFrom: '2026-07-01',
+      weekdays: ['WEDNESDAY'],
+    });
+    const [successor] = await db
+      .insert(jogakSchedules)
+      .values({
+        jogakId: fixture.jogakId,
+        scheduleType: 'WEEKLY',
+        effectiveFrom: '2026-08-01',
+      })
+      .returning({ id: jogakSchedules.id });
+    if (successor === undefined)
+      throw new Error('successor schedule fixture insert did not return a row');
+    await db
+      .insert(jogakScheduleWeekdays)
+      .values({ scheduleId: successor.id, weekday: 'THURSDAY' });
+
+    const service = new JogaksService(
+      new MogaksRepository(db as unknown as Database),
+      () => '2026-07-23',
+    );
+
+    await expect(
+      service.update(fixture.userId, fixture.jogakId, {
+        title: '수정된 문제 풀이',
+        schedule: {
+          scheduleType: 'WEEKLY',
+          effectiveFrom: '2026-07-24',
+          weekdays: ['THURSDAY'],
+        },
+      }),
+    ).resolves.toMatchObject({ title: '수정된 문제 풀이' });
+
+    const [replacement] = await db
+      .select({ effectiveTo: jogakSchedules.effectiveTo })
+      .from(jogakSchedules)
+      .where(
+        and(
+          eq(jogakSchedules.jogakId, fixture.jogakId),
+          eq(jogakSchedules.effectiveFrom, '2026-07-24'),
+        ),
+      );
+    expect(replacement?.effectiveTo).toBe('2026-07-31');
+    await expect(service.listDay(fixture.userId, '2026-08-06')).resolves.toMatchObject({
+      size: 1,
+      jogaks: [expect.objectContaining({ scheduledDate: '2026-08-06' })],
+    });
+
+    await db.delete(users).where(eq(users.id, fixture.userId));
+  });
 });
 
-async function createJogakFixture() {
+async function createJogakFixture(
+  schedule: Readonly<{
+    scheduleType: 'ONCE' | 'WEEKLY';
+    effectiveFrom: string;
+    effectiveTo?: string;
+    weekdays?: readonly string[];
+  }> = { scheduleType: 'ONCE', effectiveFrom: '2026-07-23' },
+) {
   const [user] = await db
     .insert(users)
     .values({ email: `${randomUUID()}@mogak.test`, role: 'USER' })
@@ -120,11 +185,22 @@ async function createJogakFixture() {
     .values({ mogakId: mogak.id, title: '문제 풀이' })
     .returning({ id: jogaks.id });
   if (jogak === undefined) throw new Error('jogak fixture insert did not return a row');
-  await db.insert(jogakSchedules).values({
-    jogakId: jogak.id,
-    scheduleType: 'ONCE',
-    effectiveFrom: '2026-07-23',
-  });
+  const [createdSchedule] = await db
+    .insert(jogakSchedules)
+    .values({
+      jogakId: jogak.id,
+      scheduleType: schedule.scheduleType,
+      effectiveFrom: schedule.effectiveFrom,
+      effectiveTo: schedule.effectiveTo ?? null,
+    })
+    .returning({ id: jogakSchedules.id });
+  if (createdSchedule === undefined)
+    throw new Error('schedule fixture insert did not return a row');
+  if ((schedule.weekdays?.length ?? 0) > 0) {
+    await db
+      .insert(jogakScheduleWeekdays)
+      .values(schedule.weekdays!.map((weekday) => ({ scheduleId: createdSchedule.id, weekday })));
+  }
 
   return { userId: user.id, modaratId: modarat.id, mogakId: mogak.id, jogakId: jogak.id };
 }
