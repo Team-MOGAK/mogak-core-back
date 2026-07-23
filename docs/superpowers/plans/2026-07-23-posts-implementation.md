@@ -1,6 +1,6 @@
 # Posts Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Status (2026-07-23):** Tasks 1–4 and the non-DB gate are complete. The PostgreSQL cases are written and the guarded `test:db` command was attempted; an unavailable PostgreSQL service prevented an actual DB pass.
 
 **Goal:** Migrate authenticated posts, optional image boundary, comments, and likes to NestJS while using a Jogak virtual occurrence rather than Spring's `DailyJogak` rows.
 
@@ -46,7 +46,7 @@
 - Modify: `src/common/http/app-error-code.ts`
 - Modify: `src/common/http/app-error-code.spec.ts`
 
-- [ ] **Step 1: Write failing schema/error tests.**
+- [x] **Step 1: Write failing schema/error tests.**
 
   Assert bigint foreign IDs, FK cascade intent, and only these names:
 
@@ -60,13 +60,13 @@
 
   Assert existing Spring definitions `P001`, `P003`, `P005`, `C001`, and `C002` retain their status/code/message.
 
-- [ ] **Step 2: Run the focused tests and verify RED.**
+- [x] **Step 2: Run the focused tests and verify RED.**
 
   Run: `pnpm test src/database/schema/posts.spec.ts src/common/http/app-error-code.spec.ts`
 
   Expected: FAIL because the tables and error definitions do not exist.
 
-- [ ] **Step 3: Add tables and migration.**
+- [x] **Step 3: Add tables and migration.**
 
   Create exactly:
 
@@ -82,7 +82,7 @@
 
   Use application validation for body lengths and image positions. Do not add image-position uniqueness, generated counters, deleted markers, or any index outside primary/UNIQUE constraints.
 
-- [ ] **Step 4: Verify GREEN and commit.**
+- [x] **Step 4: Verify GREEN and commit.**
 
   Run: `pnpm test src/database/schema/posts.spec.ts src/common/http/app-error-code.spec.ts && pnpm typecheck`
 
@@ -97,7 +97,7 @@
 - Create: `src/modules/posts/application/posts.service.ts`
 - Create: `src/modules/posts/application/posts.service.spec.ts`
 
-- [ ] **Step 1: Write failing application tests.**
+- [x] **Step 1: Write failing application tests.**
 
   Cover content validation (nonblank, at most 350), missing/foreign Jogak, an invalid `targetDate`, owner-only read/update/delete, a title snapshot captured on first execution insert, and duplicate post conflict. Cover the required edge:
 
@@ -106,17 +106,17 @@
   await expect(service.createPost(user, sameInput)).rejects.toMatchObject({ errorCode: AppErrorCode.POST_ALREADY_EXISTS });
   ```
 
-- [ ] **Step 2: Run focused tests and verify RED.**
+- [x] **Step 2: Run focused tests and verify RED.**
 
   Run: `pnpm test src/modules/posts/application/posts.service.spec.ts`
 
   Expected: FAIL because Posts services/repository do not exist.
 
-- [ ] **Step 3: Add the read-only Mogaks resolver.**
+- [x] **Step 3: Add the read-only Mogaks resolver.**
 
   Export a method that validates `userId`, `jogakId`, and `scheduledDate` against virtual occurrence rules and returns the Jogak title only when the caller owns that occurrence. It performs no execution mutation; it returns `J005` for an unowned/missing Jogak and `J017` for a non-occurrence.
 
-- [ ] **Step 4: Implement the atomic write without locks.**
+- [x] **Step 4: Implement the atomic write without locks.**
 
   In one short `PostsRepository` transaction:
 
@@ -127,7 +127,7 @@
 
   The repository does not lock an execution or post. It does not write an execution status when the row already exists.
 
-- [ ] **Step 5: Run focused tests and commit.**
+- [x] **Step 5: Run focused tests and commit.**
 
   Run: `pnpm test src/modules/posts/application/posts.service.spec.ts && pnpm lint && pnpm typecheck`
 
@@ -140,7 +140,7 @@
 - Modify: `src/modules/posts/application/posts.service.ts`
 - Create: `src/modules/posts/application/posts.service.spec.ts`
 
-- [ ] **Step 1: Write failing behavior tests.**
+- [x] **Step 1: Write failing behavior tests.**
 
   Test all of the following independently:
 
@@ -152,19 +152,19 @@
   it('returns nested comment author data with a resolved profile image URL', async () => {});
   ```
 
-- [ ] **Step 2: Run and verify RED.**
+- [x] **Step 2: Run and verify RED.**
 
   Run: `pnpm test src/modules/posts/application/posts.service.spec.ts`
 
   Expected: FAIL on the unimplemented methods.
 
-- [ ] **Step 3: Implement projection and ownership methods.**
+- [x] **Step 3: Implement projection and ownership methods.**
 
   Select post/author/execution/Mogak identity through explicit joins. Derive each count from `post_likes` or `post_comments`; do not persist or update counters. Resolve any stored image key through `StoragePort.resolvePublicUrl`, maintaining `imgUrls` and first-image `thumbnailUrl` behavior. Read methods may use explicit projection queries; they must not produce N+1 queries for list results.
 
   Implement comment insert/update/delete as direct owned-row DML. Implement post delete as owned-row DML; FK cascades delete image metadata, comments, likes while retaining its Jogak execution. Implement `POST /api/posts/like` with conflict-safe insert, direct owned delete, and the existing Korean created/deleted messages. No `FOR UPDATE` and no counter change occur.
 
-- [ ] **Step 4: Run focused tests and commit.**
+- [x] **Step 4: Run focused tests and commit.**
 
   Run: `pnpm test src/modules/posts/application/posts.service.spec.ts && pnpm format:check && pnpm typecheck`
 
@@ -178,7 +178,7 @@
 - Create: `src/modules/posts/posts.module.ts`
 - Modify: `src/app.module.ts`
 
-- [ ] **Step 1: Write failing controller tests.**
+- [x] **Step 1: Write failing controller tests.**
 
   Assert guard/envelope and these routes:
 
@@ -196,21 +196,21 @@
   POST   /api/posts/like
   ```
 
-  Assert a text-only JSON/multipart create is `201`; empty `multipartFile` behaves as no image; a nonempty file returns `503 Z006`; post responses exclude `dailyJogakId`; comment payloads contain `author`; `POST /api/posts/:postId/like` remains absent.
+  Assert a text-only JSON/multipart create retains Spring's `200`; empty `multipartFile` behaves as no image; a nonempty file returns `503 Z006`; post responses exclude `dailyJogakId`; comment payloads contain `author`; `POST /api/posts/:postId/like` remains absent.
 
-- [ ] **Step 2: Run focused controller test and verify RED.**
+- [x] **Step 2: Run focused controller test and verify RED.**
 
   Run: `pnpm test src/modules/posts/presentation/posts.controller.spec.ts`
 
   Expected: FAIL because the controller/module does not exist.
 
-- [ ] **Step 3: Implement controllers/module.**
+- [x] **Step 3: Implement controllers/module.**
 
   Use `AccessTokenGuard`, `CurrentUser`, class-validator request DTOs, `FilesInterceptor('multipartFile')`, and `successResponse`. Parse multipart `request` JSON when present and normal JSON otherwise. Do not call Storage for absent/empty files; call the disabled boundary only for nonempty files before database mutation. Add `PostsModule` to `AppModule` and import Database/Auth/Mogaks/Storage modules.
 
   Extend `StoragePort` with a Posts-upload method and let `DisabledStorageAdapter` throw its existing `Z006` error from that method. The interface addition is intentional: it keeps the controller/application from knowing that Storage is disabled and gives the later serverless adapter a stable ownership boundary. Do not implement persistence or object cleanup in this slice.
 
-- [ ] **Step 4: Verify HTTP GREEN and commit.**
+- [x] **Step 4: Verify HTTP GREEN and commit.**
 
   Run: `pnpm test src/modules/posts/presentation/posts.controller.spec.ts && pnpm test:e2e && pnpm lint`
 
@@ -222,17 +222,19 @@
 - Create: `test/database/posts.integration.spec.ts`
 - Modify: `docs/migration/2026-07-23-nestjs-migration-handoff.md`
 
-- [ ] **Step 1: Write PostgreSQL integration cases.**
+- [x] **Step 1: Write PostgreSQL integration cases.**
 
   Cover user/Post hard-delete cascades, two concurrent insert attempts for one execution resulting in exactly one post, and concurrent same-user likes resulting in one row. Use fixtures with unique data, clean through user hard delete, and rely only on the `_test` database guard.
 
-- [ ] **Step 2: Run the DB test.**
+- [x] **Step 2: Run the DB test.**
 
   Run: `DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/mogak_test pnpm test:db`
 
   Expected: PASS when a dedicated PostgreSQL service is available. If no service is running, record only the exact connection prerequisite; do not represent it as a passed check.
 
-- [ ] **Step 3: Run the complete non-DB gate and update documentation.**
+  Actual: the guarded command reached migration setup but the configured PostgreSQL endpoint returned `ECONNREFUSED`. No database case is marked passed.
+
+- [x] **Step 3: Run the complete non-DB gate and update documentation.**
 
   Run:
 
@@ -247,6 +249,6 @@
 
   Document only public source references in section 2 and distinguish implemented code from deferred Storage implementation.
 
-- [ ] **Step 4: Commit verification/docs.**
+- [x] **Step 4: Commit verification/docs.**
 
   Commit: `test: verify Posts persistence`.

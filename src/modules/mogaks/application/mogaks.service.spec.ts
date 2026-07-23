@@ -12,6 +12,7 @@ function repository(): MogaksRepository {
     findActiveCategoryByCode: vi.fn(),
     createMogak: vi.fn(),
     deleteOwnedModarat: vi.fn(),
+    findOwnedMogak: vi.fn(),
   } as unknown as MogaksRepository;
 }
 
@@ -98,5 +99,21 @@ describe('MogaksService', () => {
     await expect(service.deleteModarat(7, 3)).rejects.toEqual(
       new AppException(AppErrorCode.MODARAT_NOT_FOUND),
     );
+  });
+
+  it('resolves an owned Mogak for a dependent read without exposing repository ownership joins', async () => {
+    const mogaks = repository();
+    vi.mocked(mogaks.findOwnedMogak).mockResolvedValue({
+      id: 9,
+      modaratId: 3,
+      title: '정보처리기사',
+      color: null,
+      categoryCode: 'CERTIFICATION',
+      categoryName: '자격증',
+      customCategoryName: null,
+    });
+    const service = new MogaksService(mogaks);
+
+    await expect(service.resolveOwnedMogak(7, 9)).resolves.toEqual({ id: 9 });
   });
 });

@@ -59,7 +59,9 @@ describe('posts schema', () => {
       uniqueConstraintNames(postsSchema.posts as unknown as Parameters<typeof getTableConfig>[0]),
     ).toContain('posts_jogak_execution_id_unique');
     expect(
-      uniqueConstraintNames(postsSchema.postLikes as unknown as Parameters<typeof getTableConfig>[0]),
+      uniqueConstraintNames(
+        postsSchema.postLikes as unknown as Parameters<typeof getTableConfig>[0],
+      ),
     ).toContain('post_likes_post_user_unique');
   });
 });

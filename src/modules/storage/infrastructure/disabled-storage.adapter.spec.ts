@@ -16,4 +16,12 @@ describe('DisabledStorageAdapter', () => {
   it('does not expose a storage key as a public URL', async () => {
     await expect(new DisabledStorageAdapter().resolvePublicUrl('profile/key')).resolves.toBeNull();
   });
+
+  it('returns the same storage-disabled error for post image upload attempts', async () => {
+    const storage = new DisabledStorageAdapter();
+
+    await expect(storage.uploadPostImages([{} as Express.Multer.File])).rejects.toEqual(
+      new AppException(AppErrorCode.STORAGE_DISABLED),
+    );
+  });
 });

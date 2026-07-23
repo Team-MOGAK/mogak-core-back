@@ -116,6 +116,12 @@ export class MogaksService {
     return (await this.repository.listActiveCategories()).map(({ code, name }) => ({ code, name }));
   }
 
+  async resolveOwnedMogak(userId: number, mogakId: number): Promise<Readonly<{ id: number }>> {
+    const mogak = await this.repository.findOwnedMogak(userId, mogakId);
+    if (mogak === null) throw new AppException(AppErrorCode.MOGAK_NOT_FOUND);
+    return { id: mogak.id };
+  }
+
   private async requireOwnedModarat(userId: number, modaratId: number): Promise<void> {
     if ((await this.repository.findOwnedModarat(userId, modaratId)) === null) {
       throw new AppException(AppErrorCode.MODARAT_NOT_FOUND);

@@ -24,7 +24,9 @@
 - 사용자 가입, 프로필, 닉네임, 직업, 동의, 직업·주소 메타데이터 API와 비활성 StoragePort 경계
 - `mogaks`의 Modarat·Mogak·공식 카테고리, Jogak 일정, 가상 날짜별 발생 건, 실행 상태와 hard delete API
 - 실행은 `(jogak_id, scheduled_date)` UNIQUE와 `ON CONFLICT DO NOTHING`/조건부 update로 멱등 처리하며, `achievements`는 `SUCCESS` 실행 원본 행에서 집계
-- 전용 `_test` 데이터베이스에서 실행하는 Mogaks PostgreSQL 통합 테스트(FK cascade, 동시 실행 생성, 실행 제목 snapshot)와 `test:db` 실행 명령
+- `posts`의 실행 기반 게시글, 댓글, 좋아요, 파생 카운트, hard delete와 기존 HTTP 경로
+- 비어 있거나 없는 `multipartFile`을 허용하고 실제 파일은 현재 비활성 StoragePort에서 `Z006`으로 중단하는 게시글 이미지 경계
+- 전용 `_test` 데이터베이스에서 실행하는 Mogaks·Posts PostgreSQL 통합 테스트와 `test:db` 실행 명령
 
 단위·HTTP 계약 테스트, health e2e, 타입 검사, 린트와 빌드는 통과했다. PostgreSQL 통합 테스트는 전용 테스트 DB가 준비된 뒤 실행한다. 현재 개발 환경에는 연결 가능한 PostgreSQL 서비스가 없어 실제 DB 검증은 아직 통과 상태가 아니다.
 
@@ -782,7 +784,7 @@ PostgreSQL UNIQUE 위반을 그대로 노출하지 않고 Application 오류로 
 - 사용자 생성 + 소셜 계정 + 동의 상태
 - 일정 수정 시 이전 일정 종료 + 새 일정 생성 + 요일 저장
 - 실행 최초 생성 + 상태 적용
-- 실행이 없는 상태에서 게시글 생성 시 실행 + 게시글 + 이미지 메타데이터
+- 실행이 없는 상태에서 텍스트 게시글 생성 시 실행 + 게시글
 
 외부 OAuth와 Storage 네트워크 호출을 DB transaction 안에서 오래 유지하지 않는다. 외부 호출을 먼저 검증하고 DB transaction은 저장 구간에만 사용한다.
 
@@ -799,11 +801,15 @@ PostgreSQL UNIQUE 위반을 그대로 노출하지 않고 Application 오류로 
 
 ### PostgreSQL 통합 테스트
 
-현재 `test:db`는 다음 Mogaks 정합성을 실제 PostgreSQL migration 이후 검증한다.
+현재 `test:db`는 다음 Mogaks·Posts 정합성을 실제 PostgreSQL migration 이후 검증한다.
 
 - 사용자 hard delete 후 Modarat → Mogak → Jogak → schedule → execution까지 FK cascade
 - 같은 Jogak·날짜에 대한 동시 실행 생성 시 UNIQUE conflict 처리
 - 실행 생성 뒤 Jogak 제목을 수정해도 실행 제목 snapshot 보존
+- 사용자 hard delete 후 Post → 이미지 메타데이터·댓글·좋아요까지 FK cascade
+- Post 직접 hard delete 시 이미지 메타데이터·댓글·좋아요만 cascade하고 실행은 보존
+- 같은 실행에 대한 동시 게시글 생성 시 하나의 Post만 저장
+- 같은 사용자의 동시 좋아요 생성 시 하나의 source row만 저장
 
 실행 명령은 다음과 같다. 데이터베이스 이름이 `_test`로 끝나지 않으면 시작 전에 거부하므로, 운영·개발 DB에 migration을 적용하지 않는다.
 
@@ -811,7 +817,7 @@ PostgreSQL UNIQUE 위반을 그대로 노출하지 않고 Application 오류로 
 DATABASE_URL=postgresql://<user>:<password>@<host>:5432/mogak_test pnpm test:db
 ```
 
-게시글·좋아요·팔로우·refresh token·일정 수정에 대한 실제 DB 통합 테스트는 해당 모듈 구현 시 추가한다.
+게시글·좋아요 DB 통합 테스트는 추가되었지만, 실제 통과 여부는 전용 PostgreSQL 서비스가 준비된 환경에서만 확인한다. 팔로우·refresh token·일정 수정의 DB 통합 테스트는 해당 모듈 구현 시 추가한다.
 
 ### API 계약 테스트
 
@@ -899,6 +905,5 @@ DATABASE_URL=postgresql://<user>:<password>@<host>:5432/mogak_test pnpm test:db
 ## 23. 다음 작업
 
 1. 전용 PostgreSQL 테스트 DB를 준비해 `test:db`를 통과시킨다.
-2. `posts`를 구현하면서 게시글·댓글·좋아요 원본 행 기반 집계와 해당 DB 통합 테스트를 추가한다.
-3. `social`을 구현하면서 팔로우·피드·거주지 기본 필터 계약을 유지한다.
-4. Storage 구현과 배포 구성은 별도 결정 후 연결한다.
+2. `social`을 구현하면서 팔로우·피드·거주지 기본 필터 계약을 유지한다.
+3. Storage 구현과 배포 구성은 별도 결정 후 연결한다.

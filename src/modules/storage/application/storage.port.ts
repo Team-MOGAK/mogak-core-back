@@ -2,6 +2,9 @@ export const STORAGE_PORT = Symbol('STORAGE_PORT');
 
 export interface StoragePort {
   uploadProfile(file: Express.Multer.File): Promise<Readonly<{ storageKey: string }>>;
+  uploadPostImages(
+    files: readonly Express.Multer.File[],
+  ): Promise<ReadonlyArray<Readonly<{ storageKey: string }>>>;
   replaceProfile(
     previousKey: string | null,
     file: Express.Multer.File,

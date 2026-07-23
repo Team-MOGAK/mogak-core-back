@@ -51,6 +51,7 @@ function consentRepository(): ConsentRepository {
 function storage(): StoragePort {
   return {
     uploadProfile: vi.fn(),
+    uploadPostImages: vi.fn(),
     replaceProfile: vi.fn(),
     deleteProfile: vi.fn(),
     resolvePublicUrl: vi.fn(),
