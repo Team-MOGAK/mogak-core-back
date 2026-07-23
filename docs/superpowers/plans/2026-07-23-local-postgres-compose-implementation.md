@@ -15,16 +15,17 @@
 **Files:**
 - Create: `compose.yaml`
 - Create: `docker/postgres/init-databases.sh`
-- Create: `.env.example`
+- Modify: `.env.example`
 - Create: `.env.test.example`
+- Modify: `.gitignore`
 
-- [ ] **Step 1: Validate the initial absence of a Nest-owned Compose service**
+- [x] **Step 1: Validate the initial absence of a Nest-owned Compose service**
 
 Run: `rg --files -g 'compose*.yaml' -g 'docker-compose*.yaml' -g '.env*.example'`
 
-Expected: no Compose or environment-example file is present in the Nest repository.
+Expected: no Nest-owned Compose file is present; the existing `.env.example` contains the application defaults that the Compose variables extend.
 
-- [ ] **Step 2: Add the PostgreSQL Compose contract and local environment examples**
+- [x] **Step 2: Add the PostgreSQL Compose contract and local environment examples**
 
 Create `compose.yaml`:
 
@@ -65,9 +66,11 @@ psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
   --command "SELECT format('CREATE DATABASE %I', :'test_database') \\gexec"
 ```
 
-Create `.env.example`:
+Extend the existing `.env.example` while retaining its `NODE_ENV`, `PORT`, `JWT_SECRET`, `APPLE_CLIENT_IDS`, and `GOOGLE_CLIENT_IDS` entries:
 
 ```dotenv
+NODE_ENV=development
+PORT=8080
 MOGAK_DB_USER=mogak
 MOGAK_DB_PASSWORD=replace-with-a-local-password
 MOGAK_LOCAL_DB=mogak_local
@@ -86,9 +89,13 @@ NODE_ENV=test
 DATABASE_URL=postgresql://mogak:replace-with-a-local-password@127.0.0.1:5436/mogak_test
 ```
 
-The existing `.env.*` ignore rule already keeps `.env.test` out of Git; do not change `.gitignore`.
+Keep actual `.env.test` ignored, but unignore its tracked template:
 
-- [ ] **Step 3: Validate rendered Compose configuration without creating a container**
+```gitignore
+!.env.test.example
+```
+
+- [x] **Step 3: Validate rendered Compose configuration without creating a container**
 
 Run: `docker compose --env-file .env.example config`
 
@@ -97,7 +104,7 @@ Expected: exit 0, a single `postgres` service, host port `5436`, and no secret f
 - [ ] **Step 4: Commit the service contract**
 
 ```bash
-git add compose.yaml docker/postgres/init-databases.sh .env.example .env.test.example
+git add compose.yaml docker/postgres/init-databases.sh .env.example .env.test.example .gitignore
 git commit -m "chore: add local PostgreSQL compose service"
 ```
 
