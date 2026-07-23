@@ -32,23 +32,26 @@
 
 - 저장소: `https://github.com/Team-MOGAK/mogak-core-back`
 - 마이그레이션을 위한 신규 저장소다.
+- 공개 저장소의 기본 브랜치는 `main`이다.
 
 ### 기존 Spring 저장소
 
 - 저장소: `https://github.com/Team-MOGAK/MOGAK_Spring`
-- 확인 브랜치: `feat/security-fail-closed`
-- 확인 커밋: `af41cad`
+- 확인 브랜치: `develop`
+- 확인 커밋: `5dd94ab64f5b288a7dc219f39f6b0a502ba8fda5`
 
 설계 근거로 확인한 주요 파일:
 
 - `sql/schema/00_baseline.sql`
-- `src/main/java/com/mogak/spring/domain`
-- `src/main/java/com/mogak/spring/web/controller`
-- `src/main/java/com/mogak/spring/service`
-- `src/main/java/com/mogak/spring/repository`
+- `sql/seed/00_initial_data.sql`
+- `src/main/java/com/mogak/spring/global/ErrorCode.java`
+- `src/main/java/com/mogak/spring/web/controller/ModaratController.java`
+- `src/main/java/com/mogak/spring/web/controller/MogakController.java`
+- `src/main/java/com/mogak/spring/web/controller/JogakController.java`
 - `src/main/java/com/mogak/spring/scheduler/Scheduler.java`
-- `docs/api`
-- `docs/operations`
+- `src/main/java/com/mogak/spring/service/ModaratService.java`
+- `src/main/java/com/mogak/spring/service/MogakService.java`
+- `src/main/java/com/mogak/spring/service/JogakService.java`
 
 공개 이슈에서 함께 확인한 결정 근거:
 
