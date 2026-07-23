@@ -1,0 +1,49 @@
+import { Injectable } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+
+import { AppErrorCode } from '../../../common/http/app-error-code';
+import { AppException } from '../../../common/http/app.exception';
+import type { AppEnv } from '../../../config/app-env';
+import type { SocialIdentityVerifier } from '../domain/social-identity-verifier.port';
+import type { SocialProvider } from '../domain/social-provider';
+import { identityFromJwtClaims } from './identity-claims';
+
+const appleKeys = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
+
+@Injectable()
+export class AppleIdentityVerifier implements SocialIdentityVerifier {
+  private readonly clientIds: string[];
+
+  constructor(config: ConfigService<AppEnv, true>) {
+    this.clientIds = splitClientIds(config.getOrThrow('APPLE_CLIENT_IDS', { infer: true }));
+  }
+
+  supports(provider: SocialProvider): boolean {
+    return provider === 'APPLE';
+  }
+
+  async verify(token: string) {
+    try {
+      const { payload } = await jwtVerify(token, appleKeys, {
+        algorithms: ['RS256'],
+        issuer: 'https://appleid.apple.com',
+        audience: this.clientIds,
+        clockTolerance: 30,
+      });
+      return identityFromJwtClaims('APPLE', payload);
+    } catch (error: unknown) {
+      if (error instanceof AppException) {
+        throw error;
+      }
+      throw new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN);
+    }
+  }
+}
+
+function splitClientIds(value: string): string[] {
+  return value
+    .split(',')
+    .map((clientId) => clientId.trim())
+    .filter((clientId) => clientId.length > 0);
+}
