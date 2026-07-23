@@ -138,7 +138,7 @@
 - Modify: `src/modules/social/application/social.service.ts`
 - Modify: `src/modules/social/application/social.service.spec.ts`
 
-- [ ] **Step 1: Write failing feed behavior tests.**
+- [x] **Step 1: Write failing feed behavior tests.**
 
   ```ts
   it('uses cursor as a zero-based Pacemaker page and returns only followed authors', async () => {});
@@ -155,7 +155,7 @@
 
   Expected: FAIL on the feed methods.
 
-- [ ] **Step 3: Implement the bounded reads.**
+- [x] **Step 3: Implement the bounded reads.**
 
   The post projection joins `posts -> users -> jobs -> addresses -> jogak_executions -> jogaks -> mogaks`; Pacemaker additionally joins `follows` on `following_id = posts.author_id` and filters `follower_id`. Network filters `addresses.name`.
 
@@ -182,7 +182,7 @@
 - Create: `src/modules/social/social.module.ts`
 - Modify: `src/app.module.ts`
 
-- [ ] **Step 1: Write failing HTTP contract tests.**
+- [x] **Step 1: Write failing HTTP contract tests.**
 
   ```text
   POST   /api/users/follows/:nickname                 -> 200, result "SUCCESS"
@@ -202,7 +202,7 @@
 
   Expected: FAIL because the controller/module does not exist.
 
-- [ ] **Step 3: Add controller and module wiring.**
+- [x] **Step 3: Add controller and module wiring.**
 
   Use `@Controller('api')`, `AccessTokenGuard`, `CurrentUser`, `successResponse`, and `asSafeId`-equivalent validation only where IDs exist. Parse `cursor`, `page`, and `size` as nonnegative/positive integers. Make `address` optional; make `sort` optional with `createdAt` default. Import Database/Auth/Storage modules and add `SocialModule` to `AppModule`.
 
@@ -218,7 +218,7 @@
 - Create: `test/database/social.integration.spec.ts`
 - Modify: `docs/migration/2026-07-23-nestjs-migration-handoff.md`
 
-- [ ] **Step 1: Write PostgreSQL integration cases.**
+- [x] **Step 1: Write PostgreSQL integration cases.**
 
   Create two users with unique emails. Assert concurrent same-direction `ON CONFLICT DO NOTHING` inserts persist one `follows` row, reverse-direction follow remains independent, and deleting either user cascades every related follow row. Clean through hard delete.
 

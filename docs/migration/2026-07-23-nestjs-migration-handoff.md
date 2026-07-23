@@ -25,6 +25,7 @@
 - `mogaks`의 Modarat·Mogak·공식 카테고리, Jogak 일정, 가상 날짜별 발생 건, 실행 상태와 hard delete API
 - 실행은 `(jogak_id, scheduled_date)` UNIQUE와 `ON CONFLICT DO NOTHING`/조건부 update로 멱등 처리하며, `achievements`는 `SUCCESS` 실행 원본 행에서 집계
 - `posts`의 실행 기반 게시글, 댓글, 좋아요, 파생 카운트, hard delete와 기존 HTTP 경로
+- `social`의 nickname 기반 팔로우, Pacemaker·거주지 기반 피드, 원본 행 기반 카운트와 hard delete
 - 비어 있거나 없는 `multipartFile`을 허용하고 실제 파일은 현재 비활성 StoragePort에서 `Z006`으로 중단하는 게시글 이미지 경계
 - 전용 `_test` 데이터베이스에서 실행하는 Mogaks·Posts PostgreSQL 통합 테스트와 `test:db` 실행 명령
 
@@ -905,5 +906,4 @@ DATABASE_URL=postgresql://<user>:<password>@<host>:5432/mogak_test pnpm test:db
 ## 23. 다음 작업
 
 1. 전용 PostgreSQL 테스트 DB를 준비해 `test:db`를 통과시킨다.
-2. `social`을 구현하면서 팔로우·피드·거주지 기본 필터 계약을 유지한다.
-3. Storage 구현과 배포 구성은 별도 결정 후 연결한다.
+2. Storage 구현과 배포 구성은 별도 결정 후 연결한다.
