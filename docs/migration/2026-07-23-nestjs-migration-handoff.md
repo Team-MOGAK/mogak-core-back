@@ -28,7 +28,8 @@
 - 실행은 `(jogak_id, scheduled_date)` UNIQUE와 `ON CONFLICT DO NOTHING`/조건부 update로 멱등 처리하며, `achievements`는 `SUCCESS` 실행 원본 행에서 집계
 - `posts`의 실행 기반 게시글, 댓글, 좋아요, 파생 카운트, hard delete와 기존 HTTP 경로
 - `social`의 nickname 기반 팔로우, Pacemaker·거주지 기반 피드, 원본 행 기반 카운트와 hard delete
-- 비어 있거나 없는 `multipartFile`을 허용하고 실제 파일은 현재 비활성 StoragePort에서 `Z006`으로 중단하는 게시글 이미지 경계
+- 비어 있거나 없는 `multipartFile`을 허용하되, 실제 이미지는 5 MiB·JPEG/PNG/WebP·게시글 5장 제한을 먼저 통과한 뒤 현재 비활성 StoragePort에서 `Z006`으로 중단하는 이미지 경계
+- 로그인·refresh 분당 10회, 공개 nickname 확인 분당 30회로 제한하는 프로세스 내 요청 폭주 방어
 - 전용 `_test` 데이터베이스에서 실행하는 Mogaks·Posts PostgreSQL 통합 테스트와 `test:db` 실행 명령
 
 단위·HTTP 계약 테스트, health e2e, 타입 검사, 린트와 빌드는 통과했다. PostgreSQL 통합 테스트도 전용 `_test` DB에서 실제 migration 후 통과했다. `test:db`는 Jest 전역 초기화에서 migration을 한 번만 실행해, 병렬 테스트 파일의 스키마 생성 경합을 막는다. ESM 전용 `jose`를 실제로 검증하기 위해 테스트는 Jest ESM 런타임으로 실행한다.
@@ -122,7 +123,7 @@
 
 [이슈 #138](https://github.com/Team-MOGAK/MOGAK_Spring/issues/138)은 운영 Storage 구현이 테스트 타입에 의존했던 문제를 다룬다. [이슈 #165](https://github.com/Team-MOGAK/MOGAK_Spring/issues/165)에 따라 게시글 이미지는 선택값으로 유지한다.
 
-새 DB에는 전체 URL이 아닌 storage key만 저장한다. URL은 API 응답 시 `StoragePort`를 통해 만든다.
+새 DB에는 전체 URL이 아닌 storage key만 저장한다. URL은 API 응답 시 `StoragePort`를 통해 만든다. 현재 multipart 경계는 프로필 1장·게시글 5장, 파일별 5 MiB, JPEG/PNG/WebP만 받는다. 이 검사는 StoragePort 호출 전에 실행되며, 실제 파일은 Storage가 비활성인 동안 계속 `Z006`으로 끝난다.
 
 ### API와 인증
 
@@ -739,6 +740,14 @@ Google ID token은 `https://accounts.google.com`과 `accounts.google.com` issuer
 
 현재 앱 전용 동작에는 CORS가 필요하지 않으므로 기본값은 비활성화다. 브라우저 origin이 필요해지면 `CORS_ALLOWED_ORIGINS`에 쉼표로 구분한 완전한 origin만 지정한다. wildcard·path·cookie credential은 허용하지 않으며, 허용 origin이 비어 있으면 CORS middleware를 활성화하지 않는다.
 
+### 요청 폭주와 업로드 경계
+
+- `POST /api/auth/login`, `POST /api/auth/{provider}/login`, `POST /api/auth/refresh`는 요청 IP별 분당 10회만 허용한다.
+- 인증 없이 쓰는 `POST /api/users/nickname/verify`는 요청 IP별 분당 30회만 허용한다. 가입 전 공개 계약은 바꾸지 않는다.
+- 한도를 넘긴 요청은 서비스·외부 소셜 검증 호출 전에 `429 Z007`을 반환한다.
+- 제한기는 인스턴스 메모리의 고정 윈도우이며 버킷을 최대 10,000개로 제한한다. 재시작 시 초기화되고 여러 Cloud Run 인스턴스 사이에는 공유되지 않는다. 다중 인스턴스에서 전역 제한이 필요해지면 Redis 또는 API Gateway 제한기로 교체한다.
+- 게시글 이미지는 최대 5장, 프로필 이미지는 최대 1장이다. 각 파일은 5 MiB 이하이며 `image/jpeg`, `image/png`, `image/webp`만 허용한다. MIME은 Storage가 구현될 때 이미지 시그니처 검사와 저장소 측 제한으로 보강한다.
+
 ### token 정책
 
 - access token: 15분
@@ -858,6 +867,8 @@ pnpm test:db
 - follow nickname 경로
 - 지역 피드의 사용자 거주지 기본 필터
 - 이미지 없는 게시글 생성
+- 이미지 수·크기·MIME 위반이 Storage와 Application Service에 도달하지 않는지
+- 로그인·refresh·nickname 확인의 `429 Z007` 요청 제한
 
 ### 조회 성능 테스트
 
@@ -887,6 +898,7 @@ pnpm test:db
 - 런타임 `PORT`를 사용한다.
 - health endpoint만 외부 운영 점검에 필요한 범위로 노출한다.
 - 매칭되지 않은 보안 경로는 fail-closed로 처리한다.
+- 현재 요청 제한은 인스턴스별 메모리 상태다. Cloud Run을 다중 인스턴스로 확장할 때 전역 rate limit은 Gateway 또는 Redis 계층에서 별도 적용한다.
 - 핵심 비즈니스 로직을 Supabase Cron이나 Edge Function에 종속시키지 않는다.
 - DailyJogak 생성용 Cloud Scheduler 작업은 만들지 않는다.
 
