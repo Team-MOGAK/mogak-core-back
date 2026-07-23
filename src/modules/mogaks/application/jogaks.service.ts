@@ -47,6 +47,7 @@ type OccurrenceProjection = Readonly<{
   color: string | null;
   isRoutine: boolean;
   status: ReturnType<typeof deriveOccurrenceStatus>;
+  achievements: number;
 }>;
 
 type ScheduleRecord = OccurrenceSchedule &
@@ -129,6 +130,7 @@ export class JogaksService {
     const schedules = groupScheduleRows(
       await this.repository.listScheduleRowsForOwnedJogak(userId, jogakId),
     );
+    const achievements = (await this.repository.listSuccessCounts([jogakId]))[0]?.achievements ?? 0;
     const today = this.today();
     const currentOrLatest =
       schedules
@@ -150,6 +152,7 @@ export class JogaksService {
       days: currentOrLatest?.weekdays ?? [],
       startDate: currentOrLatest?.effectiveFrom ?? null,
       endDate: currentOrLatest?.effectiveTo ?? null,
+      achievements,
       schedules: schedules.map((schedule) => ({
         scheduleType: schedule.scheduleType,
         effectiveFrom: schedule.effectiveFrom,
@@ -240,6 +243,13 @@ export class JogaksService {
       startDate,
       endDate,
     );
+    const successCounts = new Map(
+      (
+        await this.repository.listSuccessCounts([
+          ...new Set(schedules.map((schedule) => schedule.jogakId)),
+        ])
+      ).map(({ jogakId, achievements }) => [jogakId, achievements]),
+    );
     const executionByNaturalKey = new Map(
       executions.map((execution) => [
         executionKey(execution.jogakId, execution.scheduledDate),
@@ -263,6 +273,7 @@ export class JogaksService {
           color: schedule.color,
           isRoutine: schedule.scheduleType === 'WEEKLY',
           status: deriveOccurrenceStatus(execution?.status ?? null, scheduledDate, today),
+          achievements: successCounts.get(schedule.jogakId) ?? 0,
         });
       }
     }

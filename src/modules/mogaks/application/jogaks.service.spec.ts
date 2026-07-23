@@ -14,6 +14,7 @@ function repository(): MogaksRepository {
     listOccurrenceScheduleRows: vi.fn(),
     listScheduleRowsForOwnedJogak: vi.fn(),
     listExecutionsForJogaks: vi.fn(),
+    listSuccessCounts: vi.fn(),
     insertExecution: vi.fn(),
     findExecution: vi.fn(),
     updateExecutionStatus: vi.fn(),
@@ -120,6 +121,7 @@ describe('JogaksService', () => {
       },
     ]);
     vi.mocked(mogaks.listExecutionsForJogaks).mockResolvedValue([]);
+    vi.mocked(mogaks.listSuccessCounts).mockResolvedValue([{ jogakId: 11, achievements: 3 }]);
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
     await expect(service.listDay(7, '2026-07-23')).resolves.toEqual({
@@ -129,6 +131,7 @@ describe('JogaksService', () => {
           jogakId: 11,
           scheduledDate: '2026-07-23',
           status: 'PENDING',
+          achievements: 3,
         }),
       ],
     });
@@ -247,6 +250,7 @@ describe('JogaksService', () => {
         weekday: 'MONDAY',
       },
     ]);
+    vi.mocked(mogaks.listSuccessCounts).mockResolvedValue([{ jogakId: 11, achievements: 3 }]);
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
     await expect(service.getDetail(7, 11)).resolves.toMatchObject({
@@ -255,6 +259,7 @@ describe('JogaksService', () => {
       days: ['MONDAY'],
       startDate: '2026-07-20',
       endDate: '2026-08-31',
+      achievements: 3,
       schedules: [
         {
           scheduleType: 'WEEKLY',

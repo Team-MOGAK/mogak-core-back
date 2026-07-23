@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 
 import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
@@ -516,6 +516,22 @@ export class MogaksRepository {
         ),
       );
     return executions.map(asExecutionRecord);
+  }
+
+  async listSuccessCounts(
+    jogakIds: readonly number[],
+  ): Promise<ReadonlyArray<Readonly<{ jogakId: number; achievements: number }>>> {
+    if (jogakIds.length === 0) return [];
+    return this.db
+      .select({
+        jogakId: jogakExecutions.jogakId,
+        achievements: count(jogakExecutions.id),
+      })
+      .from(jogakExecutions)
+      .where(
+        and(inArray(jogakExecutions.jogakId, [...jogakIds]), eq(jogakExecutions.status, 'SUCCESS')),
+      )
+      .groupBy(jogakExecutions.jogakId);
   }
 
   async findExecution(jogakId: number, scheduledDate: string): Promise<ExecutionRecord | null> {
