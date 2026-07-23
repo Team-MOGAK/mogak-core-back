@@ -21,6 +21,8 @@
 
 ## 2. 대상 저장소와 확인 기준
 
+이 문서의 근거는 공개적으로 열람 가능한 GitHub 코드와 이슈로 한정한다. 로컬 파일 경로, 개인 개발 환경, 로컬 브랜치·작업 트리의 내용은 포함하지 않는다.
+
 ### 새 NestJS 저장소
 
 - 저장소: `https://github.com/Team-MOGAK/mogak-core-back`
@@ -42,6 +44,14 @@
 - `src/main/java/com/mogak/spring/scheduler/Scheduler.java`
 - `docs/api`
 - `docs/operations`
+
+공개 이슈에서 함께 확인한 결정 근거:
+
+- [#174 인덱스 적용 기준 분석](https://github.com/Team-MOGAK/MOGAK_Spring/issues/174): 성능 인덱스는 사전 추가하지 않고 측정 결과로 결정한다.
+- [#172 사용자 선택 동의 항목 및 동의 상태 ERD/API 설계](https://github.com/Team-MOGAK/MOGAK_Spring/issues/172): 동의 항목과 사용자 동의 상태를 분리한다.
+- [#169 메타데이터 선택지 API](https://github.com/Team-MOGAK/MOGAK_Spring/issues/169): 직무·주소 등 선택지는 서버 메타데이터로 제공한다.
+- [#165 이미지 없이 회고 등록](https://github.com/Team-MOGAK/MOGAK_Spring/issues/165): 게시글 이미지는 선택 사항이다.
+- [#140 삭제/연관관계 재설계](https://github.com/Team-MOGAK/MOGAK_Spring/issues/140): 회원 삭제는 연결 데이터까지 정리하는 하드 삭제로 설계한다.
 
 ## 3. 마이그레이션 범위와 원칙
 
