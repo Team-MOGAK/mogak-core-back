@@ -167,7 +167,7 @@ git commit -m "test: load local database test environment"
 - Modify: `docs/migration/2026-07-23-nestjs-migration-handoff.md`
 - Modify: `README.md` only if it exists when executing this task
 
-- [ ] **Step 1: Document the exact local workflow**
+- [x] **Step 1: Document the exact local workflow**
 
 Add this workflow near the PostgreSQL integration-test command:
 
@@ -181,7 +181,7 @@ pnpm test:db
 
 State that `mogak_local` is for the app, `mogak_test` is for tests only, the init script runs only for a new named volume, and `docker compose down` preserves data. Do not mention or depend on the Spring repository.
 
-- [ ] **Step 2: Run the local dependency and PostgreSQL integration verification**
+- [x] **Step 2: Run the local dependency and PostgreSQL integration verification**
 
 Run:
 
@@ -193,7 +193,7 @@ env -u DATABASE_URL pnpm test:db
 
 Expected: the healthcheck is healthy and all database integration tests pass against `mogak_test`.
 
-- [ ] **Step 3: Run the complete non-DB quality gate**
+- [x] **Step 3: Run the complete non-DB quality gate**
 
 Run:
 

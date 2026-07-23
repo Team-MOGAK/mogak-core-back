@@ -812,11 +812,17 @@ PostgreSQL UNIQUE 위반을 그대로 노출하지 않고 Application 오류로 
 - 같은 실행에 대한 동시 게시글 생성 시 하나의 Post만 저장
 - 같은 사용자의 동시 좋아요 생성 시 하나의 source row만 저장
 
-실행 명령은 다음과 같다. 데이터베이스 이름이 `_test`로 끝나지 않으면 시작 전에 거부하므로, 운영·개발 DB에 migration을 적용하지 않는다.
+데이터베이스 이름이 `_test`로 끝나지 않으면 시작 전에 거부하므로, 운영·개발 DB에 migration을 적용하지 않는다. 로컬에서는 이 저장소의 Compose가 PostgreSQL 하나 안에 개발용 `mogak_local`과 테스트용 `mogak_test`를 분리해 만든다.
 
 ```bash
-DATABASE_URL=postgresql://<user>:<password>@<host>:5432/mogak_test pnpm test:db
+cp .env.example .env
+cp .env.test.example .env.test
+# MOGAK_DB_PASSWORD와 .env.test의 DATABASE_URL에 같은 로컬 비밀번호를 설정한다.
+docker compose up -d postgres
+pnpm test:db
 ```
+
+앱은 `.env`의 `mogak_local` URL을 사용하고, `test:db`는 `.env.test`의 `mogak_test` URL을 사용한다. CI가 `DATABASE_URL`을 주입하면 `.env.test`보다 우선한다. 첫 Compose 기동에서만 초기화 스크립트가 테스트 DB를 만든다. `docker compose down`은 두 DB가 든 named volume을 보존하며, `docker compose down -v`만 이를 삭제한다.
 
 전용 `_test` PostgreSQL에서 Mogaks·Posts·Social 통합 테스트를 통과했다. refresh token과 일정 수정의 DB 통합 테스트는 해당 모듈 구현 시 추가한다.
 
