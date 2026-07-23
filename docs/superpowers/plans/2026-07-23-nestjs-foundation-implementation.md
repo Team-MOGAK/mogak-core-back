@@ -56,7 +56,7 @@ src/health/health.module.ts
 src/common/http/api-response.spec.ts
 src/config/app-env.spec.ts
 test/setup-env.ts
-test/health.e2e-spec.ts
+test/health.e2e.spec.ts
 ~~~
 
 ### Task 1: Initialize the package and toolchain
@@ -174,6 +174,10 @@ Create tsconfig.build.json:
 ~~~json
 {
   "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
 }
 ~~~
@@ -636,7 +640,7 @@ git commit -m "feat: add Drizzle database boundary"
 - Create: src/health/health.controller.ts
 - Create: src/health/health.module.ts
 - Create: test/setup-env.ts
-- Create: test/health.e2e-spec.ts
+- Create: test/health.e2e.spec.ts
 
 - [ ] **Step 1: Write a failing health endpoint test**
 
@@ -648,7 +652,7 @@ process.env.PORT = '8081';
 process.env.DATABASE_URL = 'postgresql://postgres:postgres@127.0.0.1:5432/mogak_test';
 ~~~
 
-Create test/health.e2e-spec.ts:
+Create test/health.e2e.spec.ts:
 
 ~~~ts
 import type { INestApplication } from '@nestjs/common';
@@ -865,4 +869,3 @@ git commit -m "docs: plan users and auth migration"
 - Only GET /health is new; existing /api paths remain untouched.
 - The database boundary uses standard PostgreSQL through pg and Drizzle, not provider-specific Supabase APIs.
 - Environment validation fails at startup, while the health test works without a live database because Pool is lazy.
-
