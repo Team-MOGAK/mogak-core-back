@@ -1,9 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 
 import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
-import { modarats, mogakCategories, mogaks } from '../../../database/schema';
+import {
+  jogakExecutions,
+  jogakSchedules,
+  jogakScheduleWeekdays,
+  jogaks,
+  modarats,
+  mogakCategories,
+  mogaks,
+} from '../../../database/schema';
+import type { IsoWeekday, ScheduleType, StoredExecutionStatus } from '../domain/occurrence';
 
 export type ModaratRecord = Readonly<{
   id: number;
@@ -25,6 +34,63 @@ export type MogakRecord = Readonly<{
   categoryCode: string | null;
   categoryName: string | null;
   customCategoryName: string | null;
+}>;
+
+export type OwnedJogakRecord = Readonly<{
+  id: number;
+  mogakId: number;
+  title: string;
+  mogakTitle: string;
+  color: string | null;
+  categoryCode: string | null;
+  categoryName: string | null;
+  customCategoryName: string | null;
+}>;
+
+export type OccurrenceScheduleRow = Readonly<{
+  scheduleId: number;
+  jogakId: number;
+  mogakId: number;
+  mogakTitle: string;
+  jogakTitle: string;
+  color: string | null;
+  categoryCode: string | null;
+  categoryName: string | null;
+  customCategoryName: string | null;
+  scheduleType: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  weekday: string | null;
+}>;
+
+export type ExecutionRecord = Readonly<{
+  id: number;
+  jogakId: number;
+  scheduledDate: string;
+  status: StoredExecutionStatus;
+  jogakTitleSnapshot: string;
+}>;
+
+export type SchedulePersistenceInput = Readonly<{
+  scheduleType: ScheduleType;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  weekdays: readonly IsoWeekday[];
+}>;
+
+export type CreatedJogakRecord = Readonly<{
+  jogakId: number;
+  mogakId: number;
+  mogakTitle: string;
+  title: string;
+  color: string | null;
+  categoryCode: string | null;
+  categoryName: string | null;
+  customCategoryName: string | null;
+  scheduleType: ScheduleType;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  weekdays: readonly IsoWeekday[];
 }>;
 
 export type CreateModaratInput = Readonly<{
@@ -57,6 +123,28 @@ export type UpdateMogakInput = Readonly<{
   categoryId: number | null;
   customCategoryName: string | null;
   now: Date;
+}>;
+
+export type CreateJogakWithScheduleInput = Readonly<{
+  mogak: MogakRecord;
+  title: string;
+  schedule: SchedulePersistenceInput;
+}>;
+
+export type OccurrenceScheduleQuery = Readonly<{
+  userId: number;
+  startDate: string;
+  endDate: string;
+  mogakId?: number;
+  jogakId?: number;
+  scheduleType?: ScheduleType;
+}>;
+
+export type InsertExecutionInput = Readonly<{
+  jogakId: number;
+  scheduledDate: string;
+  status: StoredExecutionStatus;
+  jogakTitleSnapshot: string;
 }>;
 
 @Injectable()
@@ -205,6 +293,162 @@ export class MogaksRepository {
     return deleted.length === 1;
   }
 
+  async findOwnedJogak(userId: number, jogakId: number): Promise<OwnedJogakRecord | null> {
+    const [jogak] = await this.db
+      .select(ownedJogakProjection())
+      .from(jogaks)
+      .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+      .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+      .leftJoin(mogakCategories, eq(mogaks.categoryId, mogakCategories.id))
+      .where(and(eq(jogaks.id, jogakId), eq(modarats.userId, userId)));
+    return jogak ?? null;
+  }
+
+  async countJogaksWithCurrentOrFutureSchedule(mogakId: number, today: string): Promise<number> {
+    const rows = await this.db
+      .select({ jogakId: jogaks.id })
+      .from(jogaks)
+      .innerJoin(jogakSchedules, eq(jogakSchedules.jogakId, jogaks.id))
+      .where(
+        and(
+          eq(jogaks.mogakId, mogakId),
+          or(isNull(jogakSchedules.effectiveTo), gte(jogakSchedules.effectiveTo, today)),
+        ),
+      );
+    return new Set(rows.map((row) => row.jogakId)).size;
+  }
+
+  async createJogakWithSchedule(input: CreateJogakWithScheduleInput): Promise<CreatedJogakRecord> {
+    return this.db.transaction(async (tx) => {
+      const [createdJogak] = await tx
+        .insert(jogaks)
+        .values({ mogakId: input.mogak.id, title: input.title })
+        .returning({ id: jogaks.id });
+      if (createdJogak === undefined) throw new Error('Jogak insert did not return a row');
+
+      const [schedule] = await tx
+        .insert(jogakSchedules)
+        .values({
+          jogakId: createdJogak.id,
+          scheduleType: input.schedule.scheduleType,
+          effectiveFrom: input.schedule.effectiveFrom,
+          effectiveTo: input.schedule.effectiveTo,
+        })
+        .returning({ id: jogakSchedules.id });
+      if (schedule === undefined) throw new Error('Jogak schedule insert did not return a row');
+
+      if (input.schedule.weekdays.length > 0) {
+        await tx
+          .insert(jogakScheduleWeekdays)
+          .values(input.schedule.weekdays.map((weekday) => ({ scheduleId: schedule.id, weekday })));
+      }
+
+      return {
+        jogakId: createdJogak.id,
+        mogakId: input.mogak.id,
+        title: input.title,
+        mogakTitle: input.mogak.title,
+        color: input.mogak.color,
+        categoryCode: input.mogak.categoryCode,
+        categoryName: input.mogak.categoryName,
+        customCategoryName: input.mogak.customCategoryName,
+        scheduleType: input.schedule.scheduleType,
+        effectiveFrom: input.schedule.effectiveFrom,
+        effectiveTo: input.schedule.effectiveTo,
+        weekdays: input.schedule.weekdays,
+      };
+    });
+  }
+
+  async listOccurrenceScheduleRows(
+    query: OccurrenceScheduleQuery,
+  ): Promise<OccurrenceScheduleRow[]> {
+    const conditions = [
+      eq(modarats.userId, query.userId),
+      lte(jogakSchedules.effectiveFrom, query.endDate),
+      or(isNull(jogakSchedules.effectiveTo), gte(jogakSchedules.effectiveTo, query.startDate)),
+    ];
+    if (query.mogakId !== undefined) conditions.push(eq(mogaks.id, query.mogakId));
+    if (query.jogakId !== undefined) conditions.push(eq(jogaks.id, query.jogakId));
+    if (query.scheduleType !== undefined) {
+      conditions.push(eq(jogakSchedules.scheduleType, query.scheduleType));
+    }
+
+    return this.db
+      .select(occurrenceScheduleProjection())
+      .from(jogakSchedules)
+      .innerJoin(jogaks, eq(jogakSchedules.jogakId, jogaks.id))
+      .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+      .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+      .leftJoin(mogakCategories, eq(mogaks.categoryId, mogakCategories.id))
+      .leftJoin(jogakScheduleWeekdays, eq(jogakScheduleWeekdays.scheduleId, jogakSchedules.id))
+      .where(and(...conditions));
+  }
+
+  async listExecutionsForJogaks(
+    jogakIds: readonly number[],
+    startDate: string,
+    endDate: string,
+  ): Promise<ExecutionRecord[]> {
+    if (jogakIds.length === 0) return [];
+    const executions = await this.db
+      .select(executionProjection())
+      .from(jogakExecutions)
+      .where(
+        and(
+          inArray(jogakExecutions.jogakId, [...jogakIds]),
+          gte(jogakExecutions.scheduledDate, startDate),
+          lte(jogakExecutions.scheduledDate, endDate),
+        ),
+      );
+    return executions.map(asExecutionRecord);
+  }
+
+  async findExecution(jogakId: number, scheduledDate: string): Promise<ExecutionRecord | null> {
+    const execution = await this.db.query.jogakExecutions.findFirst({
+      columns: {
+        id: true,
+        jogakId: true,
+        scheduledDate: true,
+        status: true,
+        jogakTitleSnapshot: true,
+      },
+      where: and(
+        eq(jogakExecutions.jogakId, jogakId),
+        eq(jogakExecutions.scheduledDate, scheduledDate),
+      ),
+    });
+    return execution === undefined ? null : asExecutionRecord(execution);
+  }
+
+  async insertExecution(input: InsertExecutionInput): Promise<ExecutionRecord | null> {
+    const [execution] = await this.db
+      .insert(jogakExecutions)
+      .values(input)
+      .onConflictDoNothing({ target: [jogakExecutions.jogakId, jogakExecutions.scheduledDate] })
+      .returning(executionProjection());
+    return execution === undefined ? null : asExecutionRecord(execution);
+  }
+
+  async updateExecutionStatus(input: {
+    executionId: number;
+    currentStatus: StoredExecutionStatus;
+    desiredStatus: StoredExecutionStatus;
+    now: Date;
+  }): Promise<ExecutionRecord | null> {
+    const [execution] = await this.db
+      .update(jogakExecutions)
+      .set({ status: input.desiredStatus, updatedAt: input.now })
+      .where(
+        and(
+          eq(jogakExecutions.id, input.executionId),
+          eq(jogakExecutions.status, input.currentStatus),
+        ),
+      )
+      .returning(executionProjection());
+    return execution === undefined ? null : asExecutionRecord(execution);
+  }
+
   private async findCategoryById(categoryId: number): Promise<MogakCategoryRecord | null> {
     const category = await this.db.query.mogakCategories.findFirst({
       columns: { id: true, code: true, name: true },
@@ -223,5 +467,69 @@ function mogakProjection() {
     categoryCode: mogakCategories.code,
     categoryName: mogakCategories.name,
     customCategoryName: mogaks.customCategoryName,
+  };
+}
+
+function ownedJogakProjection() {
+  return {
+    id: jogaks.id,
+    mogakId: mogaks.id,
+    title: jogaks.title,
+    mogakTitle: mogaks.title,
+    color: mogaks.color,
+    categoryCode: mogakCategories.code,
+    categoryName: mogakCategories.name,
+    customCategoryName: mogaks.customCategoryName,
+  };
+}
+
+function occurrenceScheduleProjection() {
+  return {
+    scheduleId: jogakSchedules.id,
+    jogakId: jogaks.id,
+    mogakId: mogaks.id,
+    mogakTitle: mogaks.title,
+    jogakTitle: jogaks.title,
+    color: mogaks.color,
+    categoryCode: mogakCategories.code,
+    categoryName: mogakCategories.name,
+    customCategoryName: mogaks.customCategoryName,
+    scheduleType: jogakSchedules.scheduleType,
+    effectiveFrom: jogakSchedules.effectiveFrom,
+    effectiveTo: jogakSchedules.effectiveTo,
+    weekday: jogakScheduleWeekdays.weekday,
+  };
+}
+
+function executionProjection() {
+  return {
+    id: jogakExecutions.id,
+    jogakId: jogakExecutions.jogakId,
+    scheduledDate: jogakExecutions.scheduledDate,
+    status: jogakExecutions.status,
+    jogakTitleSnapshot: jogakExecutions.jogakTitleSnapshot,
+  };
+}
+
+function asExecutionRecord(execution: {
+  id: number;
+  jogakId: number;
+  scheduledDate: string;
+  status: string;
+  jogakTitleSnapshot: string;
+}): ExecutionRecord {
+  if (
+    execution.status !== 'IN_PROGRESS' &&
+    execution.status !== 'SUCCESS' &&
+    execution.status !== 'FAIL'
+  ) {
+    throw new Error(`Unsupported persisted execution status: ${execution.status}`);
+  }
+  return {
+    id: execution.id,
+    jogakId: execution.jogakId,
+    scheduledDate: execution.scheduledDate,
+    status: execution.status,
+    jogakTitleSnapshot: execution.jogakTitleSnapshot,
   };
 }
