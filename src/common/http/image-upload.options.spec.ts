@@ -31,6 +31,6 @@ describe('이미지 업로드 정책', () => {
 
     const rejected = jest.fn();
     filter({} as Express.Request, { mimetype: 'text/plain' } as Express.Multer.File, rejected);
-    expect(rejected).toHaveBeenCalledWith(expect.any(AppException));
+    expect(rejected).toHaveBeenCalledWith(expect.any(AppException), false);
   });
 });

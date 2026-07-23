@@ -1,9 +1,13 @@
-import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
-import { Reflector } from '@nestjs/core';
+import { Inject, Injectable } from '@nestjs/common';
+import type { CanActivate, ExecutionContext } from '@nestjs/common';
+import { Reflector as NestReflector } from '@nestjs/core';
+import type { Reflector } from '@nestjs/core';
 
 import { AppErrorCode } from './app-error-code';
 import { AppException } from './app.exception';
-import { FixedWindowRateLimiter, type RateLimitPolicy } from './fixed-window-rate-limiter';
+import { FixedWindowRateLimiter as FixedWindowRateLimiterProvider } from './fixed-window-rate-limiter';
+import type { FixedWindowRateLimiter } from './fixed-window-rate-limiter';
+import type { RateLimitPolicy } from './fixed-window-rate-limiter';
 import { RATE_LIMIT_POLICY } from './rate-limit.decorator';
 
 type RateLimitedRequest = {
@@ -13,7 +17,9 @@ type RateLimitedRequest = {
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   constructor(
+    @Inject(NestReflector)
     private readonly reflector: Reflector,
+    @Inject(FixedWindowRateLimiterProvider)
     private readonly limiter: FixedWindowRateLimiter,
   ) {}
 
