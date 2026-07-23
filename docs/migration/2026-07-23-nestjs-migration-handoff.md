@@ -24,8 +24,9 @@
 - 사용자 가입, 프로필, 닉네임, 직업, 동의, 직업·주소 메타데이터 API와 비활성 StoragePort 경계
 - `mogaks`의 Modarat·Mogak·공식 카테고리, Jogak 일정, 가상 날짜별 발생 건, 실행 상태와 hard delete API
 - 실행은 `(jogak_id, scheduled_date)` UNIQUE와 `ON CONFLICT DO NOTHING`/조건부 update로 멱등 처리하며, `achievements`는 `SUCCESS` 실행 원본 행에서 집계
+- 전용 `_test` 데이터베이스에서 실행하는 Mogaks PostgreSQL 통합 테스트(FK cascade, 동시 실행 생성, 실행 제목 snapshot)와 `test:db` 실행 명령
 
-단위·HTTP 계약 테스트, health e2e, 타입 검사, 린트와 빌드는 통과했다. 실제 PostgreSQL에 migration을 적용해 FK cascade와 실행 경합을 검증하는 통합 테스트는 전용 테스트 DB가 준비된 뒤 별도 실행한다.
+단위·HTTP 계약 테스트, health e2e, 타입 검사, 린트와 빌드는 통과했다. PostgreSQL 통합 테스트는 전용 테스트 DB가 준비된 뒤 실행한다. 현재 개발 환경에는 연결 가능한 PostgreSQL 서비스가 없어 실제 DB 검증은 아직 통과 상태가 아니다.
 
 ## 2. 대상 저장소와 확인 기준
 
@@ -798,13 +799,19 @@ PostgreSQL UNIQUE 위반을 그대로 노출하지 않고 Application 오류로 
 
 ### PostgreSQL 통합 테스트
 
-- 모든 FK와 hard delete cascade
-- 사용자 탈퇴 후 사용자 관련 행이 남지 않는지 확인
-- 실행 동시 생성의 UNIQUE 처리
-- 실행 하나당 게시글 하나
-- 좋아요와 팔로우 중복
-- refresh token 조건부 회전과 재사용 거부
-- 일정 수정 transaction
+현재 `test:db`는 다음 Mogaks 정합성을 실제 PostgreSQL migration 이후 검증한다.
+
+- 사용자 hard delete 후 Modarat → Mogak → Jogak → schedule → execution까지 FK cascade
+- 같은 Jogak·날짜에 대한 동시 실행 생성 시 UNIQUE conflict 처리
+- 실행 생성 뒤 Jogak 제목을 수정해도 실행 제목 snapshot 보존
+
+실행 명령은 다음과 같다. 데이터베이스 이름이 `_test`로 끝나지 않으면 시작 전에 거부하므로, 운영·개발 DB에 migration을 적용하지 않는다.
+
+```bash
+DATABASE_URL=postgresql://<user>:<password>@<host>:5432/mogak_test pnpm test:db
+```
+
+게시글·좋아요·팔로우·refresh token·일정 수정에 대한 실제 DB 통합 테스트는 해당 모듈 구현 시 추가한다.
 
 ### API 계약 테스트
 
@@ -891,7 +898,7 @@ PostgreSQL UNIQUE 위반을 그대로 노출하지 않고 Application 오류로 
 
 ## 23. 다음 작업
 
-1. 사용자가 이 문서의 최종 내용을 검토한다.
-2. 변경 요청이 있으면 문서를 먼저 수정한다.
-3. 사용자 승인 후 별도의 상세 구현 계획을 작성한다.
-4. 구현 계획 승인 후에만 NestJS 프로젝트를 초기화하고 코드를 작성한다.
+1. 전용 PostgreSQL 테스트 DB를 준비해 `test:db`를 통과시킨다.
+2. `posts`를 구현하면서 게시글·댓글·좋아요 원본 행 기반 집계와 해당 DB 통합 테스트를 추가한다.
+3. `social`을 구현하면서 팔로우·피드·거주지 기본 필터 계약을 유지한다.
+4. Storage 구현과 배포 구성은 별도 결정 후 연결한다.

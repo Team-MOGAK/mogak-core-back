@@ -22,6 +22,7 @@
     "format:check": "prettier --check \"{src,test}/**/*.{ts,js,mjs}\" \"*.{json,mjs,ts}\"",
     "test": "vitest run",
     "test:e2e": "vitest run test",
+    "test:db": "vitest run --config vitest.db.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
