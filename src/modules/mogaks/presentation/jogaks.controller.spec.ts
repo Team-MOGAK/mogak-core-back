@@ -16,6 +16,9 @@ describe('Jogak HTTP contract', () => {
     listOneTime: vi.fn(),
     listRoutines: vi.fn(),
     listMogakDay: vi.fn(),
+    getDetail: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
     commandExecution: vi.fn(),
   };
 
@@ -148,5 +151,24 @@ describe('Jogak HTTP contract', () => {
     expect(jogaks.commandExecution).toHaveBeenCalledWith(7, 11, '2026-07-23', 'IN_PROGRESS');
 
     await request(app.getHttpServer()).put('/api/daily-jogaks/19/success').expect(404);
+  });
+
+  it('keeps authenticated Jogak detail, title update, and hard-delete paths', async () => {
+    jogaks.getDetail.mockResolvedValue({ jogakId: 11, title: '문제 풀이' });
+    jogaks.update.mockResolvedValue({ jogakId: 11, title: '수정된 문제 풀이' });
+
+    await request(app.getHttpServer())
+      .get('/api/jogaks/11')
+      .expect(200)
+      .expect(({ body }) => expect(body.result).toEqual({ jogakId: 11, title: '문제 풀이' }));
+    await request(app.getHttpServer())
+      .put('/api/jogaks/11')
+      .send({ title: '수정된 문제 풀이' })
+      .expect(200)
+      .expect(({ body }) => expect(body.result.title).toBe('수정된 문제 풀이'));
+    expect(jogaks.update).toHaveBeenCalledWith(7, 11, { title: '수정된 문제 풀이' });
+
+    await request(app.getHttpServer()).delete('/api/jogaks/11').expect(200);
+    expect(jogaks.delete).toHaveBeenCalledWith(7, 11);
   });
 });

@@ -16,6 +16,8 @@ function repository(): MogaksRepository {
     insertExecution: vi.fn(),
     findExecution: vi.fn(),
     updateExecutionStatus: vi.fn(),
+    updateOwnedJogakTitle: vi.fn(),
+    deleteOwnedJogak: vi.fn(),
   } as unknown as MogaksRepository;
 }
 
@@ -200,6 +202,36 @@ describe('JogaksService', () => {
 
     await expect(service.commandExecution(7, 11, '2026-07-23', 'IN_PROGRESS')).rejects.toEqual(
       new AppException(AppErrorCode.INVALID_EXECUTION_TRANSITION),
+    );
+  });
+
+  it('updates only the current Jogak title without rewriting execution snapshots', async () => {
+    const mogaks = repository();
+    vi.mocked(mogaks.updateOwnedJogakTitle).mockResolvedValue({
+      ...ownedJogak,
+      title: '수정된 문제 풀이',
+    });
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await expect(service.update(7, 11, { title: '수정된 문제 풀이' })).resolves.toMatchObject({
+      jogakId: 11,
+      title: '수정된 문제 풀이',
+    });
+    expect(mogaks.updateOwnedJogakTitle).toHaveBeenCalledWith(
+      7,
+      11,
+      '수정된 문제 풀이',
+      expect.any(Date),
+    );
+  });
+
+  it('does not report a successful Jogak delete when the owner predicate does not match', async () => {
+    const mogaks = repository();
+    vi.mocked(mogaks.deleteOwnedJogak).mockResolvedValue(false);
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await expect(service.delete(7, 11)).rejects.toEqual(
+      new AppException(AppErrorCode.JOGAK_NOT_FOUND),
     );
   });
 });

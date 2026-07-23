@@ -123,6 +123,43 @@ export class JogaksService {
     return this.projectOccurrences(userId, date, date, { mogakId });
   }
 
+  async getDetail(userId: number, jogakId: number) {
+    const jogak = await this.repository.findOwnedJogak(userId, jogakId);
+    if (jogak === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+    return {
+      jogakId: jogak.id,
+      mogakId: jogak.mogakId,
+      mogakTitle: jogak.mogakTitle,
+      category: categoryOf(jogak.categoryCode, jogak.categoryName, jogak.customCategoryName),
+      title: jogak.title,
+      color: jogak.color,
+    };
+  }
+
+  async update(userId: number, jogakId: number, input: Readonly<{ title: string }>) {
+    const updated = await this.repository.updateOwnedJogakTitle(
+      userId,
+      jogakId,
+      input.title.trim(),
+      new Date(),
+    );
+    if (updated === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+    return {
+      jogakId: updated.id,
+      mogakId: updated.mogakId,
+      mogakTitle: updated.mogakTitle,
+      category: categoryOf(updated.categoryCode, updated.categoryName, updated.customCategoryName),
+      title: updated.title,
+      color: updated.color,
+    };
+  }
+
+  async delete(userId: number, jogakId: number): Promise<void> {
+    if (!(await this.repository.deleteOwnedJogak(userId, jogakId))) {
+      throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+    }
+  }
+
   async commandExecution(
     userId: number,
     jogakId: number,

@@ -304,6 +304,32 @@ export class MogaksRepository {
     return jogak ?? null;
   }
 
+  async updateOwnedJogakTitle(
+    userId: number,
+    jogakId: number,
+    title: string,
+    now: Date,
+  ): Promise<OwnedJogakRecord | null> {
+    const owned = await this.findOwnedJogak(userId, jogakId);
+    if (owned === null) return null;
+    const [updated] = await this.db
+      .update(jogaks)
+      .set({ title, updatedAt: now })
+      .where(and(eq(jogaks.id, jogakId), eq(jogaks.mogakId, owned.mogakId)))
+      .returning({ id: jogaks.id });
+    return updated === undefined ? null : { ...owned, title };
+  }
+
+  async deleteOwnedJogak(userId: number, jogakId: number): Promise<boolean> {
+    const owned = await this.findOwnedJogak(userId, jogakId);
+    if (owned === null) return false;
+    const deleted = await this.db
+      .delete(jogaks)
+      .where(and(eq(jogaks.id, jogakId), eq(jogaks.mogakId, owned.mogakId)))
+      .returning({ id: jogaks.id });
+    return deleted.length === 1;
+  }
+
   async countJogaksWithCurrentOrFutureSchedule(mogakId: number, today: string): Promise<number> {
     const rows = await this.db
       .select({ jogakId: jogaks.id })

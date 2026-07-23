@@ -2,12 +2,14 @@ import { Type } from 'class-transformer';
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
   Param,
   Post,
+  Put,
   Query,
   Res,
   UseGuards,
@@ -100,6 +102,13 @@ class CreateJogakRequest {
   endDate?: string;
 }
 
+class UpdateJogakRequest {
+  @IsString()
+  @IsNotEmpty()
+  @Length(1, 100)
+  title!: string;
+}
+
 @Controller('api')
 export class JogaksController {
   constructor(@Inject(JogaksService) private readonly jogaks: JogaksService) {}
@@ -148,6 +157,31 @@ export class JogaksController {
   @UseGuards(AccessTokenGuard)
   async listDay(@CurrentUser() user: AuthenticatedUser, @Query() query: DateQuery) {
     return successResponse(await this.jogaks.listDay(user.userId, query.date));
+  }
+
+  @Get('jogaks/:jogakId')
+  @UseGuards(AccessTokenGuard)
+  async getDetail(@CurrentUser() user: AuthenticatedUser, @Param('jogakId') jogakId: string) {
+    return successResponse(await this.jogaks.getDetail(user.userId, asSafeId(jogakId)));
+  }
+
+  @Put('jogaks/:jogakId')
+  @UseGuards(AccessTokenGuard)
+  async update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('jogakId') jogakId: string,
+    @Body() request: UpdateJogakRequest,
+  ) {
+    return successResponse(
+      await this.jogaks.update(user.userId, asSafeId(jogakId), { title: request.title }),
+    );
+  }
+
+  @Delete('jogaks/:jogakId')
+  @UseGuards(AccessTokenGuard)
+  async delete(@CurrentUser() user: AuthenticatedUser, @Param('jogakId') jogakId: string) {
+    await this.jogaks.delete(user.userId, asSafeId(jogakId));
+    return successResponse({});
   }
 
   @Post('jogaks/:jogakId/executions/:scheduledDate/start')
