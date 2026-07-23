@@ -18,7 +18,7 @@
 - Modify: `vitest.db.config.ts`
 - Test: `test/database/global-setup.ts`
 
-- [ ] **Step 1: Reproduce the missing local test-URL derivation**
+- [x] **Step 1: Reproduce the missing local test-URL derivation**
 
 Create local `.env` from the tracked example, remove the agent-created ignored `.env.test`, then run:
 
@@ -28,7 +28,7 @@ env -u DATABASE_URL pnpm test:db
 
 Expected before implementation: fail with `DATABASE_URL is required for database integration tests`, because the current configuration reads only `.env.test`.
 
-- [ ] **Step 2: Replace `.env.test` loading with local URL derivation**
+- [x] **Step 2: Replace `.env.test` loading with local URL derivation**
 
 Replace `vitest.db.config.ts` with:
 
@@ -62,7 +62,7 @@ export default defineConfig({
 
 Delete `.env.test.example` and remove only `!.env.test.example` from `.gitignore`. Do not remove the broad `.env.*` ignore rule.
 
-- [ ] **Step 3: Verify local derivation and injected URL precedence**
+- [x] **Step 3: Verify local derivation and injected URL precedence**
 
 Run after Compose is healthy:
 
