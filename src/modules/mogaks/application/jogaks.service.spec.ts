@@ -175,6 +175,37 @@ describe('JogaksService', () => {
     expect(mogaks.updateExecutionStatus).not.toHaveBeenCalled();
   });
 
+  it('resolves an owned virtual occurrence for a post without creating or changing an execution', async () => {
+    const mogaks = repository();
+    vi.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    vi.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
+      {
+        scheduleId: 5,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'WEEKLY',
+        effectiveFrom: '2026-07-20',
+        effectiveTo: null,
+        weekday: 'THURSDAY',
+      },
+    ]);
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await expect(service.resolveOwnedOccurrence(7, 11, '2026-07-23')).resolves.toEqual({
+      jogakId: 11,
+      mogakId: 3,
+      title: '문제 풀이',
+    });
+    expect(mogaks.insertExecution).not.toHaveBeenCalled();
+    expect(mogaks.updateExecutionStatus).not.toHaveBeenCalled();
+  });
+
   it('rejects an attempt to reopen a completed execution', async () => {
     const mogaks = repository();
     vi.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);

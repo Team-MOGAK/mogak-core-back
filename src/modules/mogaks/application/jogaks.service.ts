@@ -230,6 +230,17 @@ export class JogaksService {
     };
   }
 
+  async resolveOwnedOccurrence(userId: number, jogakId: number, scheduledDate: string) {
+    if (!isDateOnly(scheduledDate)) throw new AppException(AppErrorCode.INVALID_TARGET_DATE);
+    const jogak = await this.repository.findOwnedJogak(userId, jogakId);
+    if (jogak === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+    const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
+    if (!schedules.some((schedule) => occursOn(schedule, scheduledDate))) {
+      throw new AppException(AppErrorCode.INVALID_TARGET_DATE);
+    }
+    return { jogakId: jogak.id, mogakId: jogak.mogakId, title: jogak.title };
+  }
+
   private async projectOccurrences(
     userId: number,
     startDate: string,
