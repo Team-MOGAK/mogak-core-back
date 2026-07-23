@@ -21,6 +21,8 @@
 - `users`, `jobs`, `addresses`, `consent_items`, `user_consents`, `social_accounts`, `auth_sessions`의 첫 Drizzle migration과 공개 메타데이터 seed
 - Apple·Google·Kakao 소셜 로그인 검증, `auth_sessions` 기반 동시 로그인, refresh token hash 조건부 회전
 - access JWT의 session id 검증, 현재 기기 로그아웃, FK cascade를 이용한 회원 hard delete API
+- `PENDING` 가입 완료 전 상태와 `USER` 회원 전용 기능을 분리하는 역할 Guard
+- 명시 origin 목록을 선택적으로 적용하는 최소 CORS 구성과 Google 두 issuer 형식 검증
 - 사용자 가입, 프로필, 닉네임, 직업, 동의, 직업·주소·카테고리·색상 메타데이터 API와 비활성 StoragePort 경계
 - `mogaks`의 Modarat·Mogak·공식 카테고리, Jogak 일정, 가상 날짜별 발생 건, 실행 상태와 hard delete API
 - 실행은 `(jogak_id, scheduled_date)` UNIQUE와 `ON CONFLICT DO NOTHING`/조건부 update로 멱등 처리하며, `achievements`는 `SUCCESS` 실행 원본 행에서 집계
@@ -368,7 +370,7 @@ users
 
 `ONCE`는 `effective_from`의 하루만 발생한다. `WEEKLY`는 유효 기간과 요일 조합으로 발생한다. 날짜 범위와 타입별 필수값은 애플리케이션에서 검증한다.
 
-일정 수정은 가능하다. 수정 시 현재 유효 구간을 닫고 새 일정 행을 추가한다. 이미 생성된 실행 기록은 변경하지 않는다. Jogak 제목 자체의 수정은 현재 제목을 갱신하지만 과거 실행의 제목 snapshot은 바꾸지 않는다.
+일정 수정은 가능하다. 수정 시 현재 유효 구간을 닫고 새 일정 행을 추가한다. 후속 일정이 이미 있으면 새 일정의 종료일을 후속 시작일 전날로 제한하며, 요청 종료일이 후속 시작일과 겹치면 거부한다. 따라서 같은 Jogak의 일정 구간은 겹치지 않는다. 이미 생성된 실행 기록은 변경하지 않는다. Jogak 제목 자체의 수정은 현재 제목을 갱신하지만 과거 실행의 제목 snapshot은 바꾸지 않는다.
 
 #### `jogak_schedule_weekdays`
 
@@ -464,6 +466,8 @@ users
 
 `PENDING`과 `MISSED`는 파생 상태이며 DB에 저장하지 않는다.
 
+실행 응답의 `isRoutine`은 요청 날짜를 실제로 만족한 일정에서 계산한다. 즉 `WEEKLY`만 `true`이고 `ONCE`는 `false`다.
+
 실행 행은 다음 행위가 최초로 발생할 때만 생성한다.
 
 - 시작
@@ -506,6 +510,10 @@ POST /api/jogaks/{jogakId}/executions/{scheduledDate}/fail
 - 실행을 새로 만들면 `201 Created`
 - 기존 실행을 전이하거나 같은 상태를 재호출하면 `200 OK`
 - 요청 날짜가 해당 Jogak 일정의 발생 건이 아니면 입력 오류
+
+### 일정 교체
+
+일정 교체 transaction은 해당 Jogak의 현재·후속 일정만 읽어 이전 구간 종료, 새 일정 추가와 요일 저장을 함께 처리한다. 후속 일정이 있으면 새 일정의 종료일을 그 전날로 정해 가상 발생 중복을 방지한다. 이 과정에도 비관적 락과 `SELECT ... FOR UPDATE`는 사용하지 않는다.
 
 ### 게시글 생성
 
@@ -716,6 +724,21 @@ Mogak 카테고리는 공식 카테고리 또는 일회성 사용자 커스텀 �
 - 서비스 access token과 refresh token을 발급한다.
 - Supabase Auth는 애플리케이션 사용자 기준으로 사용하지 않는다.
 
+Google ID token은 `https://accounts.google.com`과 `accounts.google.com` issuer를 모두 허용한다. 이외의 서명, audience, 만료 시간, RS256 검증은 동일하게 유지한다.
+
+### 가입 상태 권한
+
+`AccessTokenGuard`는 access token과 session 검증만 담당한다. 회원 전용 기능은 뒤이어 `USER` 역할을 확인한다.
+
+- `PENDING`은 `POST /api/users/join`으로 가입을 완료할 수 있다.
+- Mogak, Jogak, Post, Social, 프로필·동의 변경은 `USER`만 사용할 수 있다.
+- logout과 withdrawal은 현재 session의 소유 동작이므로 가입 상태와 무관하게 인증만 요구한다.
+- public metadata, consent 목록, nickname 확인, social login·refresh는 인증 없이 유지한다.
+
+### CORS
+
+현재 앱 전용 동작에는 CORS가 필요하지 않으므로 기본값은 비활성화다. 브라우저 origin이 필요해지면 `CORS_ALLOWED_ORIGINS`에 쉼표로 구분한 완전한 origin만 지정한다. wildcard·path·cookie credential은 허용하지 않으며, 허용 origin이 비어 있으면 CORS middleware를 활성화하지 않는다.
+
 ### token 정책
 
 - access token: 15분
@@ -811,6 +834,7 @@ PostgreSQL UNIQUE 위반을 그대로 노출하지 않고 Application 오류로 
 - Post 직접 hard delete 시 이미지 메타데이터·댓글·좋아요만 cascade하고 실행은 보존
 - 같은 실행에 대한 동시 게시글 생성 시 하나의 Post만 저장
 - 같은 사용자의 동시 좋아요 생성 시 하나의 source row만 저장
+- 후속 일정이 있는 Jogak 일정 교체가 후속 시작 전날에 종료되고 날짜별 occurrence를 중복하지 않음
 
 데이터베이스 이름이 `_test`로 끝나지 않으면 시작 전에 거부하므로, 운영·개발 DB에 migration을 적용하지 않는다. 로컬에서는 이 저장소의 Compose가 PostgreSQL 하나 안에 개발용 `mogak_local`과 테스트용 `mogak_test`를 분리해 만든다.
 
@@ -822,7 +846,7 @@ pnpm test:db
 
 앱은 `.env`의 `mogak_local` URL을 사용한다. 로컬 `test:db`는 같은 연결 정보에서 DB 이름만 `MOGAK_TEST_DB`의 `mogak_test`로 바꿔 사용한다. CI가 `DATABASE_URL`을 주입하면 그 URL을 그대로 사용한다. 첫 Compose 기동에서만 초기화 스크립트가 테스트 DB를 만든다. `docker compose down`은 두 DB가 든 named volume을 보존하며, `docker compose down -v`만 이를 삭제한다.
 
-전용 `_test` PostgreSQL에서 Mogaks·Posts·Social 통합 테스트를 통과했다. refresh token과 일정 수정의 DB 통합 테스트는 해당 모듈 구현 시 추가한다.
+전용 `_test` PostgreSQL에서 Mogaks·Posts·Social 통합 테스트를 통과했다. 일정 수정의 후속 구간 비중첩도 통합 테스트로 검증한다.
 
 ### API 계약 테스트
 

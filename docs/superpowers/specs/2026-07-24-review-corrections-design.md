@@ -68,6 +68,8 @@ Google 검증기는 `https://accounts.google.com`과 `accounts.google.com`을 �
 - 공백 전용 Modarat·Mogak·Jogak 제목과 nickname이 400으로 거부된다.
 - 설정된 origin에는 정확한 CORS header가, 미설정·미허용 origin에는 허용 header가 없다.
 
+구현 중 focused 검증에서는 CORS 7개, 역할 Guard 및 보호 controller 23개, Google·필수 문자열 30개, Jogak 단위 11개와 Jogak PostgreSQL 통합 4개 테스트를 통과했다. 전체 검증에서는 format, lint, typecheck, Nest build와 일반 Jest 121개, E2E 1개, PostgreSQL 통합 9개 테스트를 통과했다.
+
 최종적으로 `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test`, `pnpm test:e2e`, `env -u DATABASE_URL pnpm test:db`를 실행한다.
 
 ## 범위 밖
