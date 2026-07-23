@@ -5,9 +5,18 @@ import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { StorageModule } from './modules/storage/storage.module';
+import { MogaksModule } from './modules/mogaks/mogaks.module';
 import { UsersModule } from './modules/users/users.module';
 
 @Module({
-  imports: [AppConfigModule, DatabaseModule, HealthModule, AuthModule, StorageModule, UsersModule],
+  imports: [
+    AppConfigModule,
+    DatabaseModule,
+    HealthModule,
+    AuthModule,
+    StorageModule,
+    UsersModule,
+    MogaksModule,
+  ],
 })
 export class AppModule {}
