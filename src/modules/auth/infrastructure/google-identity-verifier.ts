@@ -10,6 +10,7 @@ import type { SocialProvider } from '../domain/social-provider';
 import { identityFromJwtClaims } from './identity-claims';
 
 const googleKeys = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
+export const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'] as const;
 
 @Injectable()
 export class GoogleIdentityVerifier implements SocialIdentityVerifier {
@@ -27,7 +28,7 @@ export class GoogleIdentityVerifier implements SocialIdentityVerifier {
     try {
       const { payload } = await jwtVerify(token, googleKeys, {
         algorithms: ['RS256'],
-        issuer: 'https://accounts.google.com',
+        issuer: [...GOOGLE_ISSUERS],
         audience: this.clientIds,
         clockTolerance: 30,
       });
