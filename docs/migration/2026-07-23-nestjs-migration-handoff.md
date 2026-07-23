@@ -245,6 +245,8 @@ users
 
 `nickname`은 팔로우 API에서 사용자를 식별하므로 값이 존재할 때 UNIQUE다. 가입 전 null은 허용하며 hard delete 후 닉네임은 즉시 재사용할 수 있다. 초기에는 현재 API처럼 대소문자를 구분한다.
 
+`email`도 nullable UNIQUE다. 이는 이메일로 계정을 자동 연결하려는 용도가 아니라, 서로 다른 공급자의 새 계정이 같은 이메일을 주장할 때 기존 계정 연결 필요 오류로 막기 위한 현재 계약의 정합성 제약이다. PostgreSQL의 UNIQUE는 여러 `NULL`을 허용하므로 이메일 없는 Kakao 계정은 계속 지원한다.
+
 #### `jobs`, `addresses`
 
 직업과 거주지의 공통 정의를 저장한다. 사용자가 탈퇴해도 정의 데이터는 유지한다. 기존 메타데이터 API 계약을 유지한다.
@@ -727,6 +729,7 @@ Mogak 카테고리는 공식 카테고리 또는 일회성 사용자 커스텀 �
 정합성에 필요한 다음 UNIQUE만 둔다.
 
 - `users.nickname`
+- `users.email`
 - `consent_items.code`
 - `user_consents(user_id, consent_item_id)`
 - `social_accounts(provider, provider_user_id)`
