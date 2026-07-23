@@ -86,7 +86,7 @@ git commit -m "test: derive local database test URL"
 - Modify: `docs/migration/2026-07-23-nestjs-migration-handoff.md`
 - Modify: `docs/superpowers/specs/2026-07-23-local-postgres-compose-design.md`
 
-- [ ] **Step 1: Remove all active `.env.test` setup instructions**
+- [x] **Step 1: Remove all active `.env.test` setup instructions**
 
 Keep the developer workflow exactly as follows:
 
@@ -98,7 +98,7 @@ pnpm test:db
 
 State that local `test:db` uses `.env`'s connection information with only the database name replaced by `MOGAK_TEST_DB`; an externally supplied `DATABASE_URL` remains unchanged.
 
-- [ ] **Step 2: Verify the tracked setup surface**
+- [x] **Step 2: Verify the tracked setup surface**
 
 Run:
 
@@ -109,7 +109,7 @@ git ls-files .env.example .env.test.example
 
 Expected: no active setup reference to `.env.test`; `.env.example` is the only tracked environment template.
 
-- [ ] **Step 3: Run the complete quality gate**
+- [x] **Step 3: Run the complete quality gate**
 
 Run:
 
