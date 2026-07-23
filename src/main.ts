@@ -9,10 +9,12 @@ import { configureApp } from './app.setup';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
-  configureApp(app);
+  const config = app.get(ConfigService<AppEnv, true>);
+  configureApp(app, {
+    corsAllowedOrigins: config.getOrThrow('CORS_ALLOWED_ORIGINS', { infer: true }),
+  });
   app.enableShutdownHooks();
 
-  const config = app.get(ConfigService<AppEnv, true>);
   await app.listen(config.getOrThrow('PORT', { infer: true }));
 }
 
