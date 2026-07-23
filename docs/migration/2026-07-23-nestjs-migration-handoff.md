@@ -29,7 +29,7 @@
 - 비어 있거나 없는 `multipartFile`을 허용하고 실제 파일은 현재 비활성 StoragePort에서 `Z006`으로 중단하는 게시글 이미지 경계
 - 전용 `_test` 데이터베이스에서 실행하는 Mogaks·Posts PostgreSQL 통합 테스트와 `test:db` 실행 명령
 
-단위·HTTP 계약 테스트, health e2e, 타입 검사, 린트와 빌드는 통과했다. PostgreSQL 통합 테스트는 전용 테스트 DB가 준비된 뒤 실행한다. 현재 개발 환경에는 연결 가능한 PostgreSQL 서비스가 없어 실제 DB 검증은 아직 통과 상태가 아니다.
+단위·HTTP 계약 테스트, health e2e, 타입 검사, 린트와 빌드는 통과했다. PostgreSQL 통합 테스트도 전용 `_test` DB에서 실제 migration 후 통과했다. `test:db`는 Vitest 전역 초기화에서 migration을 한 번만 실행해, 병렬 테스트 파일의 스키마 생성 경합을 막는다.
 
 ## 2. 대상 저장소와 확인 기준
 
@@ -802,7 +802,7 @@ PostgreSQL UNIQUE 위반을 그대로 노출하지 않고 Application 오류로 
 
 ### PostgreSQL 통합 테스트
 
-현재 `test:db`는 다음 Mogaks·Posts 정합성을 실제 PostgreSQL migration 이후 검증한다.
+현재 `test:db`는 다음 Mogaks·Posts·Social 정합성을 실제 PostgreSQL migration 이후 검증한다.
 
 - 사용자 hard delete 후 Modarat → Mogak → Jogak → schedule → execution까지 FK cascade
 - 같은 Jogak·날짜에 대한 동시 실행 생성 시 UNIQUE conflict 처리
@@ -818,7 +818,7 @@ PostgreSQL UNIQUE 위반을 그대로 노출하지 않고 Application 오류로 
 DATABASE_URL=postgresql://<user>:<password>@<host>:5432/mogak_test pnpm test:db
 ```
 
-게시글·좋아요 DB 통합 테스트는 추가되었지만, 실제 통과 여부는 전용 PostgreSQL 서비스가 준비된 환경에서만 확인한다. 팔로우·refresh token·일정 수정의 DB 통합 테스트는 해당 모듈 구현 시 추가한다.
+전용 `_test` PostgreSQL에서 Mogaks·Posts·Social 통합 테스트를 통과했다. refresh token과 일정 수정의 DB 통합 테스트는 해당 모듈 구현 시 추가한다.
 
 ### API 계약 테스트
 
@@ -905,5 +905,4 @@ DATABASE_URL=postgresql://<user>:<password>@<host>:5432/mogak_test pnpm test:db
 
 ## 23. 다음 작업
 
-1. 전용 PostgreSQL 테스트 DB를 준비해 `test:db`를 통과시킨다.
-2. Storage 구현과 배포 구성은 별도 결정 후 연결한다.
+1. Storage 구현과 배포 구성은 별도 결정 후 연결한다.
