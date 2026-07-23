@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import { Module } from '@nestjs/common';
 
+import { FixedWindowRateLimiter } from '../../common/http/fixed-window-rate-limiter';
+import { RateLimitGuard } from '../../common/http/rate-limit.guard';
 import { DatabaseModule } from '../../database/database.module';
 import { AUTH_PERSISTENCE, AuthService, SESSION_ID_GENERATOR } from './application/auth.service';
 import { DrizzleAuthPersistence } from './infrastructure/auth.persistence';
@@ -49,6 +51,8 @@ import { RegisteredUserGuard } from './presentation/registered-user.guard';
     AuthService,
     AccessTokenGuard,
     RegisteredUserGuard,
+    FixedWindowRateLimiter,
+    RateLimitGuard,
   ],
   exports: [
     TokenService,
@@ -56,6 +60,8 @@ import { RegisteredUserGuard } from './presentation/registered-user.guard';
     AuthService,
     AccessTokenGuard,
     RegisteredUserGuard,
+    FixedWindowRateLimiter,
+    RateLimitGuard,
   ],
 })
 export class AuthModule {}

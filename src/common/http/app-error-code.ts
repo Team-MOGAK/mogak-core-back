@@ -237,6 +237,11 @@ export const AppErrorCode = {
     code: 'Z006',
     message: '스토리지 기능이 비활성화되어 있습니다',
   },
+  TOO_MANY_REQUESTS: {
+    httpStatus: HttpStatus.TOO_MANY_REQUESTS,
+    code: 'Z007',
+    message: '요청이 너무 많습니다',
+  },
   INTERNAL_SERVER_ERROR: {
     httpStatus: HttpStatus.INTERNAL_SERVER_ERROR,
     code: 'Z500',

@@ -14,6 +14,8 @@ import { IsNotEmpty, IsString } from 'class-validator';
 import { successResponse } from '../../../common/http/api-response';
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
+import { RateLimit } from '../../../common/http/rate-limit.decorator';
+import { RateLimitGuard } from '../../../common/http/rate-limit.guard';
 import { AuthService } from '../application/auth.service';
 import { parseSocialProvider } from '../domain/social-provider';
 import { AccessTokenGuard } from './access-token.guard';
@@ -37,12 +39,16 @@ export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
   @Post('login')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 10, windowMs: 60_000 })
   @HttpCode(HttpStatus.OK)
   async loginApple(@Body() request: AppleLoginRequest) {
     return successResponse(await this.authService.login('APPLE', request.id_token));
   }
 
   @Post(':provider/login')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 10, windowMs: 60_000 })
   @HttpCode(HttpStatus.OK)
   async loginSocial(@Param('provider') provider: string, @Body() request: SocialLoginRequest) {
     return successResponse(
@@ -51,6 +57,8 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 10, windowMs: 60_000 })
   @HttpCode(HttpStatus.CREATED)
   async refresh(@Headers('refreshtoken') refreshToken: string | undefined) {
     return successResponse(await this.authService.refresh(requiredRefreshToken(refreshToken)));

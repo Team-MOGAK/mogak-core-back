@@ -5,6 +5,8 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { configureApp } from '../../../app.setup';
+import { FixedWindowRateLimiter } from '../../../common/http/fixed-window-rate-limiter';
+import { RateLimitGuard } from '../../../common/http/rate-limit.guard';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { ConsentService } from '../application/consent.service';
@@ -42,6 +44,8 @@ describe('사용자 HTTP 계약', () => {
         { provide: UserService, useValue: users },
         { provide: ConsentService, useValue: consents },
         { provide: MetadataService, useValue: metadata },
+        FixedWindowRateLimiter,
+        RateLimitGuard,
         RegisteredUserGuard,
       ],
     })
@@ -86,6 +90,24 @@ describe('사용자 HTTP 계약', () => {
       .send({ nickname: '  ' })
       .expect(400);
     expect(users.verifyNickname).not.toHaveBeenCalled();
+  });
+
+  it('같은 IP의 닉네임 검증 요청은 분당 서른 번째까지만 서비스에 전달한다', async () => {
+    users.verifyNickname.mockResolvedValue(undefined);
+
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      await request(app.getHttpServer())
+        .post('/api/users/nickname/verify')
+        .send({ nickname: '모각러' })
+        .expect(200);
+    }
+    await request(app.getHttpServer())
+      .post('/api/users/nickname/verify')
+      .send({ nickname: '모각러' })
+      .expect(429)
+      .expect(({ body }) => expect(body.code).toBe('Z007'));
+
+    expect(users.verifyNickname).toHaveBeenCalledTimes(30);
   });
 
   it('가입 전 사용자는 프로필을 조회할 수 없고 가입 완료 사용자는 기존 프로필 계약을 유지한다', async () => {

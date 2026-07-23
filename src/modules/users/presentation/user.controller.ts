@@ -27,6 +27,8 @@ import {
 
 import { successResponse } from '../../../common/http/api-response';
 import { profileImageUploadOptions } from '../../../common/http/image-upload.options';
+import { RateLimit } from '../../../common/http/rate-limit.decorator';
+import { RateLimitGuard } from '../../../common/http/rate-limit.guard';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
@@ -88,6 +90,8 @@ export class UserController {
   constructor(@Inject(UserService) private readonly users: UserService) {}
 
   @Post('nickname/verify')
+  @UseGuards(RateLimitGuard)
+  @RateLimit({ limit: 30, windowMs: 60_000 })
   @HttpCode(HttpStatus.OK)
   async verifyNickname(@Body() request: NicknameRequest) {
     await this.users.verifyNickname(request.nickname);

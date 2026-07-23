@@ -5,6 +5,8 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { configureApp } from '../../../app.setup';
+import { FixedWindowRateLimiter } from '../../../common/http/fixed-window-rate-limiter';
+import { RateLimitGuard } from '../../../common/http/rate-limit.guard';
 import { AuthService } from '../application/auth.service';
 import { AccessTokenGuard } from './access-token.guard';
 import { AuthController } from './auth.controller';
@@ -22,7 +24,11 @@ describe('인증 HTTP 계약', () => {
     jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
       controllers: [AuthController],
-      providers: [{ provide: AuthService, useValue: authService }],
+      providers: [
+        { provide: AuthService, useValue: authService },
+        FixedWindowRateLimiter,
+        RateLimitGuard,
+      ],
     })
       .overrideGuard(AccessTokenGuard)
       .useValue({ canActivate: () => true })
@@ -77,5 +83,44 @@ describe('인증 HTTP 계약', () => {
       });
 
     expect(authService.refresh).toHaveBeenCalledWith('current-refresh');
+  });
+
+  it('같은 IP의 로그인과 토큰 갱신 요청은 분당 열 번째까지만 서비스에 전달한다', async () => {
+    authService.login.mockResolvedValue({
+      isRegistered: false,
+      userId: 7,
+      tokens: { accessToken: 'access', refreshToken: 'refresh' },
+    });
+    authService.refresh.mockResolvedValue({
+      accessToken: 'next-access',
+      refreshToken: 'next-refresh',
+    });
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ id_token: 'apple-id-token' })
+        .expect(200);
+    }
+    await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ id_token: 'apple-id-token' })
+      .expect(429)
+      .expect(({ body }) => expect(body.code).toBe('Z007'));
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await request(app.getHttpServer())
+        .post('/api/auth/refresh')
+        .set('RefreshToken', 'current-refresh')
+        .expect(201);
+    }
+    await request(app.getHttpServer())
+      .post('/api/auth/refresh')
+      .set('RefreshToken', 'current-refresh')
+      .expect(429)
+      .expect(({ body }) => expect(body.code).toBe('Z007'));
+
+    expect(authService.login).toHaveBeenCalledTimes(10);
+    expect(authService.refresh).toHaveBeenCalledTimes(10);
   });
 });
