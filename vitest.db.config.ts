@@ -1,4 +1,7 @@
+import { config } from 'dotenv';
 import { defineConfig } from 'vitest/config';
+
+config({ path: '.env.test', quiet: true });
 
 export default defineConfig({
   test: {

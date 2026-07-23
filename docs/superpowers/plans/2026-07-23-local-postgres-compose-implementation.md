@@ -60,10 +60,7 @@ Create executable `docker/postgres/init-databases.sh`:
 #!/bin/sh
 set -eu
 
-psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
-  --set=ON_ERROR_STOP=1 \
-  --set=test_database="$MOGAK_TEST_DB" \
-  --command "SELECT format('CREATE DATABASE %I', :'test_database') \\gexec"
+PGDATABASE="$POSTGRES_DB" createdb --username "$POSTGRES_USER" "$MOGAK_TEST_DB"
 ```
 
 Extend the existing `.env.example` while retaining its `NODE_ENV`, `PORT`, `JWT_SECRET`, `APPLE_CLIENT_IDS`, and `GOOGLE_CLIENT_IDS` entries:
@@ -101,7 +98,7 @@ Run: `docker compose --env-file .env.example config`
 
 Expected: exit 0, a single `postgres` service, host port `5436`, and no secret from a real `.env` file in output.
 
-- [ ] **Step 4: Commit the service contract**
+- [x] **Step 4: Commit the service contract**
 
 ```bash
 git add compose.yaml docker/postgres/init-databases.sh .env.example .env.test.example .gitignore
@@ -114,7 +111,7 @@ git commit -m "chore: add local PostgreSQL compose service"
 - Modify: `vitest.db.config.ts`
 - Test: `test/database/global-setup.ts`
 
-- [ ] **Step 1: Add a failing database-test invocation that has no shell-provided URL**
+- [x] **Step 1: Add a failing database-test invocation that has no shell-provided URL**
 
 After creating local `.env.test` from its example and starting Compose, run:
 
@@ -124,7 +121,7 @@ env -u DATABASE_URL pnpm test:db
 
 Expected before implementation: fail with `DATABASE_URL is required for database integration tests`.
 
-- [ ] **Step 2: Load `.env.test` at Vitest DB configuration time**
+- [x] **Step 2: Load `.env.test` at Vitest DB configuration time**
 
 Update `vitest.db.config.ts` to load `.env.test` before defining Vitest. `dotenv` does not override pre-existing variables, so CI-provided `DATABASE_URL` remains authoritative.
 
@@ -132,7 +129,7 @@ Update `vitest.db.config.ts` to load `.env.test` before defining Vitest. `dotenv
 import { config } from 'dotenv';
 import { defineConfig } from 'vitest/config';
 
-config({ path: '.env.test' });
+config({ path: '.env.test', quiet: true });
 
 export default defineConfig({
   test: {
@@ -146,7 +143,7 @@ export default defineConfig({
 
 Do not change `test/database/global-setup.ts`; it already proves that the chosen URL ends in `_test` before migration.
 
-- [ ] **Step 3: Verify `.env.test` loading and CI override behavior**
+- [x] **Step 3: Verify `.env.test` loading and CI override behavior**
 
 Run after Compose is healthy:
 
