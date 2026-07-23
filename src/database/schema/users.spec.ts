@@ -1,13 +1,7 @@
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
 
-import {
-  authSessions,
-  consentItems,
-  socialAccounts,
-  userConsents,
-  users,
-} from './users';
+import { authSessions, consentItems, socialAccounts, userConsents, users } from './users';
 
 function uniqueConstraintNames(table: Parameters<typeof getTableConfig>[0]): string[] {
   return getTableConfig(table)

@@ -3,11 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Module } from '@nestjs/common';
 
 import { DatabaseModule } from '../../database/database.module';
-import {
-  AUTH_PERSISTENCE,
-  AuthService,
-  SESSION_ID_GENERATOR,
-} from './application/auth.service';
+import { AUTH_PERSISTENCE, AuthService, SESSION_ID_GENERATOR } from './application/auth.service';
 import { DrizzleAuthPersistence } from './infrastructure/auth.persistence';
 import { AuthSessionsRepository } from './infrastructure/auth-sessions.repository';
 import { AppleIdentityVerifier } from './infrastructure/apple-identity-verifier';
@@ -46,7 +42,8 @@ import { AuthController } from './presentation/auth.controller';
         apple: AppleIdentityVerifier,
         google: GoogleIdentityVerifier,
         kakao: KakaoIdentityVerifier,
-      ): SocialIdentityVerifierRegistry => new SocialIdentityVerifierRegistry([apple, google, kakao]),
+      ): SocialIdentityVerifierRegistry =>
+        new SocialIdentityVerifierRegistry([apple, google, kakao]),
     },
     AuthService,
     AccessTokenGuard,

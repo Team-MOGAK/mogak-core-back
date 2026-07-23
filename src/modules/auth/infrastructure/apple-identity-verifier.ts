@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import type { ConfigService } from '@nestjs/config';
+import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 import { AppErrorCode } from '../../../common/http/app-error-code';
@@ -15,7 +15,7 @@ const appleKeys = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/key
 export class AppleIdentityVerifier implements SocialIdentityVerifier {
   private readonly clientIds: string[];
 
-  constructor(config: ConfigService<AppEnv, true>) {
+  constructor(@Inject(ConfigService) config: ConfigService<AppEnv, true>) {
     this.clientIds = splitClientIds(config.getOrThrow('APPLE_CLIENT_IDS', { infer: true }));
   }
 

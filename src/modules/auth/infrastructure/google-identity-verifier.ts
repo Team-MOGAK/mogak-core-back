@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import type { ConfigService } from '@nestjs/config';
+import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 import { AppErrorCode } from '../../../common/http/app-error-code';
@@ -15,7 +15,7 @@ const googleKeys = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2
 export class GoogleIdentityVerifier implements SocialIdentityVerifier {
   private readonly clientIds: string[];
 
-  constructor(config: ConfigService<AppEnv, true>) {
+  constructor(@Inject(ConfigService) config: ConfigService<AppEnv, true>) {
     this.clientIds = splitClientIds(config.getOrThrow('GOOGLE_CLIENT_IDS', { infer: true }));
   }
 

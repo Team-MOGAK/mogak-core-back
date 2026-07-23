@@ -58,7 +58,10 @@ describe('AuthController', () => {
   });
 
   it('keeps RefreshToken header and the legacy 201/success envelope combination', async () => {
-    authService.refresh.mockResolvedValue({ accessToken: 'next-access', refreshToken: 'next-refresh' });
+    authService.refresh.mockResolvedValue({
+      accessToken: 'next-access',
+      refreshToken: 'next-refresh',
+    });
 
     await request(app.getHttpServer())
       .post('/api/auth/refresh')

@@ -38,7 +38,10 @@ describe('KakaoIdentityVerifier', () => {
   });
 
   it('does not expose an upstream response when the token is rejected', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('invalid token', { status: 401 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(new Response('invalid token', { status: 401 })),
+    );
 
     await expect(new KakaoIdentityVerifier().verify('kakao-access-token')).rejects.toEqual(
       new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN),

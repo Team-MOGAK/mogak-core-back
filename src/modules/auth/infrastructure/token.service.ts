@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
-import { Injectable } from '@nestjs/common';
-import type { ConfigService } from '@nestjs/config';
+import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { jwtVerify, SignJWT, type JWTPayload } from 'jose';
 
 import { AppErrorCode } from '../../../common/http/app-error-code';
@@ -32,7 +32,7 @@ type RefreshTokenClaims = Readonly<{
 export class TokenService {
   private readonly secret: Uint8Array;
 
-  constructor(config: ConfigService<AppEnv, true>) {
+  constructor(@Inject(ConfigService) config: ConfigService<AppEnv, true>) {
     this.secret = new TextEncoder().encode(config.getOrThrow('JWT_SECRET', { infer: true }));
   }
 
@@ -69,7 +69,8 @@ export class TokenService {
     const userId = this.userIdFrom(payload);
     const role = this.roleFrom(payload.role);
     const sessionId = this.sessionIdFrom(payload.sid);
-    const email = typeof payload.email === 'string' && payload.email.length > 0 ? payload.email : undefined;
+    const email =
+      typeof payload.email === 'string' && payload.email.length > 0 ? payload.email : undefined;
 
     return email === undefined ? { userId, role, sessionId } : { userId, email, role, sessionId };
   }
@@ -90,7 +91,11 @@ export class TokenService {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private async sign(payload: JWTPayload, userId: number, expiresInSeconds: number): Promise<string> {
+  private async sign(
+    payload: JWTPayload,
+    userId: number,
+    expiresInSeconds: number,
+  ): Promise<string> {
     return new SignJWT(payload)
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject(String(userId))

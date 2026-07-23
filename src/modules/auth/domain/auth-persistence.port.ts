@@ -27,13 +27,15 @@ export type AuthPersistence = {
     createSession: (user: AuthUser) => Promise<Readonly<{ result: T; session: AuthSessionDraft }>>,
   ): Promise<T>;
   createSession(userId: number, session: AuthSessionDraft): Promise<void>;
-  rotateSession(input: Readonly<{
-    sessionId: string;
-    currentRefreshTokenHash: string;
-    nextRefreshTokenHash: string;
-    nextExpiresAt: Date;
-    now: Date;
-  }>): Promise<boolean>;
+  rotateSession(
+    input: Readonly<{
+      sessionId: string;
+      currentRefreshTokenHash: string;
+      nextRefreshTokenHash: string;
+      nextExpiresAt: Date;
+      now: Date;
+    }>,
+  ): Promise<boolean>;
   deleteSession(sessionId: string, userId: number): Promise<void>;
   deleteUser(userId: number): Promise<boolean>;
 };

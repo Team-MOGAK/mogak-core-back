@@ -44,20 +44,26 @@ describe('AuthService', () => {
     const persistence = createPersistence();
     vi.mocked(persistence.findUserByEmail).mockResolvedValue(null);
     vi.mocked(persistence.findUserBySocialIdentity).mockResolvedValue(null);
-    vi.mocked(persistence.createAccount).mockImplementation(async (_input, createSession) =>
-      (await createSession({
-        id: 7,
-        email: 'mogak@example.test',
-        nickname: null,
-        role: 'PENDING',
-      })).result,
+    vi.mocked(persistence.createAccount).mockImplementation(
+      async (_input, createSession) =>
+        (
+          await createSession({
+            id: 7,
+            email: 'mogak@example.test',
+            nickname: null,
+            role: 'PENDING',
+          })
+        ).result,
     );
     const service = new AuthService(verifiers, persistence, createTokenService(), () => SESSION_ID);
 
     await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({
       isRegistered: false,
       userId: 7,
-      tokens: expect.objectContaining({ accessToken: expect.any(String), refreshToken: expect.any(String) }),
+      tokens: expect.objectContaining({
+        accessToken: expect.any(String),
+        refreshToken: expect.any(String),
+      }),
     });
     expect(persistence.createAccount).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -117,8 +123,9 @@ describe('AuthService', () => {
     const persistence = createPersistence();
     vi.mocked(persistence.findUserBySocialIdentity).mockResolvedValue(null);
     vi.mocked(persistence.findUserByEmail).mockResolvedValue(null);
-    vi.mocked(persistence.createAccount).mockImplementation(async (_input, createSession) =>
-      (await createSession({ id: 7, email: null, nickname: null, role: 'PENDING' })).result,
+    vi.mocked(persistence.createAccount).mockImplementation(
+      async (_input, createSession) =>
+        (await createSession({ id: 7, email: null, nickname: null, role: 'PENDING' })).result,
     );
     const service = new AuthService(verifiers, persistence, createTokenService(), () => SESSION_ID);
 

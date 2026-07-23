@@ -4,11 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
-import type {
-  AuthPersistence,
-  AuthSessionDraft,
-  AuthUser,
-} from '../domain/auth-persistence.port';
+import type { AuthPersistence, AuthSessionDraft, AuthUser } from '../domain/auth-persistence.port';
 import type { SocialIdentity } from '../domain/social-identity';
 import type { SocialProvider } from '../domain/social-provider';
 import type { TokenPair } from '../domain/token-pair';
@@ -54,7 +50,10 @@ export class AuthService {
     }
 
     this.validateNewIdentity(identity);
-    if (identity.email !== null && (await this.persistence.findUserByEmail(identity.email)) !== null) {
+    if (
+      identity.email !== null &&
+      (await this.persistence.findUserByEmail(identity.email)) !== null
+    ) {
       throw new AppException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
     }
 

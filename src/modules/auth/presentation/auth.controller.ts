@@ -45,7 +45,9 @@ export class AuthController {
   @Post(':provider/login')
   @HttpCode(HttpStatus.OK)
   async loginSocial(@Param('provider') provider: string, @Body() request: SocialLoginRequest) {
-    return successResponse(await this.authService.login(parseSocialProvider(provider), request.token));
+    return successResponse(
+      await this.authService.login(parseSocialProvider(provider), request.token),
+    );
   }
 
   @Post('refresh')

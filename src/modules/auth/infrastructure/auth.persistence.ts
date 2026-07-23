@@ -91,13 +91,15 @@ export class DrizzleAuthPersistence implements AuthPersistence {
     });
   }
 
-  async rotateSession(input: Readonly<{
-    sessionId: string;
-    currentRefreshTokenHash: string;
-    nextRefreshTokenHash: string;
-    nextExpiresAt: Date;
-    now: Date;
-  }>): Promise<boolean> {
+  async rotateSession(
+    input: Readonly<{
+      sessionId: string;
+      currentRefreshTokenHash: string;
+      nextRefreshTokenHash: string;
+      nextExpiresAt: Date;
+      now: Date;
+    }>,
+  ): Promise<boolean> {
     const rows = await this.db
       .update(authSessions)
       .set({
@@ -123,7 +125,10 @@ export class DrizzleAuthPersistence implements AuthPersistence {
   }
 
   async deleteUser(userId: number): Promise<boolean> {
-    const deleted = await this.db.delete(users).where(eq(users.id, userId)).returning({ id: users.id });
+    const deleted = await this.db
+      .delete(users)
+      .where(eq(users.id, userId))
+      .returning({ id: users.id });
     return deleted.length === 1;
   }
 }

@@ -18,6 +18,11 @@
 - Drizzle `node-postgres` provider 경계
 - BaseResponse 호환 공통 envelope과 전역 오류 매핑
 - 인증 없이 확인 가능한 `GET /health`
+- `users`, `jobs`, `addresses`, `consent_items`, `user_consents`, `social_accounts`, `auth_sessions`의 첫 Drizzle migration과 공개 메타데이터 seed
+- Apple·Google·Kakao 소셜 로그인 검증, `auth_sessions` 기반 동시 로그인, refresh token hash 조건부 회전
+- access JWT의 session id 검증, 현재 기기 로그아웃, FK cascade를 이용한 회원 hard delete API
+
+인증 구현은 단위·HTTP 계약 테스트와 타입 검사·린트·빌드를 통과했다. 실제 PostgreSQL에 migration을 적용하는 통합 테스트는 전용 테스트 DB가 준비된 뒤 별도 실행한다. 사용자 프로필·가입·동의·메타데이터 API와 StoragePort는 다음 수직 슬라이스다.
 
 ## 2. 대상 저장소와 확인 기준
 
