@@ -60,6 +60,22 @@ function storage(): StoragePort {
 }
 
 describe('사용자 서비스', () => {
+  it('공백뿐인 닉네임을 조회 전에 거부한다', async () => {
+    const users = userRepository();
+    const service = new UserService(
+      users,
+      new ConsentService(consentRepository()),
+      tokenService(),
+      storage(),
+      () => SESSION_ID,
+    );
+
+    await expect(service.verifyNickname('   ')).rejects.toEqual(
+      new AppException(AppErrorCode.INVALID_PARAMETER),
+    );
+    expect(users.existsByNickname).not.toHaveBeenCalled();
+  });
+
   it('이미 사용 중인 닉네임을 거부한다', async () => {
     const users = userRepository();
     jest.mocked(users.existsByNickname).mockResolvedValue(true);

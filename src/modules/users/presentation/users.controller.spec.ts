@@ -6,6 +6,7 @@ import request from 'supertest';
 
 import { configureApp } from '../../../app.setup';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
+import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { ConsentService } from '../application/consent.service';
 import { MetadataService } from '../application/metadata.service';
 import { UserService } from '../application/user.service';
@@ -15,6 +16,7 @@ import { UserController } from './user.controller';
 
 describe('사용자 HTTP 계약', () => {
   let app: INestApplication;
+  let role: 'PENDING' | 'USER';
   const users = {
     verifyNickname: testMock(),
     join: testMock(),
@@ -32,12 +34,14 @@ describe('사용자 HTTP 계약', () => {
 
   beforeEach(async () => {
     jest.resetAllMocks();
+    role = 'USER';
     const moduleRef = await Test.createTestingModule({
       controllers: [UserController, ConsentController, MetadataController],
       providers: [
         { provide: UserService, useValue: users },
         { provide: ConsentService, useValue: consents },
         { provide: MetadataService, useValue: metadata },
+        RegisteredUserGuard,
       ],
     })
       .overrideGuard(AccessTokenGuard)
@@ -45,7 +49,7 @@ describe('사용자 HTTP 계약', () => {
         canActivate: (context: { switchToHttp(): { getRequest(): Record<string, unknown> } }) => {
           context.switchToHttp().getRequest().user = {
             userId: 7,
-            role: 'PENDING',
+            role,
             sessionId: 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f',
           };
           return true;
@@ -75,10 +79,22 @@ describe('사용자 HTTP 계약', () => {
       .expect(404);
   });
 
-  it('프로필 imgUrl 응답 키와 메타데이터 이름 계약을 보존한다', async () => {
+  it('공백뿐인 닉네임 검증 요청을 잘못된 요청으로 거부한다', async () => {
+    await request(app.getHttpServer())
+      .post('/api/users/nickname/verify')
+      .send({ nickname: '  ' })
+      .expect(400);
+    expect(users.verifyNickname).not.toHaveBeenCalled();
+  });
+
+  it('가입 전 사용자는 프로필을 조회할 수 없고 가입 완료 사용자는 기존 프로필 계약을 유지한다', async () => {
     users.profile.mockResolvedValue({ nickname: '모각러', job: '개발/데이터', imgUrl: null });
     metadata.jobs.mockResolvedValue([{ id: 1, name: '개발/데이터' }]);
 
+    role = 'PENDING';
+    await request(app.getHttpServer()).get('/api/users/profile').expect(403);
+
+    role = 'USER';
     await request(app.getHttpServer())
       .get('/api/users/profile')
       .expect(200)

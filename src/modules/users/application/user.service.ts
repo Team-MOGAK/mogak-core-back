@@ -4,6 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
+import { requiredTrimmed } from '../../../common/validation/required-text';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { TokenService } from '../../auth/infrastructure/token.service';
 import { ConsentService, type ConsentCommand } from './consent.service';
@@ -31,7 +32,7 @@ export class UserService {
   ) {}
 
   async verifyNickname(nickname: string): Promise<void> {
-    if (await this.users.existsByNickname(nickname)) {
+    if (await this.users.existsByNickname(requiredTrimmed(nickname))) {
       throw new AppException(AppErrorCode.INVALID_NICKNAME);
     }
   }
@@ -42,10 +43,13 @@ export class UserService {
     if (current.role !== 'PENDING' || user.role !== 'PENDING') {
       throw new AppException(AppErrorCode.USER_ALREADY_EXISTS);
     }
-    await this.verifyNickname(input.nickname);
+    const nickname = requiredTrimmed(input.nickname);
+    const jobName = requiredTrimmed(input.job);
+    const addressName = requiredTrimmed(input.address);
+    await this.verifyNickname(nickname);
     const [job, address] = await Promise.all([
-      this.users.findJobByName(input.job),
-      this.users.findAddressByName(input.address),
+      this.users.findJobByName(jobName),
+      this.users.findAddressByName(addressName),
     ]);
     if (job === null) throw new AppException(AppErrorCode.JOB_NOT_FOUND);
     if (address === null) throw new AppException(AppErrorCode.ADDRESS_NOT_FOUND);
@@ -62,7 +66,7 @@ export class UserService {
     try {
       const registered = await this.users.completeRegistration({
         userId: user.id,
-        nickname: input.nickname,
+        nickname,
         jobId: job.id,
         addressId: address.id,
         consents: input.consents,
@@ -97,9 +101,10 @@ export class UserService {
   }
 
   async updateNickname(userId: number, nickname: string): Promise<void> {
-    await this.verifyNickname(nickname);
+    const normalizedNickname = requiredTrimmed(nickname);
+    await this.verifyNickname(normalizedNickname);
     try {
-      if (!(await this.users.updateNickname(userId, nickname, new Date()))) {
+      if (!(await this.users.updateNickname(userId, normalizedNickname, new Date()))) {
         throw new AppException(AppErrorCode.USER_NOT_FOUND);
       }
     } catch (error: unknown) {
@@ -111,7 +116,7 @@ export class UserService {
   }
 
   async updateJob(userId: number, jobName: string): Promise<void> {
-    const job = await this.users.findJobByName(jobName);
+    const job = await this.users.findJobByName(requiredTrimmed(jobName));
     if (job === null) throw new AppException(AppErrorCode.JOB_NOT_FOUND);
     if (!(await this.users.updateJob(userId, job.id, new Date()))) {
       throw new AppException(AppErrorCode.USER_NOT_FOUND);

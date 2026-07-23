@@ -21,6 +21,7 @@ import {
   IsPositive,
   IsString,
   Length,
+  Matches,
   ValidateNested,
 } from 'class-validator';
 
@@ -28,11 +29,13 @@ import { successResponse } from '../../../common/http/api-response';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
+import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { UserService } from '../application/user.service';
 
 class NicknameRequest {
   @IsString()
   @IsNotEmpty()
+  @Matches(/\S/)
   @Length(2, 10)
   nickname!: string;
 }
@@ -40,6 +43,7 @@ class NicknameRequest {
 class JobRequest {
   @IsString()
   @IsNotEmpty()
+  @Matches(/\S/)
   @Length(1, 100)
   job!: string;
 }
@@ -56,16 +60,19 @@ class ConsentAgreementRequest {
 class JoinRequest {
   @IsString()
   @IsNotEmpty()
+  @Matches(/\S/)
   @Length(2, 10)
   nickname!: string;
 
   @IsString()
   @IsNotEmpty()
+  @Matches(/\S/)
   @Length(1, 100)
   job!: string;
 
   @IsString()
   @IsNotEmpty()
+  @Matches(/\S/)
   @Length(1, 100)
   address!: string;
 
@@ -101,13 +108,13 @@ export class UserController {
   }
 
   @Get('profile')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async profile(@CurrentUser() current: AuthenticatedUser) {
     return successResponse(await this.users.profile(current.userId));
   }
 
   @Put('profile/nickname')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateNickname(
     @CurrentUser() current: AuthenticatedUser,
     @Body() request: NicknameRequest,
@@ -117,14 +124,14 @@ export class UserController {
   }
 
   @Put('profile/job')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateJob(@CurrentUser() current: AuthenticatedUser, @Body() request: JobRequest) {
     await this.users.updateJob(current.userId, request.job);
     return successResponse({});
   }
 
   @Put('profile/image')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @UseInterceptors(FileInterceptor('multipartFile'))
   async updateProfileImage(
     @CurrentUser() current: AuthenticatedUser,

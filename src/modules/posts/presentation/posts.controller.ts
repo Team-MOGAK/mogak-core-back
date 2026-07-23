@@ -34,6 +34,7 @@ import { AppException } from '../../../common/http/app.exception';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
+import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { STORAGE_PORT, type StoragePort } from '../../storage/application/storage.port';
 import { PostsService } from '../application/posts.service';
 
@@ -94,7 +95,7 @@ export class PostsController {
   ) {}
 
   @Post('jogaks/:jogakId/posts')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @UseInterceptors(FilesInterceptor('multipartFile'))
   @HttpCode(HttpStatus.OK)
   async createPost(
@@ -118,7 +119,7 @@ export class PostsController {
   }
 
   @Get('mogaks/:mogakId/posts')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async listMogakPosts(
     @CurrentUser() user: AuthenticatedUser,
     @Param('mogakId') mogakId: string,
@@ -130,7 +131,7 @@ export class PostsController {
   }
 
   @Get('jogaks/:jogakId/posts')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async getPostByJogakAndDate(
     @CurrentUser() user: AuthenticatedUser,
     @Param('jogakId') jogakId: string,
@@ -142,13 +143,13 @@ export class PostsController {
   }
 
   @Get('posts/:postId')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async getPost(@CurrentUser() user: AuthenticatedUser, @Param('postId') postId: string) {
     return successResponse(await this.posts.getPost(user.userId, asSafeId(postId)));
   }
 
   @Put('posts/:postId')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updatePost(
     @CurrentUser() user: AuthenticatedUser,
     @Param('postId') postId: string,
@@ -163,14 +164,14 @@ export class PostsController {
   }
 
   @Delete('posts/:postId')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async deletePost(@CurrentUser() user: AuthenticatedUser, @Param('postId') postId: string) {
     await this.posts.deletePost(user.userId, asSafeId(postId));
     return successResponse({ deleted: true });
   }
 
   @Post('posts/:postId/comments')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @HttpCode(HttpStatus.OK)
   async createComment(
     @CurrentUser() user: AuthenticatedUser,
@@ -183,13 +184,13 @@ export class PostsController {
   }
 
   @Get('posts/:postId/comments')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async listComments(@Param('postId') postId: string) {
     return successResponse(await this.posts.listComments(asSafeId(postId)));
   }
 
   @Put('posts/:postId/comments/:commentId')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateComment(
     @CurrentUser() user: AuthenticatedUser,
     @Param('postId') postId: string,
@@ -207,7 +208,7 @@ export class PostsController {
   }
 
   @Delete('posts/:postId/comments/:commentId')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async deleteComment(
     @CurrentUser() user: AuthenticatedUser,
     @Param('postId') postId: string,
@@ -218,7 +219,7 @@ export class PostsController {
   }
 
   @Post('posts/like')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @HttpCode(HttpStatus.OK)
   async toggleLike(@CurrentUser() user: AuthenticatedUser, @Body() request: LikePostRequest) {
     return successResponse(await this.posts.toggleLike(user.userId, request.postId));

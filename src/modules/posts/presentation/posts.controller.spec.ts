@@ -10,6 +10,7 @@ import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
 import { STORAGE_PORT, type StoragePort } from '../../storage/application/storage.port';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
+import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { PostsService } from '../application/posts.service';
 import { PostsController } from './posts.controller';
 
@@ -37,6 +38,7 @@ describe('게시글 HTTP 계약', () => {
       providers: [
         { provide: PostsService, useValue: posts },
         { provide: STORAGE_PORT, useValue: storage },
+        RegisteredUserGuard,
       ],
     })
       .overrideGuard(AccessTokenGuard)

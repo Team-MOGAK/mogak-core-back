@@ -16,6 +16,7 @@ import {
 import { TokenService } from './infrastructure/token.service';
 import { AccessTokenGuard } from './presentation/access-token.guard';
 import { AuthController } from './presentation/auth.controller';
+import { RegisteredUserGuard } from './presentation/registered-user.guard';
 
 @Module({
   imports: [DatabaseModule],
@@ -47,7 +48,14 @@ import { AuthController } from './presentation/auth.controller';
     },
     AuthService,
     AccessTokenGuard,
+    RegisteredUserGuard,
   ],
-  exports: [TokenService, AuthSessionsRepository, AuthService, AccessTokenGuard],
+  exports: [
+    TokenService,
+    AuthSessionsRepository,
+    AuthService,
+    AccessTokenGuard,
+    RegisteredUserGuard,
+  ],
 })
 export class AuthModule {}

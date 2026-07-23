@@ -6,6 +6,7 @@ import request from 'supertest';
 
 import { configureApp } from '../../../app.setup';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
+import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { SocialService } from '../application/social.service';
 import { SocialController } from './social.controller';
 
@@ -25,7 +26,7 @@ describe('소셜 HTTP 계약', () => {
     jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
       controllers: [SocialController],
-      providers: [{ provide: SocialService, useValue: social }],
+      providers: [{ provide: SocialService, useValue: social }, RegisteredUserGuard],
     })
       .overrideGuard(AccessTokenGuard)
       .useValue({

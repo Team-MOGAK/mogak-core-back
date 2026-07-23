@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
+import { requiredTrimmed } from '../../../common/validation/required-text';
 import {
   MogaksRepository,
   type MogakRecord,
@@ -26,8 +27,8 @@ export class MogaksService {
   async createModarat(userId: number, input: ModaratInput): Promise<ModaratRecord> {
     return this.repository.createModarat({
       userId,
-      title: input.title.trim(),
-      color: input.color.trim(),
+      title: requiredTrimmed(input.title),
+      color: requiredTrimmed(input.color),
     });
   }
 
@@ -54,8 +55,8 @@ export class MogaksService {
     const updated = await this.repository.updateOwnedModarat({
       userId,
       modaratId,
-      title: input.title.trim(),
-      color: input.color.trim(),
+      title: requiredTrimmed(input.title),
+      color: requiredTrimmed(input.color),
       now: new Date(),
     });
     if (updated === null) throw new AppException(AppErrorCode.MODARAT_NOT_FOUND);
@@ -77,7 +78,7 @@ export class MogaksService {
     return toMogakResponse(
       await this.repository.createMogak({
         modaratId: input.modaratId,
-        title: input.title.trim(),
+        title: requiredTrimmed(input.title),
         color: optionalTrim(input.color) ?? null,
         categoryId: category.categoryId,
         customCategoryName: category.customCategoryName,
@@ -96,7 +97,7 @@ export class MogaksService {
     const updated = await this.repository.updateOwnedMogak({
       userId,
       mogakId,
-      title: input.title.trim(),
+      title: requiredTrimmed(input.title),
       color: optionalTrim(input.color) ?? null,
       categoryId: category.categoryId,
       customCategoryName: category.customCategoryName,

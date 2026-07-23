@@ -7,6 +7,7 @@ import { MogaksService } from './mogaks.service';
 
 function repository(): MogaksRepository {
   return {
+    createModarat: testMock(),
     findOwnedModarat: testMock(),
     countMogaks: testMock(),
     findActiveCategoryByCode: testMock(),
@@ -17,6 +18,16 @@ function repository(): MogaksRepository {
 }
 
 describe('모각 서비스', () => {
+  it('공백뿐인 모다랏 제목을 저장소 호출 전에 거부한다', async () => {
+    const mogaks = repository();
+    const service = new MogaksService(mogaks);
+
+    await expect(service.createModarat(7, { title: '   ', color: 'blue' })).rejects.toEqual(
+      new AppException(AppErrorCode.INVALID_PARAMETER),
+    );
+    expect(mogaks.createModarat).not.toHaveBeenCalled();
+  });
+
   it('활성화된 공식 카테고리 코드로 모각을 생성한다', async () => {
     const mogaks = repository();
     jest.mocked(mogaks.findOwnedModarat).mockResolvedValue({

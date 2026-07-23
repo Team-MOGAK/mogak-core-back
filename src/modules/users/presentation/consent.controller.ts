@@ -18,6 +18,7 @@ import { AppException } from '../../../common/http/app.exception';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
+import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { ConsentService } from '../application/consent.service';
 
 class ConsentAgreementRequest {
@@ -65,13 +66,13 @@ export class ConsentController {
   }
 
   @Get('users/marketing-consent')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async marketing(@CurrentUser() current: AuthenticatedUser) {
     return successResponse(await this.consents.getMarketing(current.userId));
   }
 
   @Put('users/consents')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @HttpCode(HttpStatus.OK)
   async update(
     @CurrentUser() current: AuthenticatedUser,
@@ -82,7 +83,7 @@ export class ConsentController {
   }
 
   @Patch('users/marketing-consent')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateMarketing(
     @CurrentUser() current: AuthenticatedUser,
     @Body() request: MarketingConsentPatchRequest,

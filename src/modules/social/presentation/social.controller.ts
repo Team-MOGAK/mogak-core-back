@@ -17,6 +17,7 @@ import { successResponse } from '../../../common/http/api-response';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
+import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { SocialService } from '../application/social.service';
 
 class PageQuery {
@@ -33,7 +34,7 @@ class NetworkQuery extends PageQuery {
 }
 
 @Controller('api')
-@UseGuards(AccessTokenGuard)
+@UseGuards(AccessTokenGuard, RegisteredUserGuard)
 export class SocialController {
   constructor(@Inject(SocialService) private readonly social: SocialService) {}
 

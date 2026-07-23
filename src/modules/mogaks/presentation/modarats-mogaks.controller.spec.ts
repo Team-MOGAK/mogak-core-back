@@ -6,6 +6,7 @@ import request from 'supertest';
 
 import { configureApp } from '../../../app.setup';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
+import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { MogaksService } from '../application/mogaks.service';
 import { MogaksMetadataController } from './mogaks-metadata.controller';
 import { ModaratsMogaksController } from './modarats-mogaks.controller';
@@ -29,7 +30,7 @@ describe('모다랏과 모각 HTTP 계약', () => {
     jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
       controllers: [ModaratsMogaksController, MogaksMetadataController],
-      providers: [{ provide: MogaksService, useValue: mogaks }],
+      providers: [{ provide: MogaksService, useValue: mogaks }, RegisteredUserGuard],
     })
       .overrideGuard(AccessTokenGuard)
       .useValue({
@@ -65,6 +66,14 @@ describe('모다랏과 모각 HTTP 계약', () => {
 
     await request(app.getHttpServer()).delete('/api/modarats/3').expect(200).expect('');
     expect(mogaks.deleteModarat).toHaveBeenCalledWith(7, 3);
+  });
+
+  it('공백뿐인 모다랏 제목을 잘못된 요청으로 거부한다', async () => {
+    await request(app.getHttpServer())
+      .post('/api/modarats')
+      .send({ title: '   ', color: 'blue' })
+      .expect(400);
+    expect(mogaks.createModarat).not.toHaveBeenCalled();
   });
 
   it('평면 카테고리 입력을 받고 서버 소유 카테고리 메타데이터를 반환한다', async () => {
