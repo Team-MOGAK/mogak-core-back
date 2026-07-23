@@ -17,6 +17,7 @@ function repository(): MogaksRepository {
     findExecution: vi.fn(),
     updateExecutionStatus: vi.fn(),
     updateOwnedJogakTitle: vi.fn(),
+    replaceOwnedJogakSchedule: vi.fn(),
     deleteOwnedJogak: vi.fn(),
   } as unknown as MogaksRepository;
 }
@@ -232,6 +233,39 @@ describe('JogaksService', () => {
 
     await expect(service.delete(7, 11)).rejects.toEqual(
       new AppException(AppErrorCode.JOGAK_NOT_FOUND),
+    );
+  });
+
+  it('replaces a future schedule without rewriting an existing execution snapshot', async () => {
+    const mogaks = repository();
+    vi.mocked(mogaks.replaceOwnedJogakSchedule).mockResolvedValue({
+      ...ownedJogak,
+      title: '수정된 문제 풀이',
+    });
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await expect(
+      service.update(7, 11, {
+        title: '수정된 문제 풀이',
+        schedule: {
+          scheduleType: 'WEEKLY',
+          effectiveFrom: '2026-07-24',
+          weekdays: ['THURSDAY', 'FRIDAY'],
+        },
+      }),
+    ).resolves.toMatchObject({ jogakId: 11, title: '수정된 문제 풀이' });
+    expect(mogaks.replaceOwnedJogakSchedule).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 7,
+        jogakId: 11,
+        title: '수정된 문제 풀이',
+        schedule: {
+          scheduleType: 'WEEKLY',
+          effectiveFrom: '2026-07-24',
+          effectiveTo: null,
+          weekdays: ['THURSDAY', 'FRIDAY'],
+        },
+      }),
     );
   });
 });

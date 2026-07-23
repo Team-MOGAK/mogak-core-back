@@ -147,6 +147,16 @@ export type InsertExecutionInput = Readonly<{
   jogakTitleSnapshot: string;
 }>;
 
+export type ReplaceOwnedJogakScheduleInput = Readonly<{
+  userId: number;
+  jogakId: number;
+  title: string;
+  schedule: SchedulePersistenceInput;
+  now: Date;
+}>;
+
+export type ReplaceOwnedJogakScheduleResult = OwnedJogakRecord | null | 'INVALID_EFFECTIVE_FROM';
+
 @Injectable()
 export class MogaksRepository {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
@@ -328,6 +338,69 @@ export class MogaksRepository {
       .where(and(eq(jogaks.id, jogakId), eq(jogaks.mogakId, owned.mogakId)))
       .returning({ id: jogaks.id });
     return deleted.length === 1;
+  }
+
+  async replaceOwnedJogakSchedule(
+    input: ReplaceOwnedJogakScheduleInput,
+  ): Promise<ReplaceOwnedJogakScheduleResult> {
+    const owned = await this.findOwnedJogak(input.userId, input.jogakId);
+    if (owned === null) return null;
+
+    return this.db.transaction(async (tx) => {
+      const activeSchedules = await tx
+        .select({
+          id: jogakSchedules.id,
+          effectiveFrom: jogakSchedules.effectiveFrom,
+        })
+        .from(jogakSchedules)
+        .where(
+          and(
+            eq(jogakSchedules.jogakId, input.jogakId),
+            lte(jogakSchedules.effectiveFrom, input.schedule.effectiveFrom),
+            or(
+              isNull(jogakSchedules.effectiveTo),
+              gte(jogakSchedules.effectiveTo, input.schedule.effectiveFrom),
+            ),
+          ),
+        );
+      const active = activeSchedules.sort((left, right) =>
+        right.effectiveFrom.localeCompare(left.effectiveFrom),
+      )[0];
+      if (active !== undefined && active.effectiveFrom >= input.schedule.effectiveFrom) {
+        return 'INVALID_EFFECTIVE_FROM';
+      }
+
+      if (active !== undefined) {
+        await tx
+          .update(jogakSchedules)
+          .set({ effectiveTo: previousDate(input.schedule.effectiveFrom) })
+          .where(eq(jogakSchedules.id, active.id));
+      }
+      await tx
+        .update(jogaks)
+        .set({ title: input.title, updatedAt: input.now })
+        .where(and(eq(jogaks.id, input.jogakId), eq(jogaks.mogakId, owned.mogakId)));
+      const [createdSchedule] = await tx
+        .insert(jogakSchedules)
+        .values({
+          jogakId: input.jogakId,
+          scheduleType: input.schedule.scheduleType,
+          effectiveFrom: input.schedule.effectiveFrom,
+          effectiveTo: input.schedule.effectiveTo,
+        })
+        .returning({ id: jogakSchedules.id });
+      if (createdSchedule === undefined)
+        throw new Error('Jogak schedule insert did not return a row');
+      if (input.schedule.weekdays.length > 0) {
+        await tx.insert(jogakScheduleWeekdays).values(
+          input.schedule.weekdays.map((weekday) => ({
+            scheduleId: createdSchedule.id,
+            weekday,
+          })),
+        );
+      }
+      return { ...owned, title: input.title };
+    });
   }
 
   async countJogaksWithCurrentOrFutureSchedule(mogakId: number, today: string): Promise<number> {
@@ -558,4 +631,10 @@ function asExecutionRecord(execution: {
     status: execution.status,
     jogakTitleSnapshot: execution.jogakTitleSnapshot,
   };
+}
+
+function previousDate(value: string): string {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - 1);
+  return date.toISOString().slice(0, 10);
 }

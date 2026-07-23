@@ -163,10 +163,24 @@ describe('Jogak HTTP contract', () => {
       .expect(({ body }) => expect(body.result).toEqual({ jogakId: 11, title: '문제 풀이' }));
     await request(app.getHttpServer())
       .put('/api/jogaks/11')
-      .send({ title: '수정된 문제 풀이' })
+      .send({
+        title: '수정된 문제 풀이',
+        schedule: {
+          scheduleType: 'WEEKLY',
+          effectiveFrom: '2026-07-24',
+          weekdays: ['THURSDAY', 'FRIDAY'],
+        },
+      })
       .expect(200)
       .expect(({ body }) => expect(body.result.title).toBe('수정된 문제 풀이'));
-    expect(jogaks.update).toHaveBeenCalledWith(7, 11, { title: '수정된 문제 풀이' });
+    expect(jogaks.update).toHaveBeenCalledWith(7, 11, {
+      title: '수정된 문제 풀이',
+      schedule: {
+        scheduleType: 'WEEKLY',
+        effectiveFrom: '2026-07-24',
+        weekdays: ['THURSDAY', 'FRIDAY'],
+      },
+    });
 
     await request(app.getHttpServer()).delete('/api/jogaks/11').expect(200);
     expect(jogaks.delete).toHaveBeenCalledWith(7, 11);

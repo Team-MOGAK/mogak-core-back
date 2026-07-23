@@ -136,13 +136,25 @@ export class JogaksService {
     };
   }
 
-  async update(userId: number, jogakId: number, input: Readonly<{ title: string }>) {
-    const updated = await this.repository.updateOwnedJogakTitle(
-      userId,
-      jogakId,
-      input.title.trim(),
-      new Date(),
-    );
+  async update(
+    userId: number,
+    jogakId: number,
+    input: Readonly<{ title: string; schedule?: ScheduleInput }>,
+  ) {
+    const title = input.title.trim();
+    const updated =
+      input.schedule === undefined
+        ? await this.repository.updateOwnedJogakTitle(userId, jogakId, title, new Date())
+        : await this.repository.replaceOwnedJogakSchedule({
+            userId,
+            jogakId,
+            title,
+            schedule: validateSchedule(input.schedule),
+            now: new Date(),
+          });
+    if (updated === 'INVALID_EFFECTIVE_FROM') {
+      throw new AppException(AppErrorCode.INVALID_SCHEDULE);
+    }
     if (updated === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
     return {
       jogakId: updated.id,

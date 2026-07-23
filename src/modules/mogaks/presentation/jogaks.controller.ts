@@ -107,6 +107,11 @@ class UpdateJogakRequest {
   @IsNotEmpty()
   @Length(1, 100)
   title!: string;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ScheduleRequest)
+  schedule?: ScheduleRequest;
 }
 
 @Controller('api')
@@ -173,7 +178,12 @@ export class JogaksController {
     @Body() request: UpdateJogakRequest,
   ) {
     return successResponse(
-      await this.jogaks.update(user.userId, asSafeId(jogakId), { title: request.title }),
+      await this.jogaks.update(user.userId, asSafeId(jogakId), {
+        title: request.title,
+        ...(request.schedule === undefined
+          ? {}
+          : { schedule: explicitScheduleFor(request.schedule) }),
+      }),
     );
   }
 
@@ -259,14 +269,7 @@ function scheduleFor(request: CreateJogakRequest) {
     ) {
       throw new AppException(AppErrorCode.INVALID_PARAMETER);
     }
-    return {
-      scheduleType: asScheduleType(request.schedule.scheduleType),
-      effectiveFrom: request.schedule.effectiveFrom,
-      ...(request.schedule.effectiveTo === undefined
-        ? {}
-        : { effectiveTo: request.schedule.effectiveTo }),
-      ...(request.schedule.weekdays === undefined ? {} : { weekdays: request.schedule.weekdays }),
-    };
+    return explicitScheduleFor(request.schedule);
   }
   if (request.isRoutine === undefined || request.today === undefined) {
     throw new AppException(AppErrorCode.INVALID_PARAMETER);
@@ -282,5 +285,14 @@ function scheduleFor(request: CreateJogakRequest) {
     effectiveFrom: request.today,
     ...(request.endDate === undefined ? {} : { effectiveTo: request.endDate }),
     ...(request.days === undefined ? {} : { weekdays: request.days }),
+  };
+}
+
+function explicitScheduleFor(request: ScheduleRequest) {
+  return {
+    scheduleType: asScheduleType(request.scheduleType),
+    effectiveFrom: request.effectiveFrom,
+    ...(request.effectiveTo === undefined ? {} : { effectiveTo: request.effectiveTo }),
+    ...(request.weekdays === undefined ? {} : { weekdays: request.weekdays }),
   };
 }
