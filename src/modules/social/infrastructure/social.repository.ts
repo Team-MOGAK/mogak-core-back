@@ -1,12 +1,42 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, eq } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
-import { follows, jobs, users } from '../../../database/schema';
+import {
+  addresses,
+  follows,
+  jobs,
+  postComments,
+  postImages,
+  postLikes,
+  posts,
+  users,
+} from '../../../database/schema';
 
 export type SocialUserRecord = Readonly<{ id: number }>;
 export type SocialUserSummary = Readonly<{ nickname: string | null; job: string | null }>;
+export type FeedPostRecord = Readonly<{
+  id: number;
+  authorId: number;
+  nickname: string | null;
+  job: string | null;
+  profileImageKey: string | null;
+  contents: string;
+  likeCount: number;
+  commentCount: number;
+}>;
+export type FeedImageRecord = Readonly<{ postId: number; storageKey: string }>;
+export type FeedCommentRecord = Readonly<{
+  id: number;
+  postId: number;
+  authorId: number;
+  nickname: string | null;
+  job: string | null;
+  profileImageKey: string | null;
+  contents: string;
+  createdAt: Date;
+}>;
 
 @Injectable()
 export class SocialRepository {
@@ -74,8 +104,97 @@ export class SocialRepository {
       .leftJoin(jobs, eq(users.jobId, jobs.id))
       .where(eq(follows.followerId, userId));
   }
+
+  async findAddressName(userId: number): Promise<string | null> {
+    const [row] = await this.db
+      .select({ name: addresses.name })
+      .from(users)
+      .leftJoin(addresses, eq(users.addressId, addresses.id))
+      .where(eq(users.id, userId));
+    return row?.name ?? null;
+  }
+
+  async listPacemakerPosts(input: Readonly<{ userId: number; limit: number; offset: number }>) {
+    return this.db
+      .select(feedProjection())
+      .from(posts)
+      .innerJoin(follows, eq(follows.followingId, posts.authorId))
+      .innerJoin(users, eq(posts.authorId, users.id))
+      .leftJoin(jobs, eq(users.jobId, jobs.id))
+      .where(eq(follows.followerId, input.userId))
+      .orderBy(desc(posts.createdAt), desc(posts.id))
+      .limit(input.limit)
+      .offset(input.offset);
+  }
+
+  async listNetworkPosts(
+    input: Readonly<{
+      address: string;
+      sort: 'createdAt' | 'likeCnt';
+      limit: number;
+      offset: number;
+    }>,
+  ) {
+    const projection = feedProjection();
+    const order =
+      input.sort === 'likeCnt'
+        ? [desc(projection.likeCount), desc(posts.id)]
+        : [desc(posts.createdAt), desc(posts.id)];
+    return this.db
+      .select(projection)
+      .from(posts)
+      .innerJoin(users, eq(posts.authorId, users.id))
+      .innerJoin(addresses, eq(users.addressId, addresses.id))
+      .leftJoin(jobs, eq(users.jobId, jobs.id))
+      .where(eq(addresses.name, input.address))
+      .orderBy(...order)
+      .limit(input.limit)
+      .offset(input.offset);
+  }
+
+  async listImages(postIds: readonly number[]): Promise<FeedImageRecord[]> {
+    if (postIds.length === 0) return [];
+    return this.db
+      .select({ postId: postImages.postId, storageKey: postImages.storageKey })
+      .from(postImages)
+      .where(inArray(postImages.postId, [...postIds]))
+      .orderBy(asc(postImages.position), asc(postImages.id));
+  }
+
+  async listComments(postIds: readonly number[]): Promise<FeedCommentRecord[]> {
+    if (postIds.length === 0) return [];
+    return this.db
+      .select({
+        id: postComments.id,
+        postId: postComments.postId,
+        authorId: postComments.authorId,
+        nickname: users.nickname,
+        job: jobs.name,
+        profileImageKey: users.profileImageKey,
+        contents: postComments.contents,
+        createdAt: postComments.createdAt,
+      })
+      .from(postComments)
+      .innerJoin(users, eq(postComments.authorId, users.id))
+      .leftJoin(jobs, eq(users.jobId, jobs.id))
+      .where(inArray(postComments.postId, [...postIds]))
+      .orderBy(asc(postComments.id));
+  }
 }
 
 function andFollow(input: Readonly<{ followerId: number; followingId: number }>) {
   return and(eq(follows.followerId, input.followerId), eq(follows.followingId, input.followingId));
+}
+
+function feedProjection() {
+  return {
+    id: posts.id,
+    authorId: posts.authorId,
+    nickname: users.nickname,
+    job: jobs.name,
+    profileImageKey: users.profileImageKey,
+    contents: posts.contents,
+    likeCount: sql<number>`(select count(*)::integer from ${postLikes} where ${postLikes.postId} = ${posts.id})`,
+    commentCount: sql<number>`(select count(*)::integer from ${postComments} where ${postComments.postId} = ${posts.id})`,
+  };
 }

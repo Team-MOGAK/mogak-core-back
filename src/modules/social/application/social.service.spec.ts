@@ -14,6 +14,11 @@ function repository(): SocialRepository {
     countMentors: vi.fn(),
     listMotos: vi.fn(),
     listMentors: vi.fn(),
+    findAddressName: vi.fn(),
+    listPacemakerPosts: vi.fn(),
+    listNetworkPosts: vi.fn(),
+    listImages: vi.fn(),
+    listComments: vi.fn(),
   } as unknown as SocialRepository;
 }
 
@@ -84,5 +89,52 @@ describe('SocialService follows', () => {
     await expect(service.listMentors('모각러')).resolves.toEqual([
       { nickname: '팔로잉', job: null },
     ]);
+  });
+
+  it('uses the authenticated address, derived counts, and nested author for network posts', async () => {
+    const social = repository();
+    vi.mocked(social.findAddressName).mockResolvedValue('서울');
+    vi.mocked(social.listNetworkPosts).mockResolvedValue([
+      {
+        id: 31,
+        authorId: 8,
+        nickname: '모각러',
+        job: '개발/데이터',
+        profileImageKey: null,
+        contents: '회고',
+        likeCount: 4,
+        commentCount: 2,
+      },
+    ]);
+    vi.mocked(social.listImages).mockResolvedValue([]);
+    vi.mocked(social.listComments).mockResolvedValue([]);
+    const service = new SocialService(social);
+
+    await expect(service.listNetworkPosts(7, 0, 10, 'likeCnt')).resolves.toMatchObject({
+      content: [
+        {
+          postId: 31,
+          author: { userId: 8, nickname: '모각러', profileImageUrl: null, job: '개발/데이터' },
+          likeCnt: 4,
+          commentCnt: 2,
+        },
+      ],
+    });
+    expect(social.listNetworkPosts).toHaveBeenCalledWith({
+      address: '서울',
+      sort: 'likeCnt',
+      limit: 11,
+      offset: 0,
+    });
+  });
+
+  it('rejects an unsupported network sort before querying posts', async () => {
+    const social = repository();
+    const service = new SocialService(social);
+
+    await expect(service.listNetworkPosts(7, 0, 10, 'viewCnt')).rejects.toEqual(
+      new AppException(AppErrorCode.INVALID_PARAMETER),
+    );
+    expect(social.listNetworkPosts).not.toHaveBeenCalled();
   });
 });
