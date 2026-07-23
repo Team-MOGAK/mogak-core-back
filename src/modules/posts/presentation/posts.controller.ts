@@ -31,6 +31,10 @@ import {
 import { successResponse } from '../../../common/http/api-response';
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
+import {
+  MAX_POST_IMAGE_COUNT,
+  postImageUploadOptions,
+} from '../../../common/http/image-upload.options';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
@@ -96,7 +100,7 @@ export class PostsController {
 
   @Post('jogaks/:jogakId/posts')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  @UseInterceptors(FilesInterceptor('multipartFile'))
+  @UseInterceptors(FilesInterceptor('multipartFile', MAX_POST_IMAGE_COUNT, postImageUploadOptions))
   @HttpCode(HttpStatus.OK)
   async createPost(
     @CurrentUser() user: AuthenticatedUser,

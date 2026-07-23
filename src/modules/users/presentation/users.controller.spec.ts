@@ -23,6 +23,7 @@ describe('사용자 HTTP 계약', () => {
     profile: testMock(),
     updateNickname: testMock(),
     updateJob: testMock(),
+    updateProfileImage: testMock(),
   };
   const consents = {
     listActive: testMock(),
@@ -113,5 +114,24 @@ describe('사용자 HTTP 계약', () => {
       .send({})
       .expect(400)
       .expect(({ body }) => expect(body.code).toBe('Z005'));
+  });
+
+  it('프로필 이미지는 이미지가 아니거나 5 MiB를 넘으면 서비스에 전달하지 않는다', async () => {
+    await request(app.getHttpServer())
+      .put('/api/users/profile/image')
+      .attach('multipartFile', Buffer.from('not an image'), {
+        filename: 'profile.txt',
+        contentType: 'text/plain',
+      })
+      .expect(400);
+    await request(app.getHttpServer())
+      .put('/api/users/profile/image')
+      .attach('multipartFile', Buffer.alloc(5 * 1024 * 1024 + 1), {
+        filename: 'large.png',
+        contentType: 'image/png',
+      })
+      .expect(400);
+
+    expect(users.updateProfileImage).not.toHaveBeenCalled();
   });
 });

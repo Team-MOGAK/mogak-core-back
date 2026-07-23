@@ -26,6 +26,7 @@ import {
 } from 'class-validator';
 
 import { successResponse } from '../../../common/http/api-response';
+import { profileImageUploadOptions } from '../../../common/http/image-upload.options';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
@@ -132,7 +133,7 @@ export class UserController {
 
   @Put('profile/image')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  @UseInterceptors(FileInterceptor('multipartFile'))
+  @UseInterceptors(FileInterceptor('multipartFile', profileImageUploadOptions))
   async updateProfileImage(
     @CurrentUser() current: AuthenticatedUser,
     @UploadedFile() file: Express.Multer.File | undefined,

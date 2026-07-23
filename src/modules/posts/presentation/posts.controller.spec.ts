@@ -141,6 +141,46 @@ describe('게시글 HTTP 계약', () => {
     expect(posts.createPost).toHaveBeenCalledTimes(1);
   });
 
+  it('게시글은 다섯 장을 초과하거나 5 MiB를 넘는 이미지를 서비스에 전달하지 않는다', async () => {
+    const image = Buffer.from('image');
+    let tooManyFiles = request(app.getHttpServer())
+      .post('/api/jogaks/11/posts')
+      .field('request', JSON.stringify({ targetDate: '2026-07-23', contents: '오늘 회고' }));
+    for (let index = 0; index < 6; index += 1) {
+      tooManyFiles = tooManyFiles.attach('multipartFile', image, {
+        filename: `post-${index}.png`,
+        contentType: 'image/png',
+      });
+    }
+
+    await tooManyFiles.expect(400);
+    await request(app.getHttpServer())
+      .post('/api/jogaks/11/posts')
+      .field('request', JSON.stringify({ targetDate: '2026-07-23', contents: '오늘 회고' }))
+      .attach('multipartFile', Buffer.alloc(5 * 1024 * 1024 + 1), {
+        filename: 'large.png',
+        contentType: 'image/png',
+      })
+      .expect(400);
+
+    expect(storage.uploadPostImages).not.toHaveBeenCalled();
+    expect(posts.createPost).not.toHaveBeenCalled();
+  });
+
+  it('게시글은 이미지가 아닌 multipart 파일을 서비스에 전달하지 않는다', async () => {
+    await request(app.getHttpServer())
+      .post('/api/jogaks/11/posts')
+      .field('request', JSON.stringify({ targetDate: '2026-07-23', contents: '오늘 회고' }))
+      .attach('multipartFile', Buffer.from('not an image'), {
+        filename: 'payload.txt',
+        contentType: 'text/plain',
+      })
+      .expect(400);
+
+    expect(storage.uploadPostImages).not.toHaveBeenCalled();
+    expect(posts.createPost).not.toHaveBeenCalled();
+  });
+
   it('승인된 중첩 댓글 작성자를 유지하며 댓글과 좋아요 경로를 유지한다', async () => {
     posts.listComments.mockResolvedValue({
       comments: [
