@@ -15,14 +15,12 @@
 
 ### 새 NestJS 저장소
 
-- 로컬: `/Users/hyunseok/IdeaProjects/mogak-core-back`
-- 원격: `https://github.com/Team-MOGAK/mogak-core-back`
-- 확인 당시 소스와 커밋이 없는 초기 저장소다.
+- 저장소: `https://github.com/Team-MOGAK/mogak-core-back`
+- 마이그레이션을 위한 신규 저장소다.
 
 ### 기존 Spring 저장소
 
-- 로컬: `/Users/hyunseok/IdeaProjects/MOGAK_Spring`
-- 원격: `https://github.com/Team-MOGAK/MOGAK_Spring`
+- 저장소: `https://github.com/Team-MOGAK/MOGAK_Spring`
 - 확인 브랜치: `feat/security-fail-closed`
 - 확인 커밋: `af41cad`
 
@@ -36,8 +34,6 @@
 - `src/main/java/com/mogak/spring/scheduler/Scheduler.java`
 - `docs/api`
 - `docs/operations`
-
-기존 저장소의 커밋되지 않은 문서나 로컬 파일은 마이그레이션 대상에 포함하지 않는다.
 
 ## 3. 마이그레이션 범위와 원칙
 
