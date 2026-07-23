@@ -43,7 +43,7 @@
 - Modify: `src/common/http/app-error-code.ts`
 - Modify: `src/common/http/app-error-code.spec.ts`
 
-- [ ] **Step 1: Write failing schema and error tests.**
+- [x] **Step 1: Write failing schema and error tests.**
 
   ```ts
   expect(follows.followerId.notNull).toBe(true);
@@ -53,13 +53,13 @@
   expect(AppErrorCode.FOLLOW_NOT_FOUND.code).toBe('F002');
   ```
 
-- [ ] **Step 2: Run the focused tests and verify RED.**
+- [x] **Step 2: Run the focused tests and verify RED.**
 
   Run: `pnpm test src/database/schema/social.spec.ts src/common/http/app-error-code.spec.ts`
 
   Expected: FAIL because the social table and error definitions do not exist.
 
-- [ ] **Step 3: Add the minimal schema and migration.**
+- [x] **Step 3: Add the minimal schema and migration.**
 
   ```ts
   export const follows = pgTable(
@@ -80,7 +80,7 @@
 
   Add `F001`/`F002` with the public Spring status, code, and Korean messages. Do not add a self-follow CHECK.
 
-- [ ] **Step 4: Verify GREEN and commit.**
+- [x] **Step 4: Verify GREEN and commit.**
 
   Run: `pnpm test src/database/schema/social.spec.ts src/common/http/app-error-code.spec.ts && pnpm db:generate && pnpm typecheck`
 
@@ -93,7 +93,7 @@
 - Create: `src/modules/social/application/social.service.ts`
 - Create: `src/modules/social/application/social.service.spec.ts`
 
-- [ ] **Step 1: Write failing service tests.**
+- [x] **Step 1: Write failing service tests.**
 
   ```ts
   it('keeps nickname as the follow input while storing only two user IDs', async () => {});
@@ -104,13 +104,13 @@
   it('returns relationship user summaries through explicit directions', async () => {});
   ```
 
-- [ ] **Step 2: Run the focused tests and verify RED.**
+- [x] **Step 2: Run the focused tests and verify RED.**
 
   Run: `pnpm test src/modules/social/application/social.service.spec.ts`
 
   Expected: FAIL because the service and repository do not exist.
 
-- [ ] **Step 3: Implement direct source-row DML.**
+- [x] **Step 3: Implement direct source-row DML.**
 
   Resolve `followingId` by nickname; map a missing user to `U001`; reject `followerId === followingId` with `Z005`.
 
@@ -125,7 +125,7 @@
 
   For delete, use `DELETE ... WHERE follower_id = ? AND following_id = ? RETURNING id`. Count motos with `following_id = target`, mentors with `follower_id = target`. List the two directions with a users/jobs join; do not store or update counts.
 
-- [ ] **Step 4: Verify GREEN and commit.**
+- [x] **Step 4: Verify GREEN and commit.**
 
   Run: `pnpm test src/modules/social/application/social.service.spec.ts && pnpm lint && pnpm typecheck`
 
