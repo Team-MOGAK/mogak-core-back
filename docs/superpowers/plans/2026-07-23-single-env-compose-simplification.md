@@ -73,7 +73,7 @@ DATABASE_URL=postgresql://invalid:invalid@127.0.0.1:1/other_test pnpm test:db
 
 Expected: the first command passes against `mogak_test`; the second fails with a connection error to port 1, demonstrating that the injected URL was not overwritten.
 
-- [ ] **Step 4: Commit the single-environment implementation**
+- [x] **Step 4: Commit the single-environment implementation**
 
 ```bash
 git add .gitignore vitest.db.config.ts .env.test.example
@@ -124,7 +124,7 @@ env -u DATABASE_URL pnpm test:db
 
 Expected: every command exits 0, the full suite has zero failures, and all PostgreSQL integration tests pass.
 
-- [ ] **Step 4: Commit final docs and verification state**
+- [x] **Step 4: Commit final docs and verification state**
 
 ```bash
 git add docs/migration/2026-07-23-nestjs-migration-handoff.md docs/superpowers/specs/2026-07-23-local-postgres-compose-design.md
