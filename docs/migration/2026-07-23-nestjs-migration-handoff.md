@@ -856,7 +856,9 @@ docker compose up -d postgres
 pnpm test:db
 ```
 
-앱은 `.env`의 `mogak_local` URL을 사용한다. 로컬 `test:db`는 같은 연결 정보에서 DB 이름만 `MOGAK_TEST_DB`의 `mogak_test`로 바꿔 사용한다. CI가 `DATABASE_URL`을 주입하면 그 URL을 그대로 사용한다. 첫 Compose 기동에서만 초기화 스크립트가 테스트 DB를 만든다. `docker compose down`은 두 DB가 든 named volume을 보존하며, `docker compose down -v`만 이를 삭제한다.
+앱은 `.env`의 `mogak_local` URL을 사용한다. 로컬 `test:db`는 같은 연결 정보에서 DB 이름만 고정된 `mogak_test`로 바꿔 사용한다. CI가 `DATABASE_URL`을 주입하면 그 URL을 그대로 사용한다. 첫 Compose 기동에서만 초기화 스크립트가 테스트 DB를 만든다. `docker compose down`은 두 DB가 든 named volume을 보존하며, `docker compose down -v`만 이를 삭제한다.
+
+`pnpm verify:local`은 Compose PostgreSQL을 준비한 뒤 포맷, 린트, 타입 검사, 빌드, migration, 일반·E2E·DB 테스트를 순서대로 실행한다. 마지막에는 `mogak_test`에 임시 `USER` 두 명과 활성 세션을 만들고, 빌드된 API를 임시 포트로 직접 기동한다. 인증 헤더, 경로·쿼리 파라미터, JSON 및 multipart 바디를 넣어 Modarat·Mogak·Jogak·실행 상태·게시글·댓글·좋아요·팔로우 흐름을 실제 HTTP로 검증한다. Apple·Google·Kakao에 실제로 요청하는 소셜 로그인은 포함하지 않는다. 생성한 사용자와 이 명령이 시작한 API 프로세스만 종료·삭제하며 Compose DB와 named volume은 유지한다.
 
 전용 `_test` PostgreSQL에서 Mogaks·Posts·Social 통합 테스트를 통과했다. 일정 수정의 후속 구간 비중첩도 통합 테스트로 검증한다.
 

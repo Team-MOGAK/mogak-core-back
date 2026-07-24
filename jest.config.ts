@@ -6,6 +6,7 @@ const config: Config = {
   testEnvironment: 'node',
   testMatch: ['<rootDir>/src/**/*.spec.ts', '<rootDir>/test/**/*.spec.ts'],
   testPathIgnorePatterns: ['<rootDir>/test/database/'],
+  modulePathIgnorePatterns: ['<rootDir>/.worktrees/'],
   setupFiles: ['<rootDir>/test/setup-env.ts'],
   restoreMocks: true,
 };
