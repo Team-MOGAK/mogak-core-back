@@ -2,13 +2,12 @@ services:
   postgres:
     image: postgres:17-alpine
     environment:
-      POSTGRES_DB: ${MOGAK_LOCAL_DB:-mogak_local}
-      POSTGRES_USER: ${MOGAK_DB_USER:-mogak}
-      POSTGRES_PASSWORD: ${MOGAK_DB_PASSWORD:?copy .env.example to .env and set MOGAK_DB_PASSWORD}
-      MOGAK_TEST_DB: ${MOGAK_TEST_DB:-mogak_test}
+      POSTGRES_DB: mogak_local
+      POSTGRES_USER: mogak
+      POSTGRES_PASSWORD: mogak
       TZ: Asia/Seoul
     ports:
-      - '${MOGAK_DB_PORT:-5436}:5432'
+      - '5436:5432'
     volumes:
       - mogak-postgres-data:/var/lib/postgresql/data
       - ./docker/postgres/init-databases.sh:/docker-entrypoint-initdb.d/01-create-test-database.sh:ro
