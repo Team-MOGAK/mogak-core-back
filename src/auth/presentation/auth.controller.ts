@@ -35,7 +35,7 @@ export class AuthController {
 
   @Post('login')
   @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 10, windowMs: 60_000 })
+  @RateLimit({ limit: 20, windowMs: 60_000 })
   @HttpCode(HttpStatus.OK)
   async loginApple(@Body() request: AppleLoginRequest) {
     return successResponse(await this.authService.login('APPLE', request.id_token));
@@ -43,7 +43,7 @@ export class AuthController {
 
   @Post(':provider/login')
   @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 10, windowMs: 60_000 })
+  @RateLimit({ limit: 20, windowMs: 60_000 })
   @HttpCode(HttpStatus.OK)
   async loginSocial(@Param() params: ProviderParam, @Body() request: SocialLoginRequest) {
     return successResponse(
@@ -53,7 +53,7 @@ export class AuthController {
 
   @Post('refresh')
   @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 10, windowMs: 60_000 })
+  @RateLimit({ limit: 60, windowMs: 60_000 })
   @HttpCode(HttpStatus.CREATED)
   async refresh(@Headers('refreshtoken') refreshToken: string | undefined) {
     return successResponse(await this.authService.refresh(requiredRefreshToken(refreshToken)));

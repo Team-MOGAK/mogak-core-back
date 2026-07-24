@@ -56,7 +56,7 @@ export class UserController {
 
   @Post('nickname/verify')
   @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 30, windowMs: 60_000 })
+  @RateLimit({ limit: 60, windowMs: 60_000 })
   @HttpCode(HttpStatus.OK)
   async verifyNickname(@Body() request: NicknameRequest) {
     await this.users.verifyNickname(request.nickname);

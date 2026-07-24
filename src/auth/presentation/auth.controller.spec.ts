@@ -95,7 +95,7 @@ describe('인증 HTTP 계약', () => {
     expect(authService.refresh).toHaveBeenCalledWith('current-refresh');
   });
 
-  it('같은 IP의 로그인과 토큰 갱신 요청은 분당 열 번째까지만 서비스에 전달한다', async () => {
+  it('같은 IP의 로그인은 분당 스무 번째, 토큰 갱신은 예순 번째까지만 서비스에 전달한다', async () => {
     authService.login.mockResolvedValue({
       isRegistered: false,
       userId: 7,
@@ -106,10 +106,14 @@ describe('인증 HTTP 계약', () => {
       refreshToken: 'next-refresh',
     });
 
-    for (let attempt = 0; attempt < 10; attempt += 1) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
       await request(app.getHttpServer())
         .post('/api/auth/login')
         .send({ id_token: 'apple-id-token' })
+        .expect(200);
+      await request(app.getHttpServer())
+        .post('/api/auth/google/login')
+        .send({ token: 'google-id-token' })
         .expect(200);
     }
     await request(app.getHttpServer())
@@ -117,8 +121,13 @@ describe('인증 HTTP 계약', () => {
       .send({ id_token: 'apple-id-token' })
       .expect(429)
       .expect(({ body }) => expect(body.code).toBe('Z007'));
+    await request(app.getHttpServer())
+      .post('/api/auth/google/login')
+      .send({ token: 'google-id-token' })
+      .expect(429)
+      .expect(({ body }) => expect(body.code).toBe('Z007'));
 
-    for (let attempt = 0; attempt < 10; attempt += 1) {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
       await request(app.getHttpServer())
         .post('/api/auth/refresh')
         .set('RefreshToken', 'current-refresh')
@@ -130,7 +139,7 @@ describe('인증 HTTP 계약', () => {
       .expect(429)
       .expect(({ body }) => expect(body.code).toBe('Z007'));
 
-    expect(authService.login).toHaveBeenCalledTimes(10);
-    expect(authService.refresh).toHaveBeenCalledTimes(10);
+    expect(authService.login).toHaveBeenCalledTimes(40);
+    expect(authService.refresh).toHaveBeenCalledTimes(60);
   });
 });
