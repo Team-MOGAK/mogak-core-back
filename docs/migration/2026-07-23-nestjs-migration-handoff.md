@@ -750,7 +750,7 @@ Google ID token은 `https://accounts.google.com`과 `accounts.google.com` issuer
 - `POST /api/auth/refresh`와 인증 없이 쓰는 `POST /api/users/nickname/verify`는 요청 IP별 분당 60회만 허용한다. 가입 전 공개 계약은 바꾸지 않는다.
 - 한도를 넘긴 요청은 서비스·외부 소셜 검증 호출 전에 표준 HTTP 429와 `{ "statusCode": 429, "message": "ThrottlerException: Too Many Requests" }`를 반환한다.
 - `@nestjs/throttler`는 거절한 요청에만 `rate_limit_rejected` warn 로그 한 건을 남긴다. 로그에는 HTTP method와 정적 route 패턴만 포함하며 IP, `X-Forwarded-For`, token, 헤더, body, query, 동적 경로 파라미터는 남기지 않는다.
-- 제한기는 인스턴스 메모리 상태이며 재시작 시 초기화되고 여러 Cloud Run 인스턴스 사이에는 공유되지 않는다. 다중 인스턴스에서 요청은 인스턴스별 버킷으로 분산된다. Express는 직접 노출한 Cloud Run 프록시 한 홉을 신뢰한다. 외부 HTTPS Load Balancer나 추가 프록시를 붙이면 배포 경로를 검증해 이 설정을 함께 조정한다.
+- 제한기는 인스턴스 메모리 상태이며 재시작 시 초기화되고 여러 Cloud Run 인스턴스 사이에는 공유되지 않는다. `BoundedThrottlerStorage`는 키별 만료를 독립 처리하고 만료 키를 제거하며 최대 10,000개 키로 제한한다. 상한에서는 만료 키를 먼저 비우고, 모두 활성 상태면 가장 오래 사용하지 않은 키 하나를 제거한다. 다중 인스턴스에서 요청은 인스턴스별 버킷으로 분산된다. Express는 직접 노출한 Cloud Run 프록시 한 홉을 신뢰한다. 외부 HTTPS Load Balancer나 추가 프록시를 붙이면 배포 경로를 검증해 이 설정을 함께 조정한다.
 - 게시글 이미지는 최대 5장, 프로필 이미지는 최대 1장이다. 각 파일은 5 MiB 이하이며 `image/jpeg`, `image/png`, `image/webp`만 허용한다. MIME은 Storage가 구현될 때 이미지 시그니처 검사와 저장소 측 제한으로 보강한다.
 
 ### token 정책

@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
 
+import { BoundedThrottlerStorage } from '../../common/http/bounded-throttler.storage';
 import { configureApp } from '../../app.setup';
 import { AuthService } from '../application/auth.service';
 import { AccessTokenGuard } from './access-token.guard';
@@ -23,7 +24,12 @@ describe('인증 HTTP 계약', () => {
   beforeEach(async () => {
     jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
-      imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 300 }] })],
+      imports: [
+        ThrottlerModule.forRoot({
+          storage: new BoundedThrottlerStorage(),
+          throttlers: [{ ttl: 60_000, limit: 300 }],
+        }),
+      ],
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: authService },

@@ -6,6 +6,7 @@ import { Test } from '@nestjs/testing';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
 
+import { BoundedThrottlerStorage } from '../../common/http/bounded-throttler.storage';
 import { configureApp } from '../../app.setup';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
@@ -39,7 +40,12 @@ describe('사용자 HTTP 계약', () => {
     jest.resetAllMocks();
     role = 'USER';
     const moduleRef = await Test.createTestingModule({
-      imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 300 }] })],
+      imports: [
+        ThrottlerModule.forRoot({
+          storage: new BoundedThrottlerStorage(),
+          throttlers: [{ ttl: 60_000, limit: 300 }],
+        }),
+      ],
       controllers: [UserController, ConsentController, MetadataController],
       providers: [
         { provide: UserService, useValue: users },

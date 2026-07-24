@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
+import { BoundedThrottlerStorage } from './common/http/bounded-throttler.storage';
 import { AppConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
@@ -15,7 +16,10 @@ import { UsersModule } from './users/users.module';
 @Module({
   imports: [
     AppConfigModule,
-    ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 300 }] }),
+    ThrottlerModule.forRoot({
+      storage: new BoundedThrottlerStorage(),
+      throttlers: [{ ttl: 60_000, limit: 300 }],
+    }),
     DatabaseModule,
     HealthModule,
     AuthModule,
