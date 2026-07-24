@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector as NestReflector } from '@nestjs/core';
 import type { Reflector } from '@nestjs/core';
@@ -16,6 +16,8 @@ type RateLimitedRequest = {
 
 @Injectable()
 export class RateLimitGuard implements CanActivate {
+  private readonly logger = new Logger(RateLimitGuard.name);
+
   constructor(
     @Inject(NestReflector)
     private readonly reflector: Reflector,
@@ -33,8 +35,15 @@ export class RateLimitGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<RateLimitedRequest>();
-    const key = `${context.getHandler().name}:${request.ip ?? 'unknown'}`;
+    const handler = context.getHandler().name;
+    const key = `${handler}:${request.ip ?? 'unknown'}`;
     if (!this.limiter.consume(key, policy)) {
+      this.logger.warn({
+        event: 'rate_limit_rejected',
+        handler,
+        limit: policy.limit,
+        windowMs: policy.windowMs,
+      });
       throw new AppException(AppErrorCode.TOO_MANY_REQUESTS);
     }
     return true;
