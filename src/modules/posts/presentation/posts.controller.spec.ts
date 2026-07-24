@@ -88,6 +88,21 @@ describe('게시글 HTTP 계약', () => {
     });
   });
 
+  it('게시글 JSON과 multipart request의 잘못된 입력을 Z005로 거부한다', async () => {
+    await request(app.getHttpServer())
+      .post('/api/jogaks/11/posts')
+      .send({ targetDate: '2026-07-23', contents: '회고', unexpected: true })
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+    await request(app.getHttpServer())
+      .post('/api/jogaks/11/posts')
+      .field('request', '{')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+
+    expect(posts.createPost).not.toHaveBeenCalled();
+  });
+
   it('필수 size만 주어지면 모각 피드 페이지를 0으로 기본 설정한다', async () => {
     posts.listMogakPosts.mockResolvedValue({
       content: [],

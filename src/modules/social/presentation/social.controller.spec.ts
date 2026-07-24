@@ -78,4 +78,15 @@ describe('소셜 HTTP 계약', () => {
     await request(app.getHttpServer()).post('/api/posts/31/like').expect(404);
     expect(social.listPacemakerPosts).toHaveBeenCalledWith(7, 0, 10);
   });
+
+  it('소셜 목록 Query의 잘못된 숫자를 Z005로 거부한다', async () => {
+    await request(app.getHttpServer())
+      .get('/api/posts?size=0')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+    await request(app.getHttpServer())
+      .get('/api/posts/pacemakers?cursor=not-a-number&size=10')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+  });
 });

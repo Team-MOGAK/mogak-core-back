@@ -10,8 +10,8 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsPositive, IsString, Min } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
 
 import { successResponse } from '../../../common/http/api-response';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
@@ -20,18 +20,31 @@ import { CurrentUser } from '../../auth/presentation/current-user.decorator';
 import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { SocialService } from '../application/social.service';
 
-class PageQuery {
-  @IsOptional() @Type(() => Number) @IsInt() @Min(0) page = 0;
-  @Type(() => Number) @IsInt() @IsPositive() size!: number;
-}
-class PacemakerQuery {
-  @Type(() => Number) @IsInt() @Min(0) cursor!: number;
-  @Type(() => Number) @IsInt() @IsPositive() size!: number;
-}
-class NetworkQuery extends PageQuery {
-  @IsOptional() @IsIn(['createdAt', 'likeCnt']) sort = 'createdAt';
-  @IsOptional() @IsString() address?: string;
-}
+const positiveSafeIntegerSchema = z.coerce
+  .number()
+  .int()
+  .positive()
+  .refine(Number.isSafeInteger);
+
+class NicknameParam extends createZodDto(z.object({ nickname: z.string().min(1) }).strict()) {}
+class PacemakerQuery extends createZodDto(
+  z
+    .object({
+      cursor: z.coerce.number().int().min(0),
+      size: positiveSafeIntegerSchema,
+    })
+    .strict(),
+) {}
+class NetworkQuery extends createZodDto(
+  z
+    .object({
+      page: z.coerce.number().int().min(0).default(0),
+      size: positiveSafeIntegerSchema,
+      sort: z.enum(['createdAt', 'likeCnt']).default('createdAt'),
+      address: z.string().optional(),
+    })
+    .strict(),
+) {}
 
 @Controller('api')
 @UseGuards(AccessTokenGuard, RegisteredUserGuard)
@@ -40,26 +53,26 @@ export class SocialController {
 
   @Post('users/follows/:nickname')
   @HttpCode(HttpStatus.OK)
-  async follow(@CurrentUser() user: AuthenticatedUser, @Param('nickname') nickname: string) {
-    await this.social.follow(user.userId, nickname);
+  async follow(@CurrentUser() user: AuthenticatedUser, @Param() params: NicknameParam) {
+    await this.social.follow(user.userId, params.nickname);
     return successResponse('SUCCESS');
   }
   @Delete('users/follows/:nickname')
-  async unfollow(@CurrentUser() user: AuthenticatedUser, @Param('nickname') nickname: string) {
-    await this.social.unfollow(user.userId, nickname);
+  async unfollow(@CurrentUser() user: AuthenticatedUser, @Param() params: NicknameParam) {
+    await this.social.unfollow(user.userId, params.nickname);
     return successResponse('SUCCESS');
   }
   @Get('users/follows/counts/:nickname')
-  async counts(@Param('nickname') nickname: string) {
-    return successResponse(await this.social.getFollowCounts(nickname));
+  async counts(@Param() params: NicknameParam) {
+    return successResponse(await this.social.getFollowCounts(params.nickname));
   }
   @Get('users/follows/:nickname/motos')
-  async motos(@Param('nickname') nickname: string) {
-    return successResponse(await this.social.listMotos(nickname));
+  async motos(@Param() params: NicknameParam) {
+    return successResponse(await this.social.listMotos(params.nickname));
   }
   @Get('users/follows/:nickname/mentors')
-  async mentors(@Param('nickname') nickname: string) {
-    return successResponse(await this.social.listMentors(nickname));
+  async mentors(@Param() params: NicknameParam) {
+    return successResponse(await this.social.listMentors(params.nickname));
   }
   @Get('posts/pacemakers')
   async pacemakers(@CurrentUser() user: AuthenticatedUser, @Query() query: PacemakerQuery) {
