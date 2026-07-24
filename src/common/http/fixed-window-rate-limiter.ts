@@ -1,3 +1,5 @@
+import { Injectable } from '@nestjs/common';
+
 export type RateLimitPolicy = Readonly<{
   limit: number;
   windowMs: number;
@@ -49,4 +51,3 @@ export class FixedWindowRateLimiter {
     }
   }
 }
-import { Injectable } from '@nestjs/common';
