@@ -745,10 +745,11 @@ Google ID token은 `https://accounts.google.com`과 `accounts.google.com` issuer
 
 ### 요청 폭주와 업로드 경계
 
-- `POST /api/auth/login`, `POST /api/auth/{provider}/login`, `POST /api/auth/refresh`는 요청 IP별 분당 10회만 허용한다.
-- 인증 없이 쓰는 `POST /api/users/nickname/verify`는 요청 IP별 분당 30회만 허용한다. 가입 전 공개 계약은 바꾸지 않는다.
+- `POST /api/auth/login`, `POST /api/auth/{provider}/login`은 요청 IP별 분당 20회만 허용한다.
+- `POST /api/auth/refresh`와 인증 없이 쓰는 `POST /api/users/nickname/verify`는 요청 IP별 분당 60회만 허용한다. 가입 전 공개 계약은 바꾸지 않는다.
 - 한도를 넘긴 요청은 서비스·외부 소셜 검증 호출 전에 `429 Z007`을 반환한다.
-- 제한기는 인스턴스 메모리의 고정 윈도우이며 버킷을 최대 10,000개로 제한한다. 재시작 시 초기화되고 여러 Cloud Run 인스턴스 사이에는 공유되지 않는다. 다중 인스턴스에서 전역 제한이 필요해지면 Redis 또는 API Gateway 제한기로 교체한다.
+- Nest limiter는 거절한 요청에만 `rate_limit_rejected` warn 로그 한 건을 남긴다. 로그에는 handler, limit, windowMs만 포함하며 IP, token, 헤더, body, query는 남기지 않는다.
+- 제한기는 인스턴스 메모리의 고정 윈도우이며 버킷을 최대 10,000개로 제한한다. 재시작 시 초기화되고 여러 Cloud Run 인스턴스 사이에는 공유되지 않는다. 다중 인스턴스에서 전역 제한이 필요해지면 Redis 기반 limiter를 별도 설계한다.
 - 게시글 이미지는 최대 5장, 프로필 이미지는 최대 1장이다. 각 파일은 5 MiB 이하이며 `image/jpeg`, `image/png`, `image/webp`만 허용한다. MIME은 Storage가 구현될 때 이미지 시그니처 검사와 저장소 측 제한으로 보강한다.
 
 ### token 정책
@@ -903,7 +904,7 @@ pnpm test:db
 - 런타임 `PORT`를 사용한다.
 - health endpoint만 외부 운영 점검에 필요한 범위로 노출한다.
 - 매칭되지 않은 보안 경로는 fail-closed로 처리한다.
-- 현재 요청 제한은 인스턴스별 메모리 상태다. Cloud Run을 다중 인스턴스로 확장할 때 전역 rate limit은 Gateway 또는 Redis 계층에서 별도 적용한다.
+- 현재 요청 제한은 인스턴스별 메모리 상태다. Cloud Run을 다중 인스턴스로 확장하면 요청은 인스턴스별 버킷으로 분산되므로 정책값의 최대 인스턴스 수 배까지 통과할 수 있다. 이는 재시도 방지용 보조 limiter로 의도적으로 허용하며, 전역 rate limit이 필요해지면 Redis 기반 구현을 별도 설계한다.
 - 핵심 비즈니스 로직을 Supabase Cron이나 Edge Function에 종속시키지 않는다.
 - DailyJogak 생성용 Cloud Scheduler 작업은 만들지 않는다.
 
