@@ -64,6 +64,16 @@ describe('인증 HTTP 계약', () => {
     expect(authService.login).toHaveBeenCalledWith('APPLE', 'apple-id-token');
   });
 
+  it('정의되지 않은 인증 필드와 빈 토큰을 Z005로 거부한다', async () => {
+    await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ id_token: '', unexpected: true })
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+
+    expect(authService.login).not.toHaveBeenCalled();
+  });
+
   it('리프레시 토큰 헤더와 기존 201 성공 응답 조합을 유지한다', async () => {
     authService.refresh.mockResolvedValue({
       accessToken: 'next-access',

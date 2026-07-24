@@ -9,7 +9,8 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { IsNotEmpty, IsString } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
 
 import { successResponse } from '../../../common/http/api-response';
 import { AppErrorCode } from '../../../common/http/app-error-code';
@@ -22,17 +23,11 @@ import { AccessTokenGuard } from './access-token.guard';
 import { CurrentUser } from './current-user.decorator';
 import type { AuthenticatedUser } from '../domain/authenticated-user';
 
-class AppleLoginRequest {
-  @IsString()
-  @IsNotEmpty()
-  id_token!: string;
-}
+class AppleLoginRequest extends createZodDto(z.object({ id_token: z.string().min(1) }).strict()) {}
 
-class SocialLoginRequest {
-  @IsString()
-  @IsNotEmpty()
-  token!: string;
-}
+class SocialLoginRequest extends createZodDto(z.object({ token: z.string().min(1) }).strict()) {}
+
+class ProviderParam extends createZodDto(z.object({ provider: z.string().min(1) }).strict()) {}
 
 @Controller('api/auth')
 export class AuthController {
@@ -50,9 +45,9 @@ export class AuthController {
   @UseGuards(RateLimitGuard)
   @RateLimit({ limit: 10, windowMs: 60_000 })
   @HttpCode(HttpStatus.OK)
-  async loginSocial(@Param('provider') provider: string, @Body() request: SocialLoginRequest) {
+  async loginSocial(@Param() params: ProviderParam, @Body() request: SocialLoginRequest) {
     return successResponse(
-      await this.authService.login(parseSocialProvider(provider), request.token),
+      await this.authService.login(parseSocialProvider(params.provider), request.token),
     );
   }
 

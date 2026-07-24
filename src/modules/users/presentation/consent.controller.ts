@@ -9,8 +9,8 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsPositive, ValidateNested } from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
 
 import { successResponse } from '../../../common/http/api-response';
 import { AppErrorCode } from '../../../common/http/app-error-code';
@@ -21,31 +21,26 @@ import { CurrentUser } from '../../auth/presentation/current-user.decorator';
 import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { ConsentService } from '../application/consent.service';
 
-class ConsentAgreementRequest {
-  @IsInt()
-  @IsPositive()
-  consentItemId!: number;
+const consentAgreementSchema = z
+  .object({
+    consentItemId: z.number().int().positive(),
+    agreed: z.boolean(),
+  })
+  .strict();
 
-  @IsBoolean()
-  agreed!: boolean;
-}
+class UserConsentUpdateRequest extends createZodDto(
+  z.object({ consents: z.array(consentAgreementSchema).optional() }).strict(),
+) {}
 
-class UserConsentUpdateRequest {
-  @IsOptional()
-  @ValidateNested({ each: true })
-  @Type(() => ConsentAgreementRequest)
-  consents?: ConsentAgreementRequest[];
-}
-
-class MarketingConsentPatchRequest {
-  @IsOptional()
-  @IsBoolean()
-  marketingAgreed?: boolean;
-
-  @IsOptional()
-  @IsBoolean()
-  advertisementAgreed?: boolean;
-}
+class MarketingConsentPatchRequest extends createZodDto(
+  z
+    .object({
+      marketingAgreed: z.boolean().optional(),
+      advertisementAgreed: z.boolean().optional(),
+    })
+    .strict()
+    .refine((value) => value.marketingAgreed !== undefined || value.advertisementAgreed !== undefined),
+) {}
 
 @Controller('api')
 export class ConsentController {

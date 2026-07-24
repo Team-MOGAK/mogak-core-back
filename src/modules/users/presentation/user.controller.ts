@@ -12,78 +12,43 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Type } from 'class-transformer';
-import {
-  IsBoolean,
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsPositive,
-  IsString,
-  Length,
-  Matches,
-  ValidateNested,
-} from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
 
 import { successResponse } from '../../../common/http/api-response';
 import { profileImageUploadOptions } from '../../../common/http/image-upload.options';
 import { RateLimit } from '../../../common/http/rate-limit.decorator';
 import { RateLimitGuard } from '../../../common/http/rate-limit.guard';
+import { requiredTextSchema } from '../../../common/validation/request-schema';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
 import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { UserService } from '../application/user.service';
 
-class NicknameRequest {
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/\S/)
-  @Length(2, 10)
-  nickname!: string;
-}
+const consentAgreementSchema = z
+  .object({
+    consentItemId: z.number().int().positive(),
+    agreed: z.boolean(),
+  })
+  .strict();
 
-class JobRequest {
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/\S/)
-  @Length(1, 100)
-  job!: string;
-}
+class NicknameRequest extends createZodDto(
+  z.object({ nickname: requiredTextSchema(2, 10) }).strict(),
+) {}
 
-class ConsentAgreementRequest {
-  @IsInt()
-  @IsPositive()
-  consentItemId!: number;
+class JobRequest extends createZodDto(z.object({ job: requiredTextSchema(1, 100) }).strict()) {}
 
-  @IsBoolean()
-  agreed!: boolean;
-}
-
-class JoinRequest {
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/\S/)
-  @Length(2, 10)
-  nickname!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/\S/)
-  @Length(1, 100)
-  job!: string;
-
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/\S/)
-  @Length(1, 100)
-  address!: string;
-
-  @IsOptional()
-  @ValidateNested({ each: true })
-  @Type(() => ConsentAgreementRequest)
-  consents?: ConsentAgreementRequest[];
-}
+class JoinRequest extends createZodDto(
+  z
+    .object({
+      nickname: requiredTextSchema(2, 10),
+      job: requiredTextSchema(1, 100),
+      address: requiredTextSchema(1, 100),
+      consents: z.array(consentAgreementSchema).optional(),
+    })
+    .strict(),
+) {}
 
 @Controller('api/users')
 export class UserController {

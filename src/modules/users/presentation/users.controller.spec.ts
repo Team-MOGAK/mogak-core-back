@@ -92,6 +92,22 @@ describe('사용자 HTTP 계약', () => {
     expect(users.verifyNickname).not.toHaveBeenCalled();
   });
 
+  it('정의되지 않은 필드와 잘못된 동의 항목 타입을 Z005로 거부한다', async () => {
+    await request(app.getHttpServer())
+      .post('/api/users/join')
+      .send({
+        nickname: '모각러',
+        job: '개발',
+        address: '서울',
+        consents: [{ consentItemId: '1', agreed: true }],
+        unexpected: true,
+      })
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+
+    expect(users.join).not.toHaveBeenCalled();
+  });
+
   it('같은 IP의 닉네임 검증 요청은 분당 서른 번째까지만 서비스에 전달한다', async () => {
     users.verifyNickname.mockResolvedValue(undefined);
 
