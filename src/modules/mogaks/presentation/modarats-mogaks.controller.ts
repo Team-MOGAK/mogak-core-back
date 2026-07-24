@@ -11,90 +11,52 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { Type } from 'class-transformer';
-import {
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsPositive,
-  IsString,
-  Length,
-  Matches,
-} from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
+import { z } from 'zod';
 
 import { successResponse } from '../../../common/http/api-response';
-import { AppErrorCode } from '../../../common/http/app-error-code';
-import { AppException } from '../../../common/http/app.exception';
+import { positiveIdSchema, requiredTextSchema } from '../../../common/validation/request-schema';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
 import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { MogaksService } from '../application/mogaks.service';
 
-class ModaratRequest {
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/\S/)
-  @Length(1, 100)
-  title!: string;
+class ModaratRequest extends createZodDto(
+  z
+    .object({
+      title: requiredTextSchema(1, 100),
+      color: requiredTextSchema(1, 100),
+    })
+    .strict(),
+) {}
 
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/\S/)
-  @Length(1, 100)
-  color!: string;
-}
+class MogakRequest extends createZodDto(
+  z
+    .object({
+      modaratId: positiveIdSchema,
+      title: requiredTextSchema(1, 100),
+      categoryCode: z.string().min(1).max(100).optional(),
+      customCategoryName: z.string().min(1).max(200).optional(),
+      color: z.string().min(4).max(10).optional(),
+    })
+    .strict(),
+) {}
 
-class MogakRequest {
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  modaratId!: number;
+class MogakUpdateRequest extends createZodDto(
+  z
+    .object({
+      title: requiredTextSchema(1, 100),
+      categoryCode: z.string().min(1).max(100).optional(),
+      customCategoryName: z.string().min(1).max(200).optional(),
+      color: z.string().min(4).max(10).optional(),
+    })
+    .strict(),
+) {}
 
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/\S/)
-  @Length(1, 100)
-  title!: string;
+class ModaratIdParam extends createZodDto(z.object({ modaratId: positiveIdSchema }).strict()) {}
 
-  @IsOptional()
-  @IsString()
-  @Length(1, 100)
-  categoryCode?: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(1, 200)
-  customCategoryName?: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(4, 10)
-  color?: string;
-}
-
-class MogakUpdateRequest {
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/\S/)
-  @Length(1, 100)
-  title!: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(1, 100)
-  categoryCode?: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(1, 200)
-  customCategoryName?: string;
-
-  @IsOptional()
-  @IsString()
-  @Length(4, 10)
-  color?: string;
-}
+class MogakIdParam extends createZodDto(z.object({ mogakId: positiveIdSchema }).strict()) {}
 
 @Controller('api')
 export class ModaratsMogaksController {
@@ -118,19 +80,19 @@ export class ModaratsMogaksController {
 
   @Get('modarats/:modaratId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async getModarat(@CurrentUser() user: AuthenticatedUser, @Param('modaratId') modaratId: string) {
-    return successResponse(await this.mogaks.getModarat(user.userId, asSafeId(modaratId)));
+  async getModarat(@CurrentUser() user: AuthenticatedUser, @Param() params: ModaratIdParam) {
+    return successResponse(await this.mogaks.getModarat(user.userId, params.modaratId));
   }
 
   @Put('modarats/:modaratId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateModarat(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('modaratId') modaratId: string,
+    @Param() params: ModaratIdParam,
     @Body() request: ModaratRequest,
   ) {
     return successResponse(
-      await this.mogaks.updateModarat(user.userId, asSafeId(modaratId), {
+      await this.mogaks.updateModarat(user.userId, params.modaratId, {
         title: request.title,
         color: request.color,
       }),
@@ -142,9 +104,9 @@ export class ModaratsMogaksController {
   @HttpCode(HttpStatus.OK)
   async deleteModarat(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('modaratId') modaratId: string,
+    @Param() params: ModaratIdParam,
   ) {
-    await this.mogaks.deleteModarat(user.userId, asSafeId(modaratId));
+    await this.mogaks.deleteModarat(user.userId, params.modaratId);
   }
 
   @Post('mogaks')
@@ -167,19 +129,19 @@ export class ModaratsMogaksController {
 
   @Get('modarats/:modaratId/mogaks')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async listMogaks(@CurrentUser() user: AuthenticatedUser, @Param('modaratId') modaratId: string) {
-    return successResponse(await this.mogaks.listMogaks(user.userId, asSafeId(modaratId)));
+  async listMogaks(@CurrentUser() user: AuthenticatedUser, @Param() params: ModaratIdParam) {
+    return successResponse(await this.mogaks.listMogaks(user.userId, params.modaratId));
   }
 
   @Put('mogaks/:mogakId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateMogak(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('mogakId') mogakId: string,
+    @Param() params: MogakIdParam,
     @Body() request: MogakUpdateRequest,
   ) {
     return successResponse(
-      await this.mogaks.updateMogak(user.userId, asSafeId(mogakId), {
+      await this.mogaks.updateMogak(user.userId, params.mogakId, {
         title: request.title,
         ...(request.categoryCode === undefined ? {} : { categoryCode: request.categoryCode }),
         ...(request.customCategoryName === undefined
@@ -192,16 +154,8 @@ export class ModaratsMogaksController {
 
   @Delete('mogaks/:mogakId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async deleteMogak(@CurrentUser() user: AuthenticatedUser, @Param('mogakId') mogakId: string) {
-    await this.mogaks.deleteMogak(user.userId, asSafeId(mogakId));
+  async deleteMogak(@CurrentUser() user: AuthenticatedUser, @Param() params: MogakIdParam) {
+    await this.mogaks.deleteMogak(user.userId, params.mogakId);
     return successResponse({});
   }
-}
-
-function asSafeId(value: string): number {
-  const id = Number(value);
-  if (!Number.isSafeInteger(id) || id <= 0) {
-    throw new AppException(AppErrorCode.INVALID_PARAMETER);
-  }
-  return id;
 }

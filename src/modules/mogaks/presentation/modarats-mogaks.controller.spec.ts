@@ -76,6 +76,21 @@ describe('모다랏과 모각 HTTP 계약', () => {
     expect(mogaks.createModarat).not.toHaveBeenCalled();
   });
 
+  it('정의되지 않은 모각 필드와 잘못된 path ID를 Z005로 거부한다', async () => {
+    await request(app.getHttpServer())
+      .post('/api/mogaks')
+      .send({ modaratId: 3, title: '정보처리기사', unexpected: true })
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+    await request(app.getHttpServer())
+      .get('/api/modarats/not-a-number')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+
+    expect(mogaks.createMogak).not.toHaveBeenCalled();
+    expect(mogaks.getModarat).not.toHaveBeenCalled();
+  });
+
   it('평면 카테고리 입력을 받고 서버 소유 카테고리 메타데이터를 반환한다', async () => {
     mogaks.createMogak.mockResolvedValue({
       id: 9,

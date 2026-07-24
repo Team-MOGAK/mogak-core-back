@@ -1,4 +1,3 @@
-import { Type } from 'class-transformer';
 import {
   Body,
   Controller,
@@ -14,24 +13,18 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import {
-  IsArray,
-  IsBoolean,
-  IsDateString,
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsPositive,
-  IsString,
-  Length,
-  Matches,
-  ValidateNested,
-} from 'class-validator';
+import { createZodDto } from 'nestjs-zod';
 import type { Response } from 'express';
+import { z } from 'zod';
 
 import { successResponse } from '../../../common/http/api-response';
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { AppException } from '../../../common/http/app.exception';
+import {
+  calendarDateSchema,
+  positiveIdSchema,
+  requiredTextSchema,
+} from '../../../common/validation/request-schema';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
@@ -39,84 +32,53 @@ import { RegisteredUserGuard } from '../../auth/presentation/registered-user.gua
 import { JogaksService } from '../application/jogaks.service';
 import type { StoredExecutionStatus } from '../domain/occurrence';
 
-class DateQuery {
-  @IsDateString()
-  date!: string;
-}
+const scheduleSchema = z
+  .object({
+    scheduleType: z.string().min(1),
+    effectiveFrom: calendarDateSchema,
+    effectiveTo: calendarDateSchema.optional(),
+    weekdays: z.array(z.string()).optional(),
+  })
+  .strict();
 
-class DateRangeQuery {
-  @IsDateString()
-  startDay!: string;
+type ScheduleRequest = z.infer<typeof scheduleSchema>;
 
-  @IsDateString()
-  endDay!: string;
-}
+class DateQuery extends createZodDto(z.object({ date: calendarDateSchema }).strict()) {}
 
-class ScheduleRequest {
-  @IsString()
-  @IsNotEmpty()
-  scheduleType!: string;
+class DateRangeQuery extends createZodDto(
+  z.object({ startDay: calendarDateSchema, endDay: calendarDateSchema }).strict(),
+) {}
 
-  @IsDateString()
-  effectiveFrom!: string;
+class CreateJogakRequest extends createZodDto(
+  z
+    .object({
+      mogakId: positiveIdSchema,
+      title: requiredTextSchema(1, 100),
+      schedule: scheduleSchema.optional(),
+      isRoutine: z.boolean().optional(),
+      days: z.array(z.string()).optional(),
+      today: calendarDateSchema.optional(),
+      endDate: calendarDateSchema.optional(),
+    })
+    .strict(),
+) {}
 
-  @IsOptional()
-  @IsDateString()
-  effectiveTo?: string;
+class UpdateJogakRequest extends createZodDto(
+  z
+    .object({
+      title: requiredTextSchema(1, 100),
+      schedule: scheduleSchema.optional(),
+    })
+    .strict(),
+) {}
 
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  weekdays?: string[];
-}
+class MogakJogakParam extends createZodDto(z.object({ mogakId: positiveIdSchema }).strict()) {}
 
-class CreateJogakRequest {
-  @Type(() => Number)
-  @IsInt()
-  @IsPositive()
-  mogakId!: number;
+class JogakIdParam extends createZodDto(z.object({ jogakId: positiveIdSchema }).strict()) {}
 
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/\S/)
-  @Length(1, 100)
-  title!: string;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => ScheduleRequest)
-  schedule?: ScheduleRequest;
-
-  @IsOptional()
-  @IsBoolean()
-  isRoutine?: boolean;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  days?: string[];
-
-  @IsOptional()
-  @IsDateString()
-  today?: string;
-
-  @IsOptional()
-  @IsDateString()
-  endDate?: string;
-}
-
-class UpdateJogakRequest {
-  @IsString()
-  @IsNotEmpty()
-  @Matches(/\S/)
-  @Length(1, 100)
-  title!: string;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => ScheduleRequest)
-  schedule?: ScheduleRequest;
-}
+class ExecutionParam extends createZodDto(
+  z.object({ jogakId: positiveIdSchema, scheduledDate: z.string().min(1) }).strict(),
+) {}
 
 @Controller('api')
 export class JogaksController {
@@ -154,11 +116,11 @@ export class JogaksController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async listMogakDay(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('mogakId') mogakId: string,
+    @Param() params: MogakJogakParam,
     @Query() query: DateQuery,
   ) {
     return successResponse(
-      await this.jogaks.listMogakDay(user.userId, asSafeId(mogakId), query.date),
+      await this.jogaks.listMogakDay(user.userId, params.mogakId, query.date),
     );
   }
 
@@ -170,19 +132,19 @@ export class JogaksController {
 
   @Get('jogaks/:jogakId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async getDetail(@CurrentUser() user: AuthenticatedUser, @Param('jogakId') jogakId: string) {
-    return successResponse(await this.jogaks.getDetail(user.userId, asSafeId(jogakId)));
+  async getDetail(@CurrentUser() user: AuthenticatedUser, @Param() params: JogakIdParam) {
+    return successResponse(await this.jogaks.getDetail(user.userId, params.jogakId));
   }
 
   @Put('jogaks/:jogakId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async update(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('jogakId') jogakId: string,
+    @Param() params: JogakIdParam,
     @Body() request: UpdateJogakRequest,
   ) {
     return successResponse(
-      await this.jogaks.update(user.userId, asSafeId(jogakId), {
+      await this.jogaks.update(user.userId, params.jogakId, {
         title: request.title,
         ...(request.schedule === undefined
           ? {}
@@ -193,8 +155,8 @@ export class JogaksController {
 
   @Delete('jogaks/:jogakId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async delete(@CurrentUser() user: AuthenticatedUser, @Param('jogakId') jogakId: string) {
-    await this.jogaks.delete(user.userId, asSafeId(jogakId));
+  async delete(@CurrentUser() user: AuthenticatedUser, @Param() params: JogakIdParam) {
+    await this.jogaks.delete(user.userId, params.jogakId);
     return successResponse({});
   }
 
@@ -202,33 +164,30 @@ export class JogaksController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async start(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('jogakId') jogakId: string,
-    @Param('scheduledDate') scheduledDate: string,
+    @Param() params: ExecutionParam,
     @Res({ passthrough: true }) response: Response,
   ) {
-    return this.command(user, asSafeId(jogakId), scheduledDate, 'IN_PROGRESS', response);
+    return this.command(user, params.jogakId, params.scheduledDate, 'IN_PROGRESS', response);
   }
 
   @Post('jogaks/:jogakId/executions/:scheduledDate/success')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async success(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('jogakId') jogakId: string,
-    @Param('scheduledDate') scheduledDate: string,
+    @Param() params: ExecutionParam,
     @Res({ passthrough: true }) response: Response,
   ) {
-    return this.command(user, asSafeId(jogakId), scheduledDate, 'SUCCESS', response);
+    return this.command(user, params.jogakId, params.scheduledDate, 'SUCCESS', response);
   }
 
   @Post('jogaks/:jogakId/executions/:scheduledDate/fail')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async fail(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('jogakId') jogakId: string,
-    @Param('scheduledDate') scheduledDate: string,
+    @Param() params: ExecutionParam,
     @Res({ passthrough: true }) response: Response,
   ) {
-    return this.command(user, asSafeId(jogakId), scheduledDate, 'FAIL', response);
+    return this.command(user, params.jogakId, params.scheduledDate, 'FAIL', response);
   }
 
   private async command(
@@ -248,14 +207,6 @@ export class JogaksController {
     response.status(status);
     return successResponse(result.execution, status);
   }
-}
-
-function asSafeId(value: string): number {
-  const id = Number(value);
-  if (!Number.isSafeInteger(id) || id <= 0) {
-    throw new AppException(AppErrorCode.INVALID_PARAMETER);
-  }
-  return id;
 }
 
 function asScheduleType(value: string): 'ONCE' | 'WEEKLY' {

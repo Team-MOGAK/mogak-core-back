@@ -69,6 +69,20 @@ describe('조각 HTTP 계약', () => {
     expect(jogaks.listDay).toHaveBeenCalledWith(7, '2026-07-23');
   });
 
+  it('잘못된 날짜 query와 조각 path ID를 Z005로 거부한다', async () => {
+    await request(app.getHttpServer())
+      .get('/api/jogaks?date=2026-02-30')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+    await request(app.getHttpServer())
+      .get('/api/jogaks/not-a-number')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+
+    expect(jogaks.listDay).not.toHaveBeenCalled();
+    expect(jogaks.getDetail).not.toHaveBeenCalled();
+  });
+
   it('일간 조각 식별자는 제거하고 조각 생성과 날짜 조회 경로를 유지한다', async () => {
     jogaks.create.mockResolvedValue({
       jogakId: 11,
