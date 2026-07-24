@@ -1,8 +1,7 @@
-import { ValidationPipe, type INestApplication } from '@nestjs/common';
+import type { INestApplication } from '@nestjs/common';
 
-import { AppErrorCode } from './common/http/app-error-code';
-import { AppException } from './common/http/app.exception';
 import { AllExceptionsFilter } from './common/http/all-exceptions.filter';
+import { AppZodValidationPipe } from './common/validation/zod-validation.pipe';
 
 export function configureApp(
   app: INestApplication,
@@ -18,13 +17,6 @@ export function configureApp(
     });
   }
 
-  app.useGlobalPipes(
-    new ValidationPipe({
-      transform: true,
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      exceptionFactory: () => new AppException(AppErrorCode.INVALID_PARAMETER),
-    }),
-  );
+  app.useGlobalPipes(new AppZodValidationPipe());
   app.useGlobalFilters(new AllExceptionsFilter());
 }
