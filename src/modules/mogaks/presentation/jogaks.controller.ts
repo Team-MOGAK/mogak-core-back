@@ -119,9 +119,7 @@ export class JogaksController {
     @Param() params: MogakJogakParam,
     @Query() query: DateQuery,
   ) {
-    return successResponse(
-      await this.jogaks.listMogakDay(user.userId, params.mogakId, query.date),
-    );
+    return successResponse(await this.jogaks.listMogakDay(user.userId, params.mogakId, query.date));
   }
 
   @Get('jogaks')

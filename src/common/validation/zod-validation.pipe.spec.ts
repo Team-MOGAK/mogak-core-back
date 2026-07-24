@@ -20,8 +20,8 @@ describe('앱 Zod 검증 Pipe', () => {
   });
 
   it('잘못된 값과 정의되지 않은 필드를 Z005로 변환한다', () => {
-    expect(() => new AppZodValidationPipe().transform({ id: '0', unexpected: true }, metadata)).toThrow(
-      new AppException(AppErrorCode.INVALID_PARAMETER),
-    );
+    expect(() =>
+      new AppZodValidationPipe().transform({ id: '0', unexpected: true }, metadata),
+    ).toThrow(new AppException(AppErrorCode.INVALID_PARAMETER));
   });
 });

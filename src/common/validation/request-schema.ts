@@ -1,10 +1,6 @@
 import { z } from 'zod';
 
-export const positiveIdSchema = z.coerce
-  .number()
-  .int()
-  .positive()
-  .refine(Number.isSafeInteger);
+export const positiveIdSchema = z.coerce.number().int().positive().refine(Number.isSafeInteger);
 
 export const calendarDateSchema = z.iso.date();
 

@@ -196,10 +196,7 @@ export class PostsController {
 
   @Delete('posts/:postId/comments/:commentId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async deleteComment(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param() params: PostCommentParam,
-  ) {
+  async deleteComment(@CurrentUser() user: AuthenticatedUser, @Param() params: PostCommentParam) {
     await this.posts.deleteComment(user.userId, params.postId, params.commentId);
     return successResponse({ deleted: true });
   }

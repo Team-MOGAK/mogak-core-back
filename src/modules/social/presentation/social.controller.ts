@@ -20,11 +20,7 @@ import { CurrentUser } from '../../auth/presentation/current-user.decorator';
 import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { SocialService } from '../application/social.service';
 
-const positiveSafeIntegerSchema = z.coerce
-  .number()
-  .int()
-  .positive()
-  .refine(Number.isSafeInteger);
+const positiveSafeIntegerSchema = z.coerce.number().int().positive().refine(Number.isSafeInteger);
 
 class NicknameParam extends createZodDto(z.object({ nickname: z.string().min(1) }).strict()) {}
 class PacemakerQuery extends createZodDto(

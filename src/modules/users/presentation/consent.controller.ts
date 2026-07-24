@@ -39,7 +39,9 @@ class MarketingConsentPatchRequest extends createZodDto(
       advertisementAgreed: z.boolean().optional(),
     })
     .strict()
-    .refine((value) => value.marketingAgreed !== undefined || value.advertisementAgreed !== undefined),
+    .refine(
+      (value) => value.marketingAgreed !== undefined || value.advertisementAgreed !== undefined,
+    ),
 ) {}
 
 @Controller('api')

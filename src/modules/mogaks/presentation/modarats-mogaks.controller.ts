@@ -102,10 +102,7 @@ export class ModaratsMogaksController {
   @Delete('modarats/:modaratId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @HttpCode(HttpStatus.OK)
-  async deleteModarat(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param() params: ModaratIdParam,
-  ) {
+  async deleteModarat(@CurrentUser() user: AuthenticatedUser, @Param() params: ModaratIdParam) {
     await this.mogaks.deleteModarat(user.userId, params.modaratId);
   }
 
