@@ -1,12 +1,12 @@
 import { jest } from '@jest/globals';
 import { testMock } from '../../../test/test-mock';
 import type { INestApplication } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
 
 import { configureApp } from '../../app.setup';
-import { FixedWindowRateLimiter } from '../../common/http/fixed-window-rate-limiter';
-import { RateLimitGuard } from '../../common/http/rate-limit.guard';
 import { AuthService } from '../application/auth.service';
 import { AccessTokenGuard } from './access-token.guard';
 import { AuthController } from './auth.controller';
@@ -23,11 +23,11 @@ describe('인증 HTTP 계약', () => {
   beforeEach(async () => {
     jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 300 }] })],
       controllers: [AuthController],
       providers: [
         { provide: AuthService, useValue: authService },
-        FixedWindowRateLimiter,
-        RateLimitGuard,
+        { provide: APP_GUARD, useClass: ThrottlerGuard },
       ],
     })
       .overrideGuard(AccessTokenGuard)
@@ -36,6 +36,7 @@ describe('인증 HTTP 계약', () => {
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
+    await app.listen(0);
   });
 
   afterEach(async () => {
@@ -120,12 +121,12 @@ describe('인증 HTTP 계약', () => {
       .post('/api/auth/login')
       .send({ id_token: 'apple-id-token' })
       .expect(429)
-      .expect(({ body }) => expect(body.code).toBe('Z007'));
+      .expect({ statusCode: 429, message: 'ThrottlerException: Too Many Requests' });
     await request(app.getHttpServer())
       .post('/api/auth/google/login')
       .send({ token: 'google-id-token' })
       .expect(429)
-      .expect(({ body }) => expect(body.code).toBe('Z007'));
+      .expect({ statusCode: 429, message: 'ThrottlerException: Too Many Requests' });
 
     for (let attempt = 0; attempt < 60; attempt += 1) {
       await request(app.getHttpServer())
@@ -137,7 +138,7 @@ describe('인증 HTTP 계약', () => {
       .post('/api/auth/refresh')
       .set('RefreshToken', 'current-refresh')
       .expect(429)
-      .expect(({ body }) => expect(body.code).toBe('Z007'));
+      .expect({ statusCode: 429, message: 'ThrottlerException: Too Many Requests' });
 
     expect(authService.login).toHaveBeenCalledTimes(40);
     expect(authService.refresh).toHaveBeenCalledTimes(60);

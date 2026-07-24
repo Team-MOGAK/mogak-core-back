@@ -9,14 +9,13 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 import { successResponse } from '../../common/http/api-response';
 import { AppErrorCode } from '../../common/http/app-error-code';
 import { AppException } from '../../common/http/app.exception';
-import { RateLimit } from '../../common/http/rate-limit.decorator';
-import { RateLimitGuard } from '../../common/http/rate-limit.guard';
 import { AuthService } from '../application/auth.service';
 import { parseSocialProvider } from '../domain/social-provider';
 import { AccessTokenGuard } from './access-token.guard';
@@ -34,16 +33,14 @@ export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
   @Post('login')
-  @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 20, windowMs: 60_000 })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   async loginApple(@Body() request: AppleLoginRequest) {
     return successResponse(await this.authService.login('APPLE', request.id_token));
   }
 
   @Post(':provider/login')
-  @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 20, windowMs: 60_000 })
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   async loginSocial(@Param() params: ProviderParam, @Body() request: SocialLoginRequest) {
     return successResponse(
@@ -52,8 +49,7 @@ export class AuthController {
   }
 
   @Post('refresh')
-  @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 60, windowMs: 60_000 })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(HttpStatus.CREATED)
   async refresh(@Headers('refreshtoken') refreshToken: string | undefined) {
     return successResponse(await this.authService.refresh(requiredRefreshToken(refreshToken)));

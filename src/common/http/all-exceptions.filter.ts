@@ -2,9 +2,11 @@ import {
   Catch,
   HttpException,
   HttpStatus,
+  Logger,
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
+import { ThrottlerException } from '@nestjs/throttler';
 import type { Response } from 'express';
 
 import { AppErrorCode, type AppErrorCode as AppErrorDefinition } from './app-error-code';
@@ -22,10 +24,30 @@ function errorForStatus(status: number): AppErrorDefinition {
   return AppErrorCode.BAD_REQUEST;
 }
 
+type RequestForRateLimitLog = {
+  method: string;
+  baseUrl?: string;
+  route?: { path?: string };
+};
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
+  private readonly logger = new Logger(AllExceptionsFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void {
-    const response = host.switchToHttp().getResponse<Response>();
+    const http = host.switchToHttp();
+    const response = http.getResponse<Response>();
+    if (exception instanceof ThrottlerException) {
+      const request = http.getRequest<RequestForRateLimitLog>();
+      this.logger.warn({
+        event: 'rate_limit_rejected',
+        method: request.method,
+        route: staticRoute(request),
+      });
+      response.status(exception.getStatus()).json(throttlerResponse(exception));
+      return;
+    }
+
     const error =
       exception instanceof AppException
         ? exception.errorCode
@@ -35,4 +57,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     response.status(error.httpStatus).json(errorResponse(error));
   }
+}
+
+function staticRoute(request: RequestForRateLimitLog): string {
+  const path = request.route?.path;
+  return typeof path === 'string' ? `${request.baseUrl ?? ''}${path}` : 'unknown';
+}
+
+function throttlerResponse(exception: ThrottlerException): object {
+  const response = exception.getResponse();
+  return typeof response === 'string'
+    ? { statusCode: exception.getStatus(), message: response }
+    : response;
 }

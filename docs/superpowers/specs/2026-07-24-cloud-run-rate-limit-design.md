@@ -1,49 +1,48 @@
-# Cloud Run 인스턴스별 rate limit 설계
+# Cloud Run 인스턴스별 전역 rate limit 설계
 
 ## 목적
 
-모바일 앱의 비정상 재시도와 단일 인스턴스 안에서의 과도한 반복 요청을 완화한다. 이 제한은 abuse 방어를 위한 전역 쿼터가 아니라 Nest 인스턴스별 보조 안전장치다.
+모든 HTTP API에 넉넉한 인스턴스별 안전망을 적용하고, 인증·토큰 갱신·닉네임 중복 확인처럼 비용 또는 abuse 위험이 큰 경로에는 더 낮은 제한을 둔다. 이는 Cloud Run 인스턴스 하나에서의 무한 재시도와 단순 반복 호출을 줄이는 보조 장치이며, 분산된 전역 쿼터는 아니다.
 
 ## 결정
 
-Nest의 인메모리 `FixedWindowRateLimiter`를 유지하고 정책값만 조정한다. Cloud Armor, Load Balancer rate limit, Redis, DB 테이블, 분산 락은 이번 범위에 도입하지 않는다.
+`@nestjs/throttler`를 사용한다. `ThrottlerModule`은 기본 정책으로 IP별 300회/60초를 등록하고, `APP_GUARD`의 `ThrottlerGuard`를 전역 가드로 등록한다. 패키지 기본 인메모리 저장소를 그대로 사용하므로, 인스턴스 세 대가 실행되면 요청은 라우팅에 따라 최대 약 세 배까지 통과할 수 있고 인스턴스 재시작 시 카운터가 초기화된다.
 
-Cloud Run이 세 인스턴스로 실행되면 각 인스턴스가 독립된 버킷을 가지므로, 한 IP가 실제로 통과할 수 있는 요청 수는 라우팅 상황에 따라 정책값의 최대 약 세 배가 될 수 있다. 인스턴스 재시작도 버킷을 초기화한다. 이 동작은 전역 한도가 필요해질 때 Redis 같은 분산 limiter를 별도 도입하기 전까지 의도적으로 허용한다.
+전역 기본 제한은 정상 모바일 사용과 통신사 NAT의 IP 공유를 고려한 넉넉한 안전망이다. 앱 사용량과 `rate_limit_rejected` 로그를 관찰한 뒤 숫자만 조정할 수 있다. Cloud Armor, Redis, DB 테이블, 분산 락, 벤더별 rate-limit 서비스는 이번 범위에 넣지 않는다.
 
 ## 정책
 
-각 Nest 인스턴스에서 요청 IP와 handler 이름 조합으로 버킷을 만든다. 최초 허용 요청부터 60초 동안 계수하고, 한도를 넘으면 API 오류 형식의 HTTP 429를 반환한다.
+| 대상 | 정책 |
+| --- | --- |
+| 모든 HTTP API | IP별 300회/60초/인스턴스 |
+| `POST /api/auth/login` | IP별 20회/60초/인스턴스 |
+| `POST /api/auth/:provider/login` | IP별 20회/60초/인스턴스 |
+| `POST /api/auth/refresh` | IP별 60회/60초/인스턴스 |
+| `POST /api/users/nickname/verify` | IP별 60회/60초/인스턴스 |
+| `GET /health` | 제한 제외 |
 
-| 대상 | 현재 | 변경 |
-| --- | --- | --- |
-| Apple 로그인 | 10회/60초 | 20회/60초 |
-| provider 로그인 | 10회/60초 | 20회/60초 |
-| refresh | 10회/60초 | 60회/60초 |
-| 닉네임 중복 확인 | 30회/60초 | 60회/60초 |
+경로별 정책은 패키지 표준 `@Throttle({ default: { limit, ttl } })`로 전역 기본값을 덮어쓴다. 헬스 체크는 표준 `@SkipThrottle()`로 제외한다. 기존의 자체 데코레이터, 가드, 버킷 맵, 10,000개 버킷 상한은 제거한다.
 
-버킷은 인스턴스당 최대 10,000개로 제한한다. 만료된 버킷은 새 키를 추가해야 할 때 정리하며, 여전히 가득 차면 가장 오래된 버킷 하나를 비운다.
+## 프록시와 추적 키
 
-## 로그
+Cloud Run의 프록시를 한 홉으로 신뢰하도록 Express의 `trust proxy`를 `1`로 설정한다. 이로써 표준 `ThrottlerGuard`가 사용하는 `request.ip`가 `X-Forwarded-For`의 클라이언트 주소를 사용할 수 있다. 이 값은 직접 노출된 Cloud Run 서비스를 전제로 한다. 외부 HTTPS Load Balancer나 추가 프록시를 도입하면, 배포 경로를 검증한 뒤 같은 변경에서 hop 수 또는 신뢰 프록시 목록을 조정해야 한다.
 
-Nest 보조 limiter가 요청을 거절할 때만 `warn` 로그 한 건을 남긴다. 허용된 요청은 로그로 남기지 않는다.
+## 거절 응답과 로그
+
+패키지가 던지는 `ThrottlerException`은 전역 예외 필터에서 그대로 HTTP 429와 패키지 기본 응답 본문으로 반환한다. 기존 `Z007` 앱 오류 응답은 rate limit에 사용하지 않고 제거한다.
+
+필터는 `ThrottlerException`일 때만 Nest `warn` 로그 한 건을 남긴다.
 
 - 이벤트: `rate_limit_rejected`
-- 필드: handler 이름, 적용한 `limit`, `windowMs`
-- 제외: IP, `Authorization`/`RefreshToken` 헤더, access·refresh token, 요청 본문과 쿼리
+- 필드: 요청 method, 라우팅된 정적 route 패턴
+- 제외: IP, `X-Forwarded-For`, 모든 인증·리프레시 토큰, 헤더, 본문, 쿼리, 동적 경로 파라미터, 예외 객체
 
-이 로그는 인스턴스별 보조 limiter의 거절만 나타낸다. 전역 rate limit 지표나 외부 보안 계층 로그를 대체하지 않는다.
+허용 요청 및 다른 HTTP 예외는 rate-limit 로그를 남기지 않는다.
 
-## 구현 범위
+## 검증
 
-- Nest controller의 `@RateLimit` 정책값을 20/60/60으로 조정한다.
-- `RateLimitGuard`가 거절 시에만 민감정보 없는 warn 로그를 남긴다.
-- 정책 metadata, 429 응답, warn 로그 한 건과 민감정보 미포함을 단위 테스트한다.
-- handoff 문서에서 Cloud Run 다중 인스턴스 시 이 제한이 전역이 아님을 명시한다.
-
-Cloud Run 인프라 변경, `trust proxy` 변경, 외부 로그·알림, Redis 도입은 포함하지 않는다.
-
-## 검증과 이후 전환
-
-`pnpm verify:local`로 포맷, 린트, 타입 검사, 빌드, 일반·E2E·DB·실제 HTTP 시나리오를 검증한다.
-
-전역 abuse 방어가 필요해지면 이 limiter를 Redis 원자 카운터 기반 구현으로 교체한다. 그때는 인스턴스 수와 무관한 키·윈도우 정책, 장애 시 동작, Redis 연결·관측 방식을 별도 설계한다.
+- 전역 기본 300번째 요청은 통과하고 301번째 요청은 패키지 기본 429 응답을 반환한다.
+- 로그인 20, refresh·닉네임 확인 60의 경로별 정책이 전역 300보다 먼저 적용된다.
+- `GET /health`는 전역 제한을 소비하거나 거절되지 않는다.
+- 429에서만 안전한 `rate_limit_rejected` 로그가 한 번 남고, 기존 앱 예외는 기존 응답 형식을 유지한다.
+- 포맷, 린트, 타입 검사, 빌드, Jest, DB·실제 API 시나리오를 포함한 `pnpm verify:local`을 통과한다.

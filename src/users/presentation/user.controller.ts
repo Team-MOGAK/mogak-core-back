@@ -12,13 +12,12 @@ import {
   UploadedFile,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
 import { successResponse } from '../../common/http/api-response';
 import { profileImageUploadOptions } from '../../common/http/image-upload.options';
-import { RateLimit } from '../../common/http/rate-limit.decorator';
-import { RateLimitGuard } from '../../common/http/rate-limit.guard';
 import { requiredTextSchema } from '../../common/validation/request-schema';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
@@ -55,8 +54,7 @@ export class UserController {
   constructor(@Inject(UserService) private readonly users: UserService) {}
 
   @Post('nickname/verify')
-  @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 60, windowMs: 60_000 })
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   async verifyNickname(@Body() request: NicknameRequest) {
     await this.users.verifyNickname(request.nickname);

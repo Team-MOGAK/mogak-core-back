@@ -1,12 +1,12 @@
 import { jest } from '@jest/globals';
 import { testMock } from '../../../test/test-mock';
 import type { INestApplication } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
 
 import { configureApp } from '../../app.setup';
-import { FixedWindowRateLimiter } from '../../common/http/fixed-window-rate-limiter';
-import { RateLimitGuard } from '../../common/http/rate-limit.guard';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
 import { ConsentService } from '../application/consent.service';
@@ -39,13 +39,13 @@ describe('사용자 HTTP 계약', () => {
     jest.resetAllMocks();
     role = 'USER';
     const moduleRef = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 300 }] })],
       controllers: [UserController, ConsentController, MetadataController],
       providers: [
         { provide: UserService, useValue: users },
         { provide: ConsentService, useValue: consents },
         { provide: MetadataService, useValue: metadata },
-        FixedWindowRateLimiter,
-        RateLimitGuard,
+        { provide: APP_GUARD, useClass: ThrottlerGuard },
         RegisteredUserGuard,
       ],
     })
@@ -64,6 +64,7 @@ describe('사용자 HTTP 계약', () => {
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
+    await app.listen(0);
   });
 
   afterEach(async () => {
@@ -121,7 +122,7 @@ describe('사용자 HTTP 계약', () => {
       .post('/api/users/nickname/verify')
       .send({ nickname: '모각러' })
       .expect(429)
-      .expect(({ body }) => expect(body.code).toBe('Z007'));
+      .expect({ statusCode: 429, message: 'ThrottlerException: Too Many Requests' });
 
     expect(users.verifyNickname).toHaveBeenCalledTimes(60);
   }, 10_000);
