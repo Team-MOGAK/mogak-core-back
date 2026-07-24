@@ -30,6 +30,7 @@
 - `social`의 nickname 기반 팔로우, Pacemaker·거주지 기반 피드, 원본 행 기반 카운트와 hard delete
 - 비어 있거나 없는 `multipartFile`을 허용하되, 실제 이미지는 5 MiB·JPEG/PNG/WebP·게시글 5장 제한을 먼저 통과한 뒤 현재 비활성 StoragePort에서 `Z006`으로 중단하는 이미지 경계
 - 로그인·refresh 분당 10회, 공개 nickname 확인 분당 30회로 제한하는 프로세스 내 요청 폭주 방어
+- nestjs-zod와 앱 소유 Zod validation Pipe로 Body·Query·Path Param을 strict 검증하며, 모든 입력 오류는 기존 Z005 envelope로 반환
 - 전용 `_test` 데이터베이스에서 실행하는 Mogaks·Posts PostgreSQL 통합 테스트와 `test:db` 실행 명령
 
 단위·HTTP 계약 테스트, health e2e, 타입 검사, 린트와 빌드는 통과했다. PostgreSQL 통합 테스트도 전용 `_test` DB에서 실제 migration 후 통과했다. `test:db`는 Jest 전역 초기화에서 migration을 한 번만 실행해, 병렬 테스트 파일의 스키마 생성 경합을 막는다. ESM 전용 `jose`를 실제로 검증하기 위해 테스트는 Jest ESM 런타임으로 실행한다.
