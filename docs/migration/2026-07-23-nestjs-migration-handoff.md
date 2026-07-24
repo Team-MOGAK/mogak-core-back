@@ -148,7 +148,7 @@
 ### 최상위 기능 모듈
 
 ```text
-src/modules/
+src/
 ├── auth/
 ├── users/
 ├── mogaks/
