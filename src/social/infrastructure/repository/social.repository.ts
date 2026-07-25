@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 
-import type { Database } from '../../database/database.provider';
-import { DATABASE } from '../../database/database.tokens';
+import type { Database } from '../../../database/database.provider';
+import { DATABASE } from '../../../database/database.tokens';
 import {
   addresses,
   follows,
@@ -12,37 +12,28 @@ import {
   postLikes,
   posts,
   users,
-} from '../../database/schema';
-
-export type SocialUserRecord = Readonly<{ id: number }>;
-export type SocialUserSummary = Readonly<{ nickname: string | null; job: string | null }>;
-export type FeedPostRecord = Readonly<{
-  id: number;
-  authorId: number;
-  nickname: string | null;
-  job: string | null;
-  profileImageKey: string | null;
-  contents: string;
-  likeCount: number;
-  commentCount: number;
-}>;
-export type FeedImageRecord = Readonly<{ postId: number; storageKey: string }>;
-export type FeedCommentRecord = Readonly<{
-  id: number;
-  postId: number;
-  authorId: number;
-  nickname: string | null;
-  job: string | null;
-  profileImageKey: string | null;
-  contents: string;
-  createdAt: Date;
-}>;
+} from '../../../database/schema';
+import type { SocialRepositoryPort } from '../../application/port/social.repository.port';
+import type { FollowCommand } from '../../application/type/social.command';
+import type { NetworkPostsQuery, PacemakerPostsQuery } from '../../application/type/social.query';
+import type {
+  FeedCommentResult,
+  FeedImageResult,
+  FeedPostResult,
+  SocialUserResult,
+  SocialUserSummaryResult,
+} from '../../application/type/social.result';
+import type {
+  FeedCommentProjection,
+  FeedImageProjection,
+  FeedPostProjection,
+} from '../type/social.projection';
 
 @Injectable()
-export class SocialRepository {
+export class DrizzleSocialRepository implements SocialRepositoryPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  async findUserByNickname(nickname: string): Promise<SocialUserRecord | null> {
+  async findUserByNickname(nickname: string): Promise<SocialUserResult | null> {
     const user = await this.db.query.users.findFirst({
       columns: { id: true },
       where: eq(users.nickname, nickname),
@@ -50,23 +41,19 @@ export class SocialRepository {
     return user ?? null;
   }
 
-  async createFollow(
-    input: Readonly<{ followerId: number; followingId: number }>,
-  ): Promise<boolean> {
+  async createFollow(command: FollowCommand): Promise<boolean> {
     const [created] = await this.db
       .insert(follows)
-      .values(input)
+      .values(command)
       .onConflictDoNothing({ target: [follows.followerId, follows.followingId] })
       .returning({ id: follows.id });
     return created !== undefined;
   }
 
-  async deleteFollow(
-    input: Readonly<{ followerId: number; followingId: number }>,
-  ): Promise<boolean> {
+  async deleteFollow(command: FollowCommand): Promise<boolean> {
     const deleted = await this.db
       .delete(follows)
-      .where(andFollow(input))
+      .where(andFollow(command))
       .returning({ id: follows.id });
     return deleted.length === 1;
   }
@@ -87,7 +74,7 @@ export class SocialRepository {
     return row?.value ?? 0;
   }
 
-  async listMotos(userId: number): Promise<SocialUserSummary[]> {
+  async listMotos(userId: number): Promise<SocialUserSummaryResult[]> {
     return this.db
       .select({ nickname: users.nickname, job: jobs.name })
       .from(follows)
@@ -96,7 +83,7 @@ export class SocialRepository {
       .where(eq(follows.followingId, userId));
   }
 
-  async listMentors(userId: number): Promise<SocialUserSummary[]> {
+  async listMentors(userId: number): Promise<SocialUserSummaryResult[]> {
     return this.db
       .select({ nickname: users.nickname, job: jobs.name })
       .from(follows)
@@ -114,56 +101,52 @@ export class SocialRepository {
     return row?.name ?? null;
   }
 
-  async listPacemakerPosts(input: Readonly<{ userId: number; limit: number; offset: number }>) {
-    return this.db
+  async listPacemakerPosts(query: PacemakerPostsQuery): Promise<FeedPostResult[]> {
+    const rows = await this.db
       .select(feedProjection())
       .from(posts)
       .innerJoin(follows, eq(follows.followingId, posts.authorId))
       .innerJoin(users, eq(posts.authorId, users.id))
       .leftJoin(jobs, eq(users.jobId, jobs.id))
-      .where(eq(follows.followerId, input.userId))
+      .where(eq(follows.followerId, query.userId))
       .orderBy(desc(posts.createdAt), desc(posts.id))
-      .limit(input.limit)
-      .offset(input.offset);
+      .limit(query.limit)
+      .offset(query.offset);
+    return rows.map(toFeedPostResult);
   }
 
-  async listNetworkPosts(
-    input: Readonly<{
-      address: string;
-      sort: 'createdAt' | 'likeCnt';
-      limit: number;
-      offset: number;
-    }>,
-  ) {
+  async listNetworkPosts(query: NetworkPostsQuery): Promise<FeedPostResult[]> {
     const projection = feedProjection();
     const order =
-      input.sort === 'likeCnt'
+      query.sort === 'likeCnt'
         ? [desc(projection.likeCount), desc(posts.id)]
         : [desc(posts.createdAt), desc(posts.id)];
-    return this.db
+    const rows = await this.db
       .select(projection)
       .from(posts)
       .innerJoin(users, eq(posts.authorId, users.id))
       .innerJoin(addresses, eq(users.addressId, addresses.id))
       .leftJoin(jobs, eq(users.jobId, jobs.id))
-      .where(eq(addresses.name, input.address))
+      .where(eq(addresses.name, query.address))
       .orderBy(...order)
-      .limit(input.limit)
-      .offset(input.offset);
+      .limit(query.limit)
+      .offset(query.offset);
+    return rows.map(toFeedPostResult);
   }
 
-  async listImages(postIds: readonly number[]): Promise<FeedImageRecord[]> {
+  async listImages(postIds: readonly number[]): Promise<FeedImageResult[]> {
     if (postIds.length === 0) return [];
-    return this.db
+    const rows = await this.db
       .select({ postId: postImages.postId, storageKey: postImages.storageKey })
       .from(postImages)
       .where(inArray(postImages.postId, [...postIds]))
       .orderBy(asc(postImages.position), asc(postImages.id));
+    return rows.map(toFeedImageResult);
   }
 
-  async listComments(postIds: readonly number[]): Promise<FeedCommentRecord[]> {
+  async listComments(postIds: readonly number[]): Promise<FeedCommentResult[]> {
     if (postIds.length === 0) return [];
-    return this.db
+    const rows = await this.db
       .select({
         id: postComments.id,
         postId: postComments.postId,
@@ -179,11 +162,15 @@ export class SocialRepository {
       .leftJoin(jobs, eq(users.jobId, jobs.id))
       .where(inArray(postComments.postId, [...postIds]))
       .orderBy(asc(postComments.id));
+    return rows.map(toFeedCommentResult);
   }
 }
 
-function andFollow(input: Readonly<{ followerId: number; followingId: number }>) {
-  return and(eq(follows.followerId, input.followerId), eq(follows.followingId, input.followingId));
+function andFollow(command: FollowCommand) {
+  return and(
+    eq(follows.followerId, command.followerId),
+    eq(follows.followingId, command.followingId),
+  );
 }
 
 function feedProjection() {
@@ -197,4 +184,16 @@ function feedProjection() {
     likeCount: sql<number>`(select count(*)::integer from ${postLikes} where ${postLikes.postId} = ${posts.id})`,
     commentCount: sql<number>`(select count(*)::integer from ${postComments} where ${postComments.postId} = ${posts.id})`,
   };
+}
+
+function toFeedPostResult(row: FeedPostProjection): FeedPostResult {
+  return { ...row };
+}
+
+function toFeedImageResult(row: FeedImageProjection): FeedImageResult {
+  return { ...row };
+}
+
+function toFeedCommentResult(row: FeedCommentProjection): FeedCommentResult {
+  return { ...row };
 }

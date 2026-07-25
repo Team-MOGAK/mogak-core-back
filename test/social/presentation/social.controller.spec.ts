@@ -7,8 +7,8 @@ import request from 'supertest';
 import { configureApp } from '../../../src/app.setup';
 import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
 import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
-import { SocialService } from '../../../src/social/application/social.service';
-import { SocialController } from '../../../src/social/presentation/social.controller';
+import { SocialService } from '../../../src/social/application/service/social.service';
+import { SocialController } from '../../../src/social/presentation/controller/social.controller';
 
 describe('소셜 HTTP 계약', () => {
   let app: INestApplication;
@@ -86,6 +86,13 @@ describe('소셜 HTTP 계약', () => {
       .expect(({ body }) => expect(body.code).toBe('Z005'));
     await request(app.getHttpServer())
       .get('/api/posts/pacemakers?cursor=not-a-number&size=10')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+  });
+
+  it('소셜 목록 Query의 알 수 없는 필드를 Z005로 거부한다', async () => {
+    await request(app.getHttpServer())
+      .get('/api/posts?size=10&unexpected=true')
       .expect(400)
       .expect(({ body }) => expect(body.code).toBe('Z005'));
   });

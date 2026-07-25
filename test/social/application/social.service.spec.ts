@@ -3,10 +3,10 @@ import { testMock } from '../../test-mock';
 
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import type { SocialRepository } from '../../../src/social/infrastructure/social.repository';
-import { SocialService } from '../../../src/social/application/social.service';
+import type { SocialRepositoryPort } from '../../../src/social/application/port/social.repository.port';
+import { SocialService } from '../../../src/social/application/service/social.service';
 
-function repository(): SocialRepository {
+function repository(): SocialRepositoryPort {
   return {
     findUserByNickname: testMock(),
     createFollow: testMock(),
@@ -20,7 +20,7 @@ function repository(): SocialRepository {
     listNetworkPosts: testMock(),
     listImages: testMock(),
     listComments: testMock(),
-  } as unknown as SocialRepository;
+  } as unknown as SocialRepositoryPort;
 }
 
 describe('소셜 팔로우 서비스', () => {

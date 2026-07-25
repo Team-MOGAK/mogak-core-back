@@ -1,7 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 
 import { GlobalExceptionFilter } from './common/http/global-exception.filter';
-import { AppZodValidationPipe } from './common/validation/zod-validation.pipe';
 
 type ExpressApplication = {
   set(setting: 'trust proxy', value: number): void;
@@ -24,6 +23,5 @@ export function configureApp(
     });
   }
 
-  app.useGlobalPipes(new AppZodValidationPipe());
   app.useGlobalFilters(new GlobalExceptionFilter());
 }

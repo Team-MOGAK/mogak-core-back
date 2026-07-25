@@ -1,33 +1,40 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { AppErrorCode } from '../../common/http/app-error-code';
-import { DomainException } from '../../common/http/domain.exception';
-import { STORAGE_PORT, type StoragePort } from '../../storage/application/storage.port';
-import {
-  SocialRepository,
-  type FeedCommentRecord,
-  type FeedPostRecord,
-} from '../infrastructure/social.repository';
+import { AppErrorCode } from '../../../common/http/app-error-code';
+import { DomainException } from '../../../common/http/domain.exception';
+import { STORAGE_PORT, type StoragePort } from '../../../storage/application/storage.port';
+import { isSelfFollow } from '../../domain/entity/follow.entity';
+import { SOCIAL_REPOSITORY, type SocialRepositoryPort } from '../port/social.repository.port';
+import type {
+  FeedAuthorResult,
+  FeedCommentItemResult,
+  FeedCommentResult,
+  FeedPostResult,
+  NetworkPostResult,
+  PacemakerPostResult,
+} from '../type/social.result';
 
 @Injectable()
 export class SocialService {
   constructor(
-    @Inject(SocialRepository) private readonly repository: SocialRepository,
+    @Inject(SOCIAL_REPOSITORY) private readonly repository: SocialRepositoryPort,
     @Inject(STORAGE_PORT) private readonly storage?: StoragePort,
   ) {}
 
   async follow(userId: number, nickname: string): Promise<void> {
     const target = await this.requireTarget(nickname);
-    if (target.id === userId) throw new DomainException(AppErrorCode.INVALID_PARAMETER);
-    if (!(await this.repository.createFollow({ followerId: userId, followingId: target.id }))) {
+    const follow = { followerId: userId, followingId: target.id };
+    if (isSelfFollow(follow)) throw new DomainException(AppErrorCode.INVALID_PARAMETER);
+    if (!(await this.repository.createFollow(follow))) {
       throw new DomainException(AppErrorCode.FOLLOW_ALREADY_EXISTS);
     }
   }
 
   async unfollow(userId: number, nickname: string): Promise<void> {
     const target = await this.requireTarget(nickname);
-    if (target.id === userId) throw new DomainException(AppErrorCode.INVALID_PARAMETER);
-    if (!(await this.repository.deleteFollow({ followerId: userId, followingId: target.id }))) {
+    const follow = { followerId: userId, followingId: target.id };
+    if (isSelfFollow(follow)) throw new DomainException(AppErrorCode.INVALID_PARAMETER);
+    if (!(await this.repository.deleteFollow(follow))) {
       throw new DomainException(AppErrorCode.FOLLOW_NOT_FOUND);
     }
   }
@@ -96,7 +103,12 @@ export class SocialService {
     return target;
   }
 
-  private async toFeed(posts: readonly FeedPostRecord[], summary: boolean) {
+  private async toFeed(
+    posts: readonly FeedPostResult[],
+    summary: false,
+  ): Promise<PacemakerPostResult[]>;
+  private async toFeed(posts: readonly FeedPostResult[], summary: true): Promise<NetworkPostResult[]>;
+  private async toFeed(posts: readonly FeedPostResult[], summary: boolean) {
     const [images, comments] = await Promise.all([
       this.repository.listImages(posts.map((post) => post.id)),
       this.repository.listComments(posts.map((post) => post.id)),
@@ -131,7 +143,7 @@ export class SocialService {
     );
   }
 
-  private async comment(comment: FeedCommentRecord) {
+  private async comment(comment: FeedCommentResult): Promise<FeedCommentItemResult> {
     return {
       commentId: comment.id,
       contents: comment.contents,
@@ -141,8 +153,8 @@ export class SocialService {
   }
 
   private async author(
-    author: Pick<FeedPostRecord, 'authorId' | 'nickname' | 'job' | 'profileImageKey'>,
-  ) {
+    author: Pick<FeedPostResult, 'authorId' | 'nickname' | 'job' | 'profileImageKey'>,
+  ): Promise<FeedAuthorResult> {
     return {
       userId: author.authorId,
       nickname: author.nickname,
