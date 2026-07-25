@@ -62,5 +62,7 @@ export function validateNewSocialIdentity(
       ? { success: true }
       : { success: false, reason: 'EMAIL_REQUIRED' };
   }
-  return identity.emailVerified ? { success: true } : { success: false, reason: 'EMAIL_NOT_VERIFIED' };
+  return identity.emailVerified
+    ? { success: true }
+    : { success: false, reason: 'EMAIL_NOT_VERIFIED' };
 }

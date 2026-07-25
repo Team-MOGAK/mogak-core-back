@@ -11,20 +11,29 @@ import type { AuthSessionRecord } from '../type/auth.record';
 export class AuthSessionsRepository {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  async create(input: Omit<AuthSessionRecord, 'createdAt' | 'updatedAt'>): Promise<AuthSessionRecord> {
+  async create(
+    input: Omit<AuthSessionRecord, 'createdAt' | 'updatedAt'>,
+  ): Promise<AuthSessionRecord> {
     const [session] = await this.db.insert(authSessions).values(input).returning();
     if (session === undefined) throw new Error('auth session insert did not return a row');
     return session;
   }
 
-  async findActiveById(sessionId: string, now: Date = new Date()): Promise<AuthSessionRecord | null> {
-    return (await this.db.query.authSessions.findFirst({
-      where: and(eq(authSessions.id, sessionId), gt(authSessions.expiresAt, now)),
-    })) ?? null;
+  async findActiveById(
+    sessionId: string,
+    now: Date = new Date(),
+  ): Promise<AuthSessionRecord | null> {
+    return (
+      (await this.db.query.authSessions.findFirst({
+        where: and(eq(authSessions.id, sessionId), gt(authSessions.expiresAt, now)),
+      })) ?? null
+    );
   }
 
   async deleteByIdAndUserId(sessionId: string, userId: number): Promise<void> {
-    await this.db.delete(authSessions).where(and(eq(authSessions.id, sessionId), eq(authSessions.userId, userId)));
+    await this.db
+      .delete(authSessions)
+      .where(and(eq(authSessions.id, sessionId), eq(authSessions.userId, userId)));
   }
 
   async deleteByUserId(userId: number): Promise<void> {
@@ -34,8 +43,18 @@ export class AuthSessionsRepository {
   async rotate(input: SessionRotationCommand): Promise<boolean> {
     const rows = await this.db
       .update(authSessions)
-      .set({ refreshTokenHash: input.nextRefreshTokenHash, expiresAt: input.nextExpiresAt, updatedAt: input.now })
-      .where(and(eq(authSessions.id, input.sessionId), eq(authSessions.refreshTokenHash, input.currentRefreshTokenHash), gt(authSessions.expiresAt, input.now)))
+      .set({
+        refreshTokenHash: input.nextRefreshTokenHash,
+        expiresAt: input.nextExpiresAt,
+        updatedAt: input.now,
+      })
+      .where(
+        and(
+          eq(authSessions.id, input.sessionId),
+          eq(authSessions.refreshTokenHash, input.currentRefreshTokenHash),
+          gt(authSessions.expiresAt, input.now),
+        ),
+      )
       .returning({ id: authSessions.id });
     return rows.length === 1;
   }

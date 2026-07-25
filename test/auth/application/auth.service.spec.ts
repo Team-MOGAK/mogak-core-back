@@ -12,7 +12,10 @@ const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
 function createTokenIssuer(): TokenIssuerPort {
   return {
-    issue: testMock().mockResolvedValue({ accessToken: 'access-token', refreshToken: 'refresh-token' }),
+    issue: testMock().mockResolvedValue({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+    }),
     verifyAccess: testMock(),
     verifyRefresh: testMock(),
     hashRefreshToken: testMock().mockReturnValue('refresh-token-hash'),

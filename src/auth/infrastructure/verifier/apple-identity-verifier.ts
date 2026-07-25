@@ -19,12 +19,17 @@ export class AppleIdentityVerifier implements SocialIdentityVerifier {
     this.clientIds = splitClientIds(config.getOrThrow('APPLE_CLIENT_IDS', { infer: true }));
   }
 
-  supports(provider: SocialProvider): boolean { return provider === 'APPLE'; }
+  supports(provider: SocialProvider): boolean {
+    return provider === 'APPLE';
+  }
 
   async verify(token: string) {
     try {
       const { payload } = await jwtVerify(token, appleKeys, {
-        algorithms: ['RS256'], issuer: 'https://appleid.apple.com', audience: this.clientIds, clockTolerance: 30,
+        algorithms: ['RS256'],
+        issuer: 'https://appleid.apple.com',
+        audience: this.clientIds,
+        clockTolerance: 30,
       });
       return identityFromJwtClaims('APPLE', payload);
     } catch (error: unknown) {
@@ -35,5 +40,8 @@ export class AppleIdentityVerifier implements SocialIdentityVerifier {
 }
 
 function splitClientIds(value: string): string[] {
-  return value.split(',').map((clientId) => clientId.trim()).filter((clientId) => clientId.length > 0);
+  return value
+    .split(',')
+    .map((clientId) => clientId.trim())
+    .filter((clientId) => clientId.length > 0);
 }

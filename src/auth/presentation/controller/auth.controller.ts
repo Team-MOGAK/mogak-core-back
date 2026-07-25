@@ -16,7 +16,12 @@ import {
   type ProviderParams,
   type SocialLoginRequest,
 } from '../type/auth.request';
-import type { LoginResponse, LogoutResponse, RefreshResponse, WithdrawResponse } from '../type/auth.response';
+import type {
+  LoginResponse,
+  LogoutResponse,
+  RefreshResponse,
+  WithdrawResponse,
+} from '../type/auth.response';
 import { AccessTokenGuard } from './access-token.guard';
 import { CurrentUser } from './current-user.decorator';
 
@@ -38,14 +43,18 @@ export class AuthController {
     @ZodParams(providerParamsSchema) params: ProviderParams,
     @ZodBody(socialLoginRequestSchema) request: SocialLoginRequest,
   ) {
-    return successResponse<LoginResponse>(await this.authService.login(parseSocialProvider(params.provider), request.token));
+    return successResponse<LoginResponse>(
+      await this.authService.login(parseSocialProvider(params.provider), request.token),
+    );
   }
 
   @Post('refresh')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(HttpStatus.CREATED)
   async refresh(@Headers('refreshtoken') refreshToken: string | undefined) {
-    return successResponse<RefreshResponse>(await this.authService.refresh(requiredRefreshToken(refreshToken)));
+    return successResponse<RefreshResponse>(
+      await this.authService.refresh(requiredRefreshToken(refreshToken)),
+    );
   }
 
   @Post('logout')
@@ -71,6 +80,7 @@ function parseSocialProvider(value: string): SocialProvider {
 }
 
 function requiredRefreshToken(value: string | undefined): string {
-  if (value === undefined || value.trim().length === 0) throw new DomainException(AppErrorCode.EMPTY_TOKEN);
+  if (value === undefined || value.trim().length === 0)
+    throw new DomainException(AppErrorCode.EMPTY_TOKEN);
   return value;
 }

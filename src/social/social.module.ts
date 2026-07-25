@@ -10,6 +10,10 @@ import { SocialController } from './presentation/controller/social.controller';
 @Module({
   imports: [DatabaseModule, AuthModule, StorageModule],
   controllers: [SocialController],
-  providers: [DrizzleSocialRepository, { provide: SOCIAL_REPOSITORY, useExisting: DrizzleSocialRepository }, SocialService],
+  providers: [
+    DrizzleSocialRepository,
+    { provide: SOCIAL_REPOSITORY, useExisting: DrizzleSocialRepository },
+    SocialService,
+  ],
 })
 export class SocialModule {}

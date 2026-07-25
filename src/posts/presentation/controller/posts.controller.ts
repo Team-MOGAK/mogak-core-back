@@ -107,7 +107,10 @@ export class PostsController {
 
   @Get('posts/:postId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async getPost(@CurrentUser() user: AuthenticatedUser, @ZodParams(postIdParamsSchema) params: PostIdParams) {
+  async getPost(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodParams(postIdParamsSchema) params: PostIdParams,
+  ) {
     return successResponse(await this.posts.getPost(user.userId, params.postId));
   }
 
@@ -128,7 +131,10 @@ export class PostsController {
 
   @Delete('posts/:postId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async deletePost(@CurrentUser() user: AuthenticatedUser, @ZodParams(postIdParamsSchema) params: PostIdParams) {
+  async deletePost(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodParams(postIdParamsSchema) params: PostIdParams,
+  ) {
     await this.posts.deletePost(user.userId, params.postId);
     return successResponse({ deleted: true });
   }
@@ -171,7 +177,10 @@ export class PostsController {
 
   @Delete('posts/:postId/comments/:commentId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async deleteComment(@CurrentUser() user: AuthenticatedUser, @ZodParams(postCommentParamsSchema) params: PostCommentParams) {
+  async deleteComment(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodParams(postCommentParamsSchema) params: PostCommentParams,
+  ) {
     await this.posts.deleteComment(user.userId, params.postId, params.commentId);
     return successResponse({ deleted: true });
   }
@@ -179,7 +188,10 @@ export class PostsController {
   @Post('posts/like')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @HttpCode(HttpStatus.OK)
-  async toggleLike(@CurrentUser() user: AuthenticatedUser, @ZodBody(likePostRequestSchema) request: LikePostRequest) {
+  async toggleLike(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodBody(likePostRequestSchema) request: LikePostRequest,
+  ) {
     return successResponse(await this.posts.toggleLike(user.userId, request.postId));
   }
 }

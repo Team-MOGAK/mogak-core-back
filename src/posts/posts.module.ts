@@ -12,6 +12,10 @@ import { PostsController } from './presentation/controller/posts.controller';
 @Module({
   imports: [DatabaseModule, AuthModule, MogaksModule, StorageModule],
   controllers: [PostsController],
-  providers: [PostsRepository, { provide: POSTS_REPOSITORY, useExisting: PostsRepository }, PostsService],
+  providers: [
+    PostsRepository,
+    { provide: POSTS_REPOSITORY, useExisting: PostsRepository },
+    PostsService,
+  ],
 })
 export class PostsModule {}

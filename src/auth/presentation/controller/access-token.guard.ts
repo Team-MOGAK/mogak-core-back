@@ -5,7 +5,10 @@ import { DomainException } from '../../../common/http/domain.exception';
 import { AuthService } from '../../application/service/auth.service';
 import type { AuthenticatedPrincipal } from '../../application/type/authenticated-principal';
 
-type AuthenticatedRequest = { headers: Record<string, string | string[] | undefined>; user?: AuthenticatedPrincipal };
+type AuthenticatedRequest = {
+  headers: Record<string, string | string[] | undefined>;
+  user?: AuthenticatedPrincipal;
+};
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
@@ -13,13 +16,17 @@ export class AccessTokenGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    request.user = await this.authService.authenticateAccessToken(this.bearerToken(request.headers.authorization));
+    request.user = await this.authService.authenticateAccessToken(
+      this.bearerToken(request.headers.authorization),
+    );
     return true;
   }
 
   private bearerToken(value: string | string[] | undefined): string {
-    if (value === undefined || value.length === 0) throw new DomainException(AppErrorCode.EMPTY_TOKEN);
-    if (Array.isArray(value) || !value.startsWith('Bearer ')) throw new DomainException(AppErrorCode.WRONG_TOKEN);
+    if (value === undefined || value.length === 0)
+      throw new DomainException(AppErrorCode.EMPTY_TOKEN);
+    if (Array.isArray(value) || !value.startsWith('Bearer '))
+      throw new DomainException(AppErrorCode.WRONG_TOKEN);
     const token = value.slice('Bearer '.length).trim();
     if (token.length === 0) throw new DomainException(AppErrorCode.EMPTY_TOKEN);
     return token;

@@ -19,7 +19,9 @@ function session(refreshTokenHash: string): AuthSession {
 
 describe('인증 도메인 규칙', () => {
   it('활성 세션의 리프레시 해시가 일치할 때만 회전을 허용한다', () => {
-    expect(canRotateSession(session('current-hash'), 'current-hash', now)).toEqual({ success: true });
+    expect(canRotateSession(session('current-hash'), 'current-hash', now)).toEqual({
+      success: true,
+    });
     expect(canRotateSession(session('current-hash'), 'wrong-hash', now)).toEqual({
       success: false,
       reason: 'REFRESH_TOKEN_MISMATCH',

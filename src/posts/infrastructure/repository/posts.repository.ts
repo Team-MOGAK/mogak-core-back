@@ -23,12 +23,16 @@ import type {
   PostImageResult,
   ToggleLikeResult,
 } from '../../application/type/post.result';
-import type { CreatedPostRow, PostCommentRow, PostDetailRow, PostImageRow } from '../type/post.projection';
+import type {
+  CreatedPostRow,
+  PostCommentRow,
+  PostDetailRow,
+  PostImageRow,
+} from '../type/post.projection';
 
 type CreatePostForOccurrenceInput = CreatePostCommand & Readonly<{ jogakTitleSnapshot: string }>;
 type CreatePostForOccurrenceResult =
-  | Readonly<{ type: 'CREATED'; post: CreatedPostRow }>
-  | Readonly<{ type: 'DUPLICATE' }>;
+  Readonly<{ type: 'CREATED'; post: CreatedPostRow }> | Readonly<{ type: 'DUPLICATE' }>;
 type PostRecord = Readonly<{ id: number }>;
 type UpdatedPostRecord = Readonly<{ id: number; contents: string; updatedAt: Date }>;
 

@@ -1,4 +1,8 @@
-import { calendarDateSchema, positiveIdSchema, requiredTextSchema } from '../../../src/common/validation/request-schema';
+import {
+  calendarDateSchema,
+  positiveIdSchema,
+  requiredTextSchema,
+} from '../../../src/common/validation/request-schema';
 
 describe('공통 요청 스키마', () => {
   it('경로 ID는 안전한 양의 정수로 변환한다', () => {

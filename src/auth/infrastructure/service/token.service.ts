@@ -11,7 +11,10 @@ import type {
   RefreshTokenPrincipal,
   TokenIssuerPort,
 } from '../../application/port/token-issuer.port';
-import type { AuthenticatedPrincipal, UserRole } from '../../application/type/authenticated-principal';
+import type {
+  AuthenticatedPrincipal,
+  UserRole,
+} from '../../application/type/authenticated-principal';
 import type { TokenResult } from '../../application/type/auth.result';
 
 const ACCESS_TOKEN_TYPE = 'access';
@@ -50,17 +53,20 @@ export class TokenService implements TokenIssuerPort {
 
   async verifyAccess(token: string): Promise<AuthenticatedPrincipal> {
     const payload = await this.verify(token);
-    if (payload.token_type !== ACCESS_TOKEN_TYPE) throw new DomainException(AppErrorCode.WRONG_TOKEN);
+    if (payload.token_type !== ACCESS_TOKEN_TYPE)
+      throw new DomainException(AppErrorCode.WRONG_TOKEN);
     const userId = this.userIdFrom(payload);
     const role = this.roleFrom(payload.role);
     const sessionId = this.sessionIdFrom(payload.sid);
-    const email = typeof payload.email === 'string' && payload.email.length > 0 ? payload.email : undefined;
+    const email =
+      typeof payload.email === 'string' && payload.email.length > 0 ? payload.email : undefined;
     return email === undefined ? { userId, role, sessionId } : { userId, email, role, sessionId };
   }
 
   async verifyRefresh(token: string): Promise<RefreshTokenPrincipal> {
     const payload = await this.verify(token);
-    if (payload.token_type !== REFRESH_TOKEN_TYPE) throw new DomainException(AppErrorCode.WRONG_TOKEN);
+    if (payload.token_type !== REFRESH_TOKEN_TYPE)
+      throw new DomainException(AppErrorCode.WRONG_TOKEN);
     return { userId: this.userIdFrom(payload), sessionId: this.sessionIdFrom(payload.sid) };
   }
 
@@ -68,7 +74,11 @@ export class TokenService implements TokenIssuerPort {
     return createHash('sha256').update(token).digest('hex');
   }
 
-  private async sign(payload: JWTPayload, userId: number, expiresInSeconds: number): Promise<string> {
+  private async sign(
+    payload: JWTPayload,
+    userId: number,
+    expiresInSeconds: number,
+  ): Promise<string> {
     return new SignJWT(payload)
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject(String(userId))
@@ -103,7 +113,8 @@ export class TokenService implements TokenIssuerPort {
 
   private safePositiveInteger(value: unknown): number {
     const parsed = typeof value === 'number' ? value : Number(value);
-    if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new DomainException(AppErrorCode.WRONG_TOKEN);
+    if (!Number.isSafeInteger(parsed) || parsed <= 0)
+      throw new DomainException(AppErrorCode.WRONG_TOKEN);
     return parsed;
   }
 

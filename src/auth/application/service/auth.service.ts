@@ -15,7 +15,12 @@ import {
   type SocialIdentityVerifierPort,
 } from '../port/social-identity-verifier.port';
 import { TOKEN_ISSUER, type TokenIssuerPort } from '../port/token-issuer.port';
-import type { TokenResult, SocialLoginResult, AuthUser, SessionIssueResult } from '../type/auth.result';
+import type {
+  TokenResult,
+  SocialLoginResult,
+  AuthUser,
+  SessionIssueResult,
+} from '../type/auth.result';
 import type { AuthenticatedPrincipal } from '../type/authenticated-principal';
 
 export const SESSION_ID_GENERATOR = Symbol('SESSION_ID_GENERATOR');
@@ -47,12 +52,17 @@ export class AuthService {
     }
 
     this.throwForInvalidIdentity(validateNewSocialIdentity(identity));
-    if (identity.email !== null && (await this.persistence.findUserByEmail(identity.email)) !== null) {
+    if (
+      identity.email !== null &&
+      (await this.persistence.findUserByEmail(identity.email)) !== null
+    ) {
       throw new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
     }
 
     try {
-      return await this.persistence.createAccount({ identity }, async (user) => this.prepareLogin(user));
+      return await this.persistence.createAccount({ identity }, async (user) =>
+        this.prepareLogin(user),
+      );
     } catch (error: unknown) {
       if (isUniqueConstraint(error, 'users_email_unique')) {
         throw new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);

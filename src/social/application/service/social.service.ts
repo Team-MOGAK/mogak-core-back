@@ -107,7 +107,10 @@ export class SocialService {
     posts: readonly FeedPostResult[],
     summary: false,
   ): Promise<PacemakerPostResult[]>;
-  private async toFeed(posts: readonly FeedPostResult[], summary: true): Promise<NetworkPostResult[]>;
+  private async toFeed(
+    posts: readonly FeedPostResult[],
+    summary: true,
+  ): Promise<NetworkPostResult[]>;
   private async toFeed(posts: readonly FeedPostResult[], summary: boolean) {
     const [images, comments] = await Promise.all([
       this.repository.listImages(posts.map((post) => post.id)),

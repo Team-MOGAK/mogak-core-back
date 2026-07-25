@@ -9,12 +9,15 @@ const kakaoUserInfoUrl = 'https://kapi.kakao.com/v2/user/me';
 
 @Injectable()
 export class KakaoIdentityVerifier implements SocialIdentityVerifier {
-  supports(provider: SocialProvider): boolean { return provider === 'KAKAO'; }
+  supports(provider: SocialProvider): boolean {
+    return provider === 'KAKAO';
+  }
 
   async verify(token: string): Promise<VerifiedSocialIdentity> {
     try {
       const response = await fetch(kakaoUserInfoUrl, {
-        headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(3_000),
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(3_000),
       });
       if (!response.ok) throw new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN);
       return this.identityFrom(await response.json());
@@ -31,10 +34,15 @@ export class KakaoIdentityVerifier implements SocialIdentityVerifier {
     const account = isRecord(value.kakao_account) ? value.kakao_account : null;
     const email = account !== null && typeof account.email === 'string' ? account.email : null;
     return {
-      provider: 'KAKAO', providerUserId: String(value.id), email,
-      emailVerified: account !== null && account.is_email_valid === true && account.is_email_verified === true,
+      provider: 'KAKAO',
+      providerUserId: String(value.id),
+      email,
+      emailVerified:
+        account !== null && account.is_email_valid === true && account.is_email_verified === true,
     };
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null; }
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}

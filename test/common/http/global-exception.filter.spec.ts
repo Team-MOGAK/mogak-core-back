@@ -109,10 +109,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
-      new DomainException(AppErrorCode.FORBIDDEN),
-      host as never,
-    );
+    new GlobalExceptionFilter().catch(new DomainException(AppErrorCode.FORBIDDEN), host as never);
 
     expect(warn).toHaveBeenCalledWith({
       type: 'domain_exception',

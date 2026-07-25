@@ -57,7 +57,9 @@ export class SocialController {
 
   @Get('users/follows/counts/:nickname')
   async counts(@ZodParams(nicknameParamsSchema) params: NicknameParams) {
-    return successResponse<FollowCountsResponse>(await this.social.getFollowCounts(params.nickname));
+    return successResponse<FollowCountsResponse>(
+      await this.social.getFollowCounts(params.nickname),
+    );
   }
 
   @Get('users/follows/:nickname/motos')

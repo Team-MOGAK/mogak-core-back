@@ -104,16 +104,26 @@ export class DrizzleAuthRepository implements AuthPersistencePort {
   }
 
   async deleteSession(sessionId: string, userId: number): Promise<void> {
-    await this.db.delete(authSessions).where(and(eq(authSessions.id, sessionId), eq(authSessions.userId, userId)));
+    await this.db
+      .delete(authSessions)
+      .where(and(eq(authSessions.id, sessionId), eq(authSessions.userId, userId)));
   }
 
   async deleteUser(userId: number): Promise<boolean> {
-    const deleted = await this.db.delete(users).where(eq(users.id, userId)).returning({ id: users.id });
+    const deleted = await this.db
+      .delete(users)
+      .where(eq(users.id, userId))
+      .returning({ id: users.id });
     return deleted.length === 1;
   }
 }
 
-function asAuthUser(user: { id: number; email: string | null; nickname: string | null; role: string }): AuthUser {
+function asAuthUser(user: {
+  id: number;
+  email: string | null;
+  nickname: string | null;
+  role: string;
+}): AuthUser {
   return { id: user.id, email: user.email, nickname: user.nickname, role: asUserRole(user.role) };
 }
 

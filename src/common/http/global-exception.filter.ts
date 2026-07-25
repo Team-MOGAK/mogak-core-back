@@ -60,7 +60,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         this.logger.error('Unhandled HTTP exception', exception.stack);
       }
     } else {
-      this.logger.error('Unhandled exception', exception instanceof Error ? exception.stack : undefined);
+      this.logger.error(
+        'Unhandled exception',
+        exception instanceof Error ? exception.stack : undefined,
+      );
     }
 
     const error =
