@@ -10,7 +10,7 @@ import { ThrottlerException } from '@nestjs/throttler';
 import type { Response } from 'express';
 
 import { AppErrorCode, type AppErrorCode as AppErrorDefinition } from './app-error-code';
-import { AppException } from './app.exception';
+import { DomainException } from './domain.exception';
 import { errorResponse } from './api-response';
 
 function errorForStatus(status: number): AppErrorDefinition {
@@ -31,8 +31,8 @@ type RequestForRateLimitLog = {
 };
 
 @Catch()
-export class AllExceptionsFilter implements ExceptionFilter {
-  private readonly logger = new Logger(AllExceptionsFilter.name);
+export class GlobalExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(GlobalExceptionFilter.name);
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
@@ -48,8 +48,23 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return;
     }
 
+    if (exception instanceof DomainException) {
+      this.logger.warn({
+        type: 'domain_exception',
+        code: exception.errorCode.code,
+        status: HttpStatus[exception.errorCode.httpStatus],
+        message: exception.errorCode.message,
+      });
+    } else if (exception instanceof HttpException) {
+      if (exception.getStatus() >= HttpStatus.INTERNAL_SERVER_ERROR) {
+        this.logger.error('Unhandled HTTP exception', exception.stack);
+      }
+    } else {
+      this.logger.error('Unhandled exception', exception instanceof Error ? exception.stack : undefined);
+    }
+
     const error =
-      exception instanceof AppException
+      exception instanceof DomainException
         ? exception.errorCode
         : exception instanceof HttpException
           ? errorForStatus(exception.getStatus())

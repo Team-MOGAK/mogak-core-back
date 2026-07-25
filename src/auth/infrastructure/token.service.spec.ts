@@ -2,7 +2,7 @@ import type { ConfigService } from '@nestjs/config';
 
 import { testMock } from '../../../test/test-mock';
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { AppEnv } from '../../config/app-env';
 import { TokenService } from './token.service';
 
@@ -40,7 +40,7 @@ describe('토큰 서비스', () => {
     const tokens = await service.issue({ userId: 7, role: 'USER', sessionId: SESSION_ID });
 
     await expect(service.verifyRefresh(tokens.accessToken)).rejects.toEqual(
-      new AppException(AppErrorCode.WRONG_TOKEN),
+      new DomainException(AppErrorCode.WRONG_TOKEN),
     );
   });
 

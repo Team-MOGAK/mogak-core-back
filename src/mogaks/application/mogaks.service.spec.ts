@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
 import { testMock } from '../../../test/test-mock';
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { MogaksRepository } from '../infrastructure/mogaks.repository';
 import { MogaksService } from './mogaks.service';
 
@@ -23,7 +23,7 @@ describe('모각 서비스', () => {
     const service = new MogaksService(mogaks);
 
     await expect(service.createModarat(7, { title: '   ', color: 'blue' })).rejects.toEqual(
-      new AppException(AppErrorCode.INVALID_PARAMETER),
+      new DomainException(AppErrorCode.INVALID_PARAMETER),
     );
     expect(mogaks.createModarat).not.toHaveBeenCalled();
   });
@@ -79,7 +79,7 @@ describe('모각 서비스', () => {
         categoryCode: 'CERTIFICATION',
         customCategoryName: '코테',
       }),
-    ).rejects.toEqual(new AppException(AppErrorCode.INVALID_PARAMETER));
+    ).rejects.toEqual(new DomainException(AppErrorCode.INVALID_PARAMETER));
   });
 
   it('예약 칸이나 잠금을 만들지 않고 아홉 번째 연속 모각을 거부한다', async () => {
@@ -98,7 +98,7 @@ describe('모각 서비스', () => {
         title: '준비',
         customCategoryName: '코테',
       }),
-    ).rejects.toEqual(new AppException(AppErrorCode.MAX_MOGAKS));
+    ).rejects.toEqual(new DomainException(AppErrorCode.MAX_MOGAKS));
     expect(mogaks.createMogak).not.toHaveBeenCalled();
   });
 
@@ -108,7 +108,7 @@ describe('모각 서비스', () => {
     const service = new MogaksService(mogaks);
 
     await expect(service.deleteModarat(7, 3)).rejects.toEqual(
-      new AppException(AppErrorCode.MODARAT_NOT_FOUND),
+      new DomainException(AppErrorCode.MODARAT_NOT_FOUND),
     );
   });
 

@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import { STORAGE_PORT, type StoragePort } from '../../storage/application/storage.port';
 import {
   SocialRepository,
@@ -18,17 +18,17 @@ export class SocialService {
 
   async follow(userId: number, nickname: string): Promise<void> {
     const target = await this.requireTarget(nickname);
-    if (target.id === userId) throw new AppException(AppErrorCode.INVALID_PARAMETER);
+    if (target.id === userId) throw new DomainException(AppErrorCode.INVALID_PARAMETER);
     if (!(await this.repository.createFollow({ followerId: userId, followingId: target.id }))) {
-      throw new AppException(AppErrorCode.FOLLOW_ALREADY_EXISTS);
+      throw new DomainException(AppErrorCode.FOLLOW_ALREADY_EXISTS);
     }
   }
 
   async unfollow(userId: number, nickname: string): Promise<void> {
     const target = await this.requireTarget(nickname);
-    if (target.id === userId) throw new AppException(AppErrorCode.INVALID_PARAMETER);
+    if (target.id === userId) throw new DomainException(AppErrorCode.INVALID_PARAMETER);
     if (!(await this.repository.deleteFollow({ followerId: userId, followingId: target.id }))) {
-      throw new AppException(AppErrorCode.FOLLOW_NOT_FOUND);
+      throw new DomainException(AppErrorCode.FOLLOW_NOT_FOUND);
     }
   }
 
@@ -64,11 +64,11 @@ export class SocialService {
     address?: string,
   ) {
     if (sort !== 'createdAt' && sort !== 'likeCnt') {
-      throw new AppException(AppErrorCode.INVALID_PARAMETER);
+      throw new DomainException(AppErrorCode.INVALID_PARAMETER);
     }
     const selectedAddress = address?.trim() || (await this.repository.findAddressName(userId));
     if (selectedAddress === null || selectedAddress === '') {
-      throw new AppException(AppErrorCode.ADDRESS_NOT_FOUND);
+      throw new DomainException(AppErrorCode.ADDRESS_NOT_FOUND);
     }
     const rows = await this.repository.listNetworkPosts({
       address: selectedAddress,
@@ -90,9 +90,9 @@ export class SocialService {
 
   private async requireTarget(nickname: string) {
     const normalized = nickname.trim();
-    if (normalized.length === 0) throw new AppException(AppErrorCode.INVALID_PARAMETER);
+    if (normalized.length === 0) throw new DomainException(AppErrorCode.INVALID_PARAMETER);
     const target = await this.repository.findUserByNickname(normalized);
-    if (target === null) throw new AppException(AppErrorCode.USER_NOT_FOUND);
+    if (target === null) throw new DomainException(AppErrorCode.USER_NOT_FOUND);
     return target;
   }
 

@@ -1,7 +1,7 @@
 import { testMock } from '../../../test/test-mock';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { ConsentRepository } from '../infrastructure/consent.repository';
 import { ConsentService } from './consent.service';
 
@@ -21,7 +21,7 @@ describe('동의 서비스', () => {
         { consentItemId: 1, agreed: true },
         { consentItemId: 1, agreed: false },
       ]),
-    ).rejects.toEqual(new AppException(AppErrorCode.DUPLICATE_CONSENT_ITEM));
+    ).rejects.toEqual(new DomainException(AppErrorCode.DUPLICATE_CONSENT_ITEM));
     expect(repository.upsertUserConsents).not.toHaveBeenCalled();
   });
 });

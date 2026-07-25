@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { jwtVerify, SignJWT, type JWTPayload } from 'jose';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { AppEnv } from '../../config/app-env';
 import type { AuthenticatedUser, UserRole } from '../domain/authenticated-user';
 import type { TokenPair } from '../domain/token-pair';
@@ -63,7 +63,7 @@ export class TokenService {
   async verifyAccess(token: string): Promise<AuthenticatedUser> {
     const payload = await this.verify(token);
     if (payload.token_type !== ACCESS_TOKEN_TYPE) {
-      throw new AppException(AppErrorCode.WRONG_TOKEN);
+      throw new DomainException(AppErrorCode.WRONG_TOKEN);
     }
 
     const userId = this.userIdFrom(payload);
@@ -78,7 +78,7 @@ export class TokenService {
   async verifyRefresh(token: string): Promise<RefreshTokenClaims> {
     const payload = await this.verify(token);
     if (payload.token_type !== REFRESH_TOKEN_TYPE) {
-      throw new AppException(AppErrorCode.WRONG_TOKEN);
+      throw new DomainException(AppErrorCode.WRONG_TOKEN);
     }
 
     return {
@@ -113,9 +113,9 @@ export class TokenService {
       return payload;
     } catch (error: unknown) {
       if (this.isExpiredJwtError(error)) {
-        throw new AppException(AppErrorCode.EXPIRED_TOKEN);
+        throw new DomainException(AppErrorCode.EXPIRED_TOKEN);
       }
-      throw new AppException(AppErrorCode.WRONG_TOKEN);
+      throw new DomainException(AppErrorCode.WRONG_TOKEN);
     }
   }
 
@@ -127,7 +127,7 @@ export class TokenService {
     const subjectId = this.safePositiveInteger(payload.sub);
     const claimId = this.safePositiveInteger(payload.id);
     if (subjectId !== claimId) {
-      throw new AppException(AppErrorCode.WRONG_TOKEN);
+      throw new DomainException(AppErrorCode.WRONG_TOKEN);
     }
     return subjectId;
   }
@@ -135,7 +135,7 @@ export class TokenService {
   private safePositiveInteger(value: unknown): number {
     const parsed = typeof value === 'number' ? value : Number(value);
     if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-      throw new AppException(AppErrorCode.WRONG_TOKEN);
+      throw new DomainException(AppErrorCode.WRONG_TOKEN);
     }
     return parsed;
   }
@@ -144,13 +144,13 @@ export class TokenService {
     if (value === 'PENDING' || value === 'USER') {
       return value;
     }
-    throw new AppException(AppErrorCode.WRONG_TOKEN);
+    throw new DomainException(AppErrorCode.WRONG_TOKEN);
   }
 
   private sessionIdFrom(value: unknown): string {
     if (typeof value === 'string' && value.length > 0) {
       return value;
     }
-    throw new AppException(AppErrorCode.WRONG_TOKEN);
+    throw new DomainException(AppErrorCode.WRONG_TOKEN);
   }
 }

@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 import { testMock } from '../../../test/test-mock';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { SocialRepository } from '../infrastructure/social.repository';
 import { SocialService } from './social.service';
 
@@ -41,7 +41,7 @@ describe('소셜 팔로우 서비스', () => {
     const service = new SocialService(social);
 
     await expect(service.follow(7, '모각러')).rejects.toEqual(
-      new AppException(AppErrorCode.FOLLOW_ALREADY_EXISTS),
+      new DomainException(AppErrorCode.FOLLOW_ALREADY_EXISTS),
     );
   });
 
@@ -51,7 +51,7 @@ describe('소셜 팔로우 서비스', () => {
     const service = new SocialService(social);
 
     await expect(service.follow(7, '나')).rejects.toEqual(
-      new AppException(AppErrorCode.INVALID_PARAMETER),
+      new DomainException(AppErrorCode.INVALID_PARAMETER),
     );
     expect(social.createFollow).not.toHaveBeenCalled();
   });
@@ -63,7 +63,7 @@ describe('소셜 팔로우 서비스', () => {
     const service = new SocialService(social);
 
     await expect(service.unfollow(7, '모각러')).rejects.toEqual(
-      new AppException(AppErrorCode.FOLLOW_NOT_FOUND),
+      new DomainException(AppErrorCode.FOLLOW_NOT_FOUND),
     );
   });
 
@@ -134,7 +134,7 @@ describe('소셜 팔로우 서비스', () => {
     const service = new SocialService(social);
 
     await expect(service.listNetworkPosts(7, 0, 10, 'viewCnt')).rejects.toEqual(
-      new AppException(AppErrorCode.INVALID_PARAMETER),
+      new DomainException(AppErrorCode.INVALID_PARAMETER),
     );
     expect(social.listNetworkPosts).not.toHaveBeenCalled();
   });

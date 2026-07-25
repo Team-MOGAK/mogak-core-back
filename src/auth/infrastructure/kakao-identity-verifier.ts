@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { SocialIdentity } from '../domain/social-identity';
 import type { SocialIdentityVerifier } from '../domain/social-identity-verifier.port';
 import type { SocialProvider } from '../domain/social-provider';
@@ -21,20 +21,20 @@ export class KakaoIdentityVerifier implements SocialIdentityVerifier {
         signal: AbortSignal.timeout(3_000),
       });
       if (!response.ok) {
-        throw new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN);
+        throw new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN);
       }
       return this.identityFrom(await response.json());
     } catch (error: unknown) {
-      if (error instanceof AppException) {
+      if (error instanceof DomainException) {
         throw error;
       }
-      throw new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN);
+      throw new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN);
     }
   }
 
   private identityFrom(value: unknown): SocialIdentity {
     if (!isRecord(value) || (typeof value.id !== 'number' && typeof value.id !== 'string')) {
-      throw new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN);
+      throw new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN);
     }
 
     const account = isRecord(value.kakao_account) ? value.kakao_account : null;

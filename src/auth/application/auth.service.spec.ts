@@ -3,7 +3,7 @@ import { testMock } from '../../../test/test-mock';
 import type { ConfigService } from '@nestjs/config';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { AppEnv } from '../../config/app-env';
 import type { AuthPersistence } from '../domain/auth-persistence.port';
 import { AuthService } from './auth.service';
@@ -99,7 +99,7 @@ describe('인증 서비스', () => {
     const service = new AuthService(verifiers, persistence, createTokenService(), () => SESSION_ID);
 
     await expect(service.login('KAKAO', 'access-token')).rejects.toEqual(
-      new AppException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED),
+      new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED),
     );
     expect(persistence.createAccount).not.toHaveBeenCalled();
   });
@@ -133,7 +133,7 @@ describe('인증 서비스', () => {
 
     await expect(service.login('KAKAO', 'access-token')).resolves.toMatchObject({ userId: 7 });
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
-      new AppException(AppErrorCode.SOCIAL_EMAIL_NOT_VERIFIED),
+      new DomainException(AppErrorCode.SOCIAL_EMAIL_NOT_VERIFIED),
     );
   });
 });

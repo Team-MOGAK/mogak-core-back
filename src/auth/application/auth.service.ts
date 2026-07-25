@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { AuthPersistence, AuthSessionDraft, AuthUser } from '../domain/auth-persistence.port';
 import type { SocialIdentity } from '../domain/social-identity';
 import type { SocialProvider } from '../domain/social-provider';
@@ -38,7 +38,7 @@ export class AuthService {
   async login(provider: SocialProvider, token: string): Promise<SocialLoginResponse> {
     const identity = await this.verifiers.verify(provider, token);
     if (identity.provider !== provider) {
-      throw new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN);
+      throw new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN);
     }
 
     const existingUser = await this.persistence.findUserBySocialIdentity(
@@ -54,7 +54,7 @@ export class AuthService {
       identity.email !== null &&
       (await this.persistence.findUserByEmail(identity.email)) !== null
     ) {
-      throw new AppException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
+      throw new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
     }
 
     try {
@@ -63,7 +63,7 @@ export class AuthService {
       });
     } catch (error: unknown) {
       if (isUniqueConstraint(error, 'users_email_unique')) {
-        throw new AppException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
+        throw new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
       }
       if (isUniqueConstraint(error, 'social_accounts_provider_user_unique')) {
         const winner = await this.persistence.findUserBySocialIdentity(
@@ -82,7 +82,7 @@ export class AuthService {
     const claims = await this.tokens.verifyRefresh(refreshToken);
     const user = await this.persistence.findUserById(claims.userId);
     if (user === null) {
-      throw new AppException(AppErrorCode.WRONG_TOKEN);
+      throw new DomainException(AppErrorCode.WRONG_TOKEN);
     }
     const nextTokens = await this.tokens.issue({
       userId: user.id,
@@ -99,7 +99,7 @@ export class AuthService {
       now,
     });
     if (!rotated) {
-      throw new AppException(AppErrorCode.WRONG_TOKEN);
+      throw new DomainException(AppErrorCode.WRONG_TOKEN);
     }
     return nextTokens;
   }
@@ -111,22 +111,22 @@ export class AuthService {
   async withdraw(userId: number): Promise<void> {
     const deleted = await this.persistence.deleteUser(userId);
     if (!deleted) {
-      throw new AppException(AppErrorCode.USER_NOT_FOUND);
+      throw new DomainException(AppErrorCode.USER_NOT_FOUND);
     }
   }
 
   private validateNewIdentity(identity: SocialIdentity): void {
     if (identity.providerUserId.length === 0) {
-      throw new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN);
+      throw new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN);
     }
     if (identity.email === null) {
       if (identity.provider === 'KAKAO') {
         return;
       }
-      throw new AppException(AppErrorCode.SOCIAL_EMAIL_REQUIRED);
+      throw new DomainException(AppErrorCode.SOCIAL_EMAIL_REQUIRED);
     }
     if (!identity.emailVerified) {
-      throw new AppException(AppErrorCode.SOCIAL_EMAIL_NOT_VERIFIED);
+      throw new DomainException(AppErrorCode.SOCIAL_EMAIL_NOT_VERIFIED);
     }
   }
 

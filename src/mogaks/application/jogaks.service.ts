@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import { requiredTrimmed } from '../../common/validation/required-text';
 import { decideExecutionTransition } from '../domain/execution-transition';
 import {
@@ -75,12 +75,12 @@ export class JogaksService {
   async create(userId: number, input: CreateJogakInput) {
     const schedule = validateSchedule(input.schedule);
     const mogak = await this.repository.findOwnedMogak(userId, input.mogakId);
-    if (mogak === null) throw new AppException(AppErrorCode.MOGAK_NOT_FOUND);
+    if (mogak === null) throw new DomainException(AppErrorCode.MOGAK_NOT_FOUND);
     if (
       (await this.repository.countJogaksWithCurrentOrFutureSchedule(input.mogakId, this.today())) >=
       MAX_JOGAKS_PER_MOGAK
     ) {
-      throw new AppException(AppErrorCode.MAX_MOGAKS);
+      throw new DomainException(AppErrorCode.MAX_MOGAKS);
     }
 
     const created = await this.repository.createJogakWithSchedule({
@@ -120,14 +120,14 @@ export class JogaksService {
 
   async listMogakDay(userId: number, mogakId: number, date: string) {
     if ((await this.repository.findOwnedMogak(userId, mogakId)) === null) {
-      throw new AppException(AppErrorCode.MOGAK_NOT_FOUND);
+      throw new DomainException(AppErrorCode.MOGAK_NOT_FOUND);
     }
     return this.projectOccurrences(userId, date, date, { mogakId });
   }
 
   async getDetail(userId: number, jogakId: number) {
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
-    if (jogak === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+    if (jogak === null) throw new DomainException(AppErrorCode.JOGAK_NOT_FOUND);
     const schedules = groupScheduleRows(
       await this.repository.listScheduleRowsForOwnedJogak(userId, jogakId),
     );
@@ -180,9 +180,9 @@ export class JogaksService {
             now: new Date(),
           });
     if (updated === 'INVALID_EFFECTIVE_FROM') {
-      throw new AppException(AppErrorCode.INVALID_SCHEDULE);
+      throw new DomainException(AppErrorCode.INVALID_SCHEDULE);
     }
-    if (updated === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+    if (updated === null) throw new DomainException(AppErrorCode.JOGAK_NOT_FOUND);
     return {
       jogakId: updated.id,
       mogakId: updated.mogakId,
@@ -195,7 +195,7 @@ export class JogaksService {
 
   async delete(userId: number, jogakId: number): Promise<void> {
     if (!(await this.repository.deleteOwnedJogak(userId, jogakId))) {
-      throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+      throw new DomainException(AppErrorCode.JOGAK_NOT_FOUND);
     }
   }
 
@@ -205,13 +205,13 @@ export class JogaksService {
     scheduledDate: string,
     desiredStatus: StoredExecutionStatus,
   ) {
-    if (!isDateOnly(scheduledDate)) throw new AppException(AppErrorCode.INVALID_TARGET_DATE);
+    if (!isDateOnly(scheduledDate)) throw new DomainException(AppErrorCode.INVALID_TARGET_DATE);
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
-    if (jogak === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+    if (jogak === null) throw new DomainException(AppErrorCode.JOGAK_NOT_FOUND);
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
     const occurrenceSchedule = schedules.find((schedule) => occursOn(schedule, scheduledDate));
     if (occurrenceSchedule === undefined) {
-      throw new AppException(AppErrorCode.INVALID_TARGET_DATE);
+      throw new DomainException(AppErrorCode.INVALID_TARGET_DATE);
     }
     const isRoutine = occurrenceSchedule.scheduleType === 'WEEKLY';
 
@@ -226,7 +226,7 @@ export class JogaksService {
     }
 
     const existing = await this.repository.findExecution(jogakId, scheduledDate);
-    if (existing === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+    if (existing === null) throw new DomainException(AppErrorCode.JOGAK_NOT_FOUND);
     return {
       created: false,
       execution: await this.transitionExisting(existing, desiredStatus, jogak, isRoutine, true),
@@ -234,12 +234,12 @@ export class JogaksService {
   }
 
   async resolveOwnedOccurrence(userId: number, jogakId: number, scheduledDate: string) {
-    if (!isDateOnly(scheduledDate)) throw new AppException(AppErrorCode.INVALID_TARGET_DATE);
+    if (!isDateOnly(scheduledDate)) throw new DomainException(AppErrorCode.INVALID_TARGET_DATE);
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
-    if (jogak === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+    if (jogak === null) throw new DomainException(AppErrorCode.JOGAK_NOT_FOUND);
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
     if (!schedules.some((schedule) => occursOn(schedule, scheduledDate))) {
-      throw new AppException(AppErrorCode.INVALID_TARGET_DATE);
+      throw new DomainException(AppErrorCode.INVALID_TARGET_DATE);
     }
     return { jogakId: jogak.id, mogakId: jogak.mogakId, title: jogak.title };
   }
@@ -325,7 +325,7 @@ export class JogaksService {
     const transition = decideExecutionTransition(existing.status, desiredStatus);
     if (transition.type === 'NOOP') return toExecutionResponse(existing, jogak, isRoutine);
     if (transition.type === 'REJECT') {
-      throw new AppException(AppErrorCode.INVALID_EXECUTION_TRANSITION);
+      throw new DomainException(AppErrorCode.INVALID_EXECUTION_TRANSITION);
     }
 
     const updated = await this.repository.updateExecutionStatus({
@@ -336,7 +336,7 @@ export class JogaksService {
     });
     if (updated !== null) return toExecutionResponse(updated, jogak, isRoutine);
     const current = await this.repository.findExecution(existing.jogakId, existing.scheduledDate);
-    if (current === null) throw new AppException(AppErrorCode.JOGAK_NOT_FOUND);
+    if (current === null) throw new DomainException(AppErrorCode.JOGAK_NOT_FOUND);
     if (!retryOnce)
       return this.resolveAfterLostTransition(current, desiredStatus, jogak, isRoutine);
     return this.transitionExisting(current, desiredStatus, jogak, isRoutine, false);
@@ -351,26 +351,26 @@ export class JogaksService {
     const transition = decideExecutionTransition(current.status, desiredStatus);
     if (transition.type === 'NOOP') return toExecutionResponse(current, jogak, isRoutine);
     if (transition.type === 'REJECT') {
-      throw new AppException(AppErrorCode.INVALID_EXECUTION_TRANSITION);
+      throw new DomainException(AppErrorCode.INVALID_EXECUTION_TRANSITION);
     }
-    throw new AppException(AppErrorCode.CONFLICT);
+    throw new DomainException(AppErrorCode.CONFLICT);
   }
 }
 
 function validateSchedule(input: ScheduleInput): SchedulePersistenceInput {
-  if (!isDateOnly(input.effectiveFrom)) throw new AppException(AppErrorCode.INVALID_SCHEDULE);
+  if (!isDateOnly(input.effectiveFrom)) throw new DomainException(AppErrorCode.INVALID_SCHEDULE);
   const effectiveTo = input.effectiveTo === undefined ? null : input.effectiveTo;
   if (
     effectiveTo !== null &&
     (!isDateOnly(effectiveTo) || compareDateOnly(effectiveTo, input.effectiveFrom) < 0)
   ) {
-    throw new AppException(AppErrorCode.INVALID_SCHEDULE);
+    throw new DomainException(AppErrorCode.INVALID_SCHEDULE);
   }
 
   const weekdays = input.weekdays ?? [];
   if (input.scheduleType === 'ONCE') {
     if (effectiveTo !== null || weekdays.length > 0) {
-      throw new AppException(AppErrorCode.INVALID_SCHEDULE);
+      throw new DomainException(AppErrorCode.INVALID_SCHEDULE);
     }
     return {
       scheduleType: 'ONCE',
@@ -379,10 +379,10 @@ function validateSchedule(input: ScheduleInput): SchedulePersistenceInput {
       weekdays: [],
     };
   }
-  if (input.scheduleType !== 'WEEKLY') throw new AppException(AppErrorCode.INVALID_SCHEDULE);
-  if (weekdays.length === 0) throw new AppException(AppErrorCode.ROUTINE_WEEKDAYS_REQUIRED);
+  if (input.scheduleType !== 'WEEKLY') throw new DomainException(AppErrorCode.INVALID_SCHEDULE);
+  if (weekdays.length === 0) throw new DomainException(AppErrorCode.ROUTINE_WEEKDAYS_REQUIRED);
   if (new Set(weekdays).size !== weekdays.length || !weekdays.every(isIsoWeekday)) {
-    throw new AppException(AppErrorCode.INVALID_SCHEDULE);
+    throw new DomainException(AppErrorCode.INVALID_SCHEDULE);
   }
   return {
     scheduleType: 'WEEKLY',
@@ -466,7 +466,7 @@ function asIsoWeekday(value: string): IsoWeekday {
 
 function assertDateRange(startDate: string, endDate: string): void {
   if (!isDateOnly(startDate) || !isDateOnly(endDate) || compareDateOnly(startDate, endDate) > 0) {
-    throw new AppException(AppErrorCode.INVALID_TARGET_DATE);
+    throw new DomainException(AppErrorCode.INVALID_TARGET_DATE);
   }
 }
 

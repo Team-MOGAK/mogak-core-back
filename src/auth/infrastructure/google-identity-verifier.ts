@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { AppEnv } from '../../config/app-env';
 import type { SocialIdentityVerifier } from '../domain/social-identity-verifier.port';
 import type { SocialProvider } from '../domain/social-provider';
@@ -34,10 +34,10 @@ export class GoogleIdentityVerifier implements SocialIdentityVerifier {
       });
       return identityFromJwtClaims('GOOGLE', payload);
     } catch (error: unknown) {
-      if (error instanceof AppException) {
+      if (error instanceof DomainException) {
         throw error;
       }
-      throw new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN);
+      throw new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN);
     }
   }
 }

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import { requiredTrimmed } from '../../common/validation/required-text';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { TokenService } from '../../auth/infrastructure/token.service';
@@ -33,15 +33,15 @@ export class UserService {
 
   async verifyNickname(nickname: string): Promise<void> {
     if (await this.users.existsByNickname(requiredTrimmed(nickname))) {
-      throw new AppException(AppErrorCode.INVALID_NICKNAME);
+      throw new DomainException(AppErrorCode.INVALID_NICKNAME);
     }
   }
 
   async join(current: AuthenticatedUser, input: JoinInput) {
     const user = await this.users.findById(current.userId);
-    if (user === null) throw new AppException(AppErrorCode.USER_NOT_FOUND);
+    if (user === null) throw new DomainException(AppErrorCode.USER_NOT_FOUND);
     if (current.role !== 'PENDING' || user.role !== 'PENDING') {
-      throw new AppException(AppErrorCode.USER_ALREADY_EXISTS);
+      throw new DomainException(AppErrorCode.USER_ALREADY_EXISTS);
     }
     const nickname = requiredTrimmed(input.nickname);
     const jobName = requiredTrimmed(input.job);
@@ -51,8 +51,8 @@ export class UserService {
       this.users.findJobByName(jobName),
       this.users.findAddressByName(addressName),
     ]);
-    if (job === null) throw new AppException(AppErrorCode.JOB_NOT_FOUND);
-    if (address === null) throw new AppException(AppErrorCode.ADDRESS_NOT_FOUND);
+    if (job === null) throw new DomainException(AppErrorCode.JOB_NOT_FOUND);
+    if (address === null) throw new DomainException(AppErrorCode.ADDRESS_NOT_FOUND);
     await this.consents.validate(input.consents);
 
     const sessionId = this.createSessionId();
@@ -81,7 +81,7 @@ export class UserService {
       return { userId: registered.id, nickname: registered.nickname, tokens };
     } catch (error: unknown) {
       if (isNicknameUniqueViolation(error)) {
-        throw new AppException(AppErrorCode.INVALID_NICKNAME);
+        throw new DomainException(AppErrorCode.INVALID_NICKNAME);
       }
       throw error;
     }
@@ -89,7 +89,7 @@ export class UserService {
 
   async profile(userId: number) {
     const profile = await this.users.findProfile(userId);
-    if (profile === null) throw new AppException(AppErrorCode.USER_NOT_FOUND);
+    if (profile === null) throw new DomainException(AppErrorCode.USER_NOT_FOUND);
     return {
       nickname: profile.nickname,
       job: profile.job,
@@ -105,11 +105,11 @@ export class UserService {
     await this.verifyNickname(normalizedNickname);
     try {
       if (!(await this.users.updateNickname(userId, normalizedNickname, new Date()))) {
-        throw new AppException(AppErrorCode.USER_NOT_FOUND);
+        throw new DomainException(AppErrorCode.USER_NOT_FOUND);
       }
     } catch (error: unknown) {
       if (isNicknameUniqueViolation(error)) {
-        throw new AppException(AppErrorCode.INVALID_NICKNAME);
+        throw new DomainException(AppErrorCode.INVALID_NICKNAME);
       }
       throw error;
     }
@@ -117,20 +117,20 @@ export class UserService {
 
   async updateJob(userId: number, jobName: string): Promise<void> {
     const job = await this.users.findJobByName(requiredTrimmed(jobName));
-    if (job === null) throw new AppException(AppErrorCode.JOB_NOT_FOUND);
+    if (job === null) throw new DomainException(AppErrorCode.JOB_NOT_FOUND);
     if (!(await this.users.updateJob(userId, job.id, new Date()))) {
-      throw new AppException(AppErrorCode.USER_NOT_FOUND);
+      throw new DomainException(AppErrorCode.USER_NOT_FOUND);
     }
   }
 
   async updateProfileImage(userId: number, file: Express.Multer.File | undefined): Promise<void> {
     const profile = await this.users.findProfile(userId);
-    if (profile === null) throw new AppException(AppErrorCode.USER_NOT_FOUND);
+    if (profile === null) throw new DomainException(AppErrorCode.USER_NOT_FOUND);
     const now = new Date();
     if (file !== undefined && file.size > 0) {
       const uploaded = await this.storage.replaceProfile(profile.profileImageKey, file);
       if (!(await this.users.updateProfileImageKey(userId, uploaded.storageKey, now))) {
-        throw new AppException(AppErrorCode.USER_NOT_FOUND);
+        throw new DomainException(AppErrorCode.USER_NOT_FOUND);
       }
       return;
     }
@@ -138,7 +138,7 @@ export class UserService {
       await this.storage.deleteProfile(profile.profileImageKey);
     }
     if (!(await this.users.updateProfileImageKey(userId, null, now))) {
-      throw new AppException(AppErrorCode.USER_NOT_FOUND);
+      throw new DomainException(AppErrorCode.USER_NOT_FOUND);
     }
   }
 }

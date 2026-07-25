@@ -1,5 +1,5 @@
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 
 export const socialProviders = ['APPLE', 'GOOGLE', 'KAKAO'] as const;
 
@@ -10,5 +10,5 @@ export function parseSocialProvider(value: string): SocialProvider {
   if (provider === 'APPLE' || provider === 'GOOGLE' || provider === 'KAKAO') {
     return provider;
   }
-  throw new AppException(AppErrorCode.UNSUPPORTED_SOCIAL_PROVIDER);
+  throw new DomainException(AppErrorCode.UNSUPPORTED_SOCIAL_PROVIDER);
 }

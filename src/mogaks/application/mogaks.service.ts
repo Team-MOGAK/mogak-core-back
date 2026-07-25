@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import { requiredTrimmed } from '../../common/validation/required-text';
 import {
   MogaksRepository,
@@ -38,7 +38,7 @@ export class MogaksService {
 
   async getModarat(userId: number, modaratId: number) {
     const modarat = await this.repository.findOwnedModarat(userId, modaratId);
-    if (modarat === null) throw new AppException(AppErrorCode.MODARAT_NOT_FOUND);
+    if (modarat === null) throw new DomainException(AppErrorCode.MODARAT_NOT_FOUND);
     return {
       ...modarat,
       mogaks: (await this.repository.listMogaksForOwnedModarat(userId, modaratId)).map(
@@ -59,20 +59,20 @@ export class MogaksService {
       color: requiredTrimmed(input.color),
       now: new Date(),
     });
-    if (updated === null) throw new AppException(AppErrorCode.MODARAT_NOT_FOUND);
+    if (updated === null) throw new DomainException(AppErrorCode.MODARAT_NOT_FOUND);
     return updated;
   }
 
   async deleteModarat(userId: number, modaratId: number): Promise<void> {
     if (!(await this.repository.deleteOwnedModarat(userId, modaratId))) {
-      throw new AppException(AppErrorCode.MODARAT_NOT_FOUND);
+      throw new DomainException(AppErrorCode.MODARAT_NOT_FOUND);
     }
   }
 
   async createMogak(userId: number, input: MogakInput) {
     await this.requireOwnedModarat(userId, input.modaratId);
     if ((await this.repository.countMogaks(input.modaratId)) >= MAX_MOGAKS_PER_MODARAT) {
-      throw new AppException(AppErrorCode.MAX_MOGAKS);
+      throw new DomainException(AppErrorCode.MAX_MOGAKS);
     }
     const category = await this.resolveCategory(input);
     return toMogakResponse(
@@ -103,13 +103,13 @@ export class MogaksService {
       customCategoryName: category.customCategoryName,
       now: new Date(),
     });
-    if (updated === null) throw new AppException(AppErrorCode.MOGAK_NOT_FOUND);
+    if (updated === null) throw new DomainException(AppErrorCode.MOGAK_NOT_FOUND);
     return toMogakResponse(updated);
   }
 
   async deleteMogak(userId: number, mogakId: number): Promise<void> {
     if (!(await this.repository.deleteOwnedMogak(userId, mogakId))) {
-      throw new AppException(AppErrorCode.MOGAK_NOT_FOUND);
+      throw new DomainException(AppErrorCode.MOGAK_NOT_FOUND);
     }
   }
 
@@ -119,13 +119,13 @@ export class MogaksService {
 
   async resolveOwnedMogak(userId: number, mogakId: number): Promise<Readonly<{ id: number }>> {
     const mogak = await this.repository.findOwnedMogak(userId, mogakId);
-    if (mogak === null) throw new AppException(AppErrorCode.MOGAK_NOT_FOUND);
+    if (mogak === null) throw new DomainException(AppErrorCode.MOGAK_NOT_FOUND);
     return { id: mogak.id };
   }
 
   private async requireOwnedModarat(userId: number, modaratId: number): Promise<void> {
     if ((await this.repository.findOwnedModarat(userId, modaratId)) === null) {
-      throw new AppException(AppErrorCode.MODARAT_NOT_FOUND);
+      throw new DomainException(AppErrorCode.MODARAT_NOT_FOUND);
     }
   }
 
@@ -136,15 +136,15 @@ export class MogaksService {
     const categoryCode = optionalTrim(input.categoryCode);
     const customCategoryName = optionalTrim(input.customCategoryName);
     if ((categoryCode === undefined) === (customCategoryName === undefined)) {
-      throw new AppException(AppErrorCode.INVALID_PARAMETER);
+      throw new DomainException(AppErrorCode.INVALID_PARAMETER);
     }
     if (categoryCode !== undefined) {
       const category = await this.repository.findActiveCategoryByCode(categoryCode);
-      if (category === null) throw new AppException(AppErrorCode.MOGAK_CATEGORY_NOT_FOUND);
+      if (category === null) throw new DomainException(AppErrorCode.MOGAK_CATEGORY_NOT_FOUND);
       return { categoryId: category.id, customCategoryName: null };
     }
     if (customCategoryName === undefined) {
-      throw new AppException(AppErrorCode.CUSTOM_CATEGORY_REQUIRED);
+      throw new DomainException(AppErrorCode.CUSTOM_CATEGORY_REQUIRED);
     }
     return { categoryId: null, customCategoryName };
   }

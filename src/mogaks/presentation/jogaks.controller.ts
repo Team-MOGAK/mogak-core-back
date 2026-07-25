@@ -19,7 +19,7 @@ import { z } from 'zod';
 
 import { successResponse } from '../../common/http/api-response';
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import {
   calendarDateSchema,
   positiveIdSchema,
@@ -209,7 +209,7 @@ export class JogaksController {
 
 function asScheduleType(value: string): 'ONCE' | 'WEEKLY' {
   if (value === 'ONCE' || value === 'WEEKLY') return value;
-  throw new AppException(AppErrorCode.INVALID_SCHEDULE);
+  throw new DomainException(AppErrorCode.INVALID_SCHEDULE);
 }
 
 function scheduleFor(request: CreateJogakRequest) {
@@ -220,16 +220,16 @@ function scheduleFor(request: CreateJogakRequest) {
       request.today !== undefined ||
       request.endDate !== undefined
     ) {
-      throw new AppException(AppErrorCode.INVALID_PARAMETER);
+      throw new DomainException(AppErrorCode.INVALID_PARAMETER);
     }
     return explicitScheduleFor(request.schedule);
   }
   if (request.isRoutine === undefined || request.today === undefined) {
-    throw new AppException(AppErrorCode.INVALID_PARAMETER);
+    throw new DomainException(AppErrorCode.INVALID_PARAMETER);
   }
   if (!request.isRoutine) {
     if (request.days !== undefined || request.endDate !== undefined) {
-      throw new AppException(AppErrorCode.INVALID_SCHEDULE);
+      throw new DomainException(AppErrorCode.INVALID_SCHEDULE);
     }
     return { scheduleType: 'ONCE' as const, effectiveFrom: request.today };
   }

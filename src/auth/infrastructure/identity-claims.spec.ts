@@ -1,5 +1,5 @@
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import { identityFromJwtClaims } from './identity-claims';
 
 describe('식별 토큰 클레임 해석', () => {
@@ -20,7 +20,7 @@ describe('식별 토큰 클레임 해석', () => {
 
   it('공급자 subject가 없는 토큰을 거부한다', () => {
     expect(() => identityFromJwtClaims('APPLE', { email: 'mogak@example.test' })).toThrow(
-      new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN),
+      new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN),
     );
   });
 });

@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import { MogaksService } from '../../mogaks/application/mogaks.service';
 import { JogaksService } from '../../mogaks/application/jogaks.service';
 import { STORAGE_PORT, type StoragePort } from '../../storage/application/storage.port';
@@ -38,7 +38,7 @@ export class PostsService {
       jogakTitleSnapshot: occurrence.title,
       contents,
     });
-    if (result.type === 'DUPLICATE') throw new AppException(AppErrorCode.POST_ALREADY_EXISTS);
+    if (result.type === 'DUPLICATE') throw new DomainException(AppErrorCode.POST_ALREADY_EXISTS);
 
     return {
       id: result.post.id,
@@ -54,7 +54,7 @@ export class PostsService {
 
   async toggleLike(userId: number, postId: number): Promise<string> {
     if ((await this.repository.findPost(postId)) === null) {
-      throw new AppException(AppErrorCode.POST_NOT_FOUND);
+      throw new DomainException(AppErrorCode.POST_NOT_FOUND);
     }
     const result = await this.repository.toggleLike({ postId, userId });
     return result === 'CREATED' ? '좋아요가 생성되었습니다' : '좋아요가 삭제되었습니다';
@@ -67,26 +67,26 @@ export class PostsService {
       contents: validatePostContents(contents),
       now: new Date(),
     });
-    if (updated === null) throw new AppException(AppErrorCode.POST_NOT_FOUND);
+    if (updated === null) throw new DomainException(AppErrorCode.POST_NOT_FOUND);
     return { postId: updated.id, contents: updated.contents, updatedAt: updated.updatedAt };
   }
 
   async deletePost(userId: number, postId: number): Promise<void> {
     if (!(await this.repository.deleteOwnedPost({ postId, authorId: userId }))) {
-      throw new AppException(AppErrorCode.POST_NOT_FOUND);
+      throw new DomainException(AppErrorCode.POST_NOT_FOUND);
     }
   }
 
   async getPostByJogakAndDate(userId: number, jogakId: number, targetDate: string) {
     await this.jogaks.resolveOwnedOccurrence(userId, jogakId, targetDate);
     const post = await this.repository.findOwnedPostByOccurrence(userId, jogakId, targetDate);
-    if (post === null) throw new AppException(AppErrorCode.POST_NOT_FOUND);
+    if (post === null) throw new DomainException(AppErrorCode.POST_NOT_FOUND);
     return this.toPostDetail(post);
   }
 
   async getPost(userId: number, postId: number) {
     const post = await this.repository.findOwnedPost(userId, postId);
-    if (post === null) throw new AppException(AppErrorCode.POST_NOT_FOUND);
+    if (post === null) throw new DomainException(AppErrorCode.POST_NOT_FOUND);
     return this.toPostDetail(post);
   }
 
@@ -131,7 +131,7 @@ export class PostsService {
 
   async listComments(postId: number) {
     if ((await this.repository.findPost(postId)) === null) {
-      throw new AppException(AppErrorCode.POST_NOT_FOUND);
+      throw new DomainException(AppErrorCode.POST_NOT_FOUND);
     }
     return {
       comments: await Promise.all(
@@ -144,7 +144,7 @@ export class PostsService {
 
   async createComment(userId: number, postId: number, contents: string) {
     if ((await this.repository.findPost(postId)) === null) {
-      throw new AppException(AppErrorCode.POST_NOT_FOUND);
+      throw new DomainException(AppErrorCode.POST_NOT_FOUND);
     }
     const comment = await this.repository.createComment({
       postId,
@@ -170,7 +170,7 @@ export class PostsService {
       contents: validateCommentContents(contents),
       now: new Date(),
     });
-    if (updated === null) throw new AppException(AppErrorCode.COMMENT_NOT_FOUND);
+    if (updated === null) throw new DomainException(AppErrorCode.COMMENT_NOT_FOUND);
     return {
       id: updated.id,
       contents: updated.contents,
@@ -182,14 +182,14 @@ export class PostsService {
   async deleteComment(userId: number, postId: number, commentId: number): Promise<void> {
     await this.requireOwnedComment(userId, postId, commentId);
     if (!(await this.repository.deleteComment({ postId, commentId, authorId: userId }))) {
-      throw new AppException(AppErrorCode.COMMENT_NOT_FOUND);
+      throw new DomainException(AppErrorCode.COMMENT_NOT_FOUND);
     }
   }
 
   private async requireOwnedComment(userId: number, postId: number, commentId: number) {
     const comment = await this.repository.findComment(postId, commentId);
-    if (comment === null) throw new AppException(AppErrorCode.COMMENT_NOT_FOUND);
-    if (comment.authorId !== userId) throw new AppException(AppErrorCode.FORBIDDEN);
+    if (comment === null) throw new DomainException(AppErrorCode.COMMENT_NOT_FOUND);
+    if (comment.authorId !== userId) throw new DomainException(AppErrorCode.FORBIDDEN);
     return comment;
   }
 
@@ -226,10 +226,10 @@ export class PostsService {
 function validatePostContents(contents: string): string {
   const trimmed = contents?.trim();
   if (trimmed === undefined || trimmed.length === 0) {
-    throw new AppException(AppErrorCode.INVALID_PARAMETER);
+    throw new DomainException(AppErrorCode.INVALID_PARAMETER);
   }
   if (trimmed.length > MAX_POST_CONTENTS_LENGTH) {
-    throw new AppException(AppErrorCode.POST_CONTENTS_TOO_LONG);
+    throw new DomainException(AppErrorCode.POST_CONTENTS_TOO_LONG);
   }
   return trimmed;
 }
@@ -237,10 +237,10 @@ function validatePostContents(contents: string): string {
 function validateCommentContents(contents: string): string {
   const trimmed = contents?.trim();
   if (trimmed === undefined || trimmed.length === 0) {
-    throw new AppException(AppErrorCode.INVALID_PARAMETER);
+    throw new DomainException(AppErrorCode.INVALID_PARAMETER);
   }
   if (trimmed.length > 200) {
-    throw new AppException(AppErrorCode.COMMENT_CONTENTS_TOO_LONG);
+    throw new DomainException(AppErrorCode.COMMENT_CONTENTS_TOO_LONG);
   }
   return trimmed;
 }

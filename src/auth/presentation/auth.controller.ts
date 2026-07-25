@@ -15,7 +15,7 @@ import { z } from 'zod';
 
 import { successResponse } from '../../common/http/api-response';
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import { AuthService } from '../application/auth.service';
 import { parseSocialProvider } from '../domain/social-provider';
 import { AccessTokenGuard } from './access-token.guard';
@@ -73,7 +73,7 @@ export class AuthController {
 
 function requiredRefreshToken(value: string | undefined): string {
   if (value === undefined || value.trim().length === 0) {
-    throw new AppException(AppErrorCode.EMPTY_TOKEN);
+    throw new DomainException(AppErrorCode.EMPTY_TOKEN);
   }
   return value;
 }

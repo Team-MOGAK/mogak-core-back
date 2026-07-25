@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 
-import { AppException } from './app.exception';
+import { DomainException } from './domain.exception';
 import {
   MAX_IMAGE_FILE_SIZE_BYTES,
   MAX_POST_IMAGE_COUNT,
@@ -31,6 +31,6 @@ describe('이미지 업로드 정책', () => {
 
     const rejected = jest.fn();
     filter({} as Express.Request, { mimetype: 'text/plain' } as Express.Multer.File, rejected);
-    expect(rejected).toHaveBeenCalledWith(expect.any(AppException), false);
+    expect(rejected).toHaveBeenCalledWith(expect.any(DomainException), false);
   });
 });

@@ -14,7 +14,7 @@ import { z } from 'zod';
 
 import { successResponse } from '../../common/http/api-response';
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { CurrentUser } from '../../auth/presentation/current-user.decorator';
@@ -86,7 +86,7 @@ export class ConsentController {
     @Body() request: MarketingConsentPatchRequest,
   ) {
     if (request.marketingAgreed === undefined && request.advertisementAgreed === undefined) {
-      throw new AppException(AppErrorCode.INVALID_PARAMETER);
+      throw new DomainException(AppErrorCode.INVALID_PARAMETER);
     }
     return successResponse(
       await this.consents.updateMarketing(current.userId, {

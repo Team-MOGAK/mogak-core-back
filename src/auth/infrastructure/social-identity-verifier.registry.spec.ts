@@ -1,7 +1,7 @@
 import { testMock } from '../../../test/test-mock';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { SocialIdentityVerifier } from '../domain/social-identity-verifier.port';
 import { SocialIdentityVerifierRegistry } from './social-identity-verifier.registry';
 
@@ -28,7 +28,7 @@ describe('소셜 식별자 검증기 레지스트리', () => {
     const registry = new SocialIdentityVerifierRegistry([]);
 
     await expect(registry.verify('KAKAO', 'access-token')).rejects.toEqual(
-      new AppException(AppErrorCode.UNSUPPORTED_SOCIAL_PROVIDER),
+      new DomainException(AppErrorCode.UNSUPPORTED_SOCIAL_PROVIDER),
     );
   });
 });

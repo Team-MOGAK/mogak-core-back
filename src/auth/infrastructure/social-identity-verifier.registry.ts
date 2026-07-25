@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { SocialIdentity } from '../domain/social-identity';
 import type { SocialIdentityVerifier } from '../domain/social-identity-verifier.port';
 import type { SocialProvider } from '../domain/social-provider';
@@ -14,11 +14,11 @@ export class SocialIdentityVerifierRegistry {
 
   async verify(provider: SocialProvider, token: string): Promise<SocialIdentity> {
     if (token.trim().length === 0) {
-      throw new AppException(AppErrorCode.INVALID_SOCIAL_TOKEN);
+      throw new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN);
     }
     const verifier = this.verifiers.find((candidate) => candidate.supports(provider));
     if (verifier === undefined) {
-      throw new AppException(AppErrorCode.UNSUPPORTED_SOCIAL_PROVIDER);
+      throw new DomainException(AppErrorCode.UNSUPPORTED_SOCIAL_PROVIDER);
     }
     return verifier.verify(token);
   }

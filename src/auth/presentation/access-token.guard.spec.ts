@@ -2,7 +2,7 @@ import { testMock } from '../../../test/test-mock';
 import type { ExecutionContext } from '@nestjs/common';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { AuthSessionsRepository } from '../infrastructure/auth-sessions.repository';
 import type { TokenService } from '../infrastructure/token.service';
 import { AccessTokenGuard } from './access-token.guard';
@@ -49,6 +49,6 @@ describe('액세스 토큰 가드', () => {
 
     await expect(
       guard.canActivate(executionContext({ headers: { authorization: 'Bearer access-token' } })),
-    ).rejects.toEqual(new AppException(AppErrorCode.LOGOUT_TOKEN));
+    ).rejects.toEqual(new DomainException(AppErrorCode.LOGOUT_TOKEN));
   });
 });

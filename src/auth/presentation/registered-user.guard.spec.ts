@@ -1,7 +1,7 @@
 import type { ExecutionContext } from '@nestjs/common';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import { RegisteredUserGuard } from './registered-user.guard';
 
 function executionContext(request: Record<string, unknown>): ExecutionContext {
@@ -20,7 +20,7 @@ describe('가입 완료 사용자 가드', () => {
           user: { userId: 1, role: 'PENDING', sessionId: 'session-id' },
         }),
       ),
-    ).toThrow(new AppException(AppErrorCode.FORBIDDEN));
+    ).toThrow(new DomainException(AppErrorCode.FORBIDDEN));
   });
 
   it('가입 완료 사용자의 보호 기능 접근을 허용한다', () => {

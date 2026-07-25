@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
 import { testMock } from '../../../test/test-mock';
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { MogaksRepository } from '../infrastructure/mogaks.repository';
 import { JogaksService } from './jogaks.service';
 
@@ -98,7 +98,7 @@ describe('조각 서비스', () => {
         title: '루틴',
         schedule: { scheduleType: 'WEEKLY', effectiveFrom: '2026-07-23', weekdays: [] },
       }),
-    ).rejects.toEqual(new AppException(AppErrorCode.ROUTINE_WEEKDAYS_REQUIRED));
+    ).rejects.toEqual(new DomainException(AppErrorCode.ROUTINE_WEEKDAYS_REQUIRED));
   });
 
   it('실행 행을 만들지 않고 대기 발생을 조회 결과로 구성한다', async () => {
@@ -271,7 +271,7 @@ describe('조각 서비스', () => {
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
     await expect(service.commandExecution(7, 11, '2026-07-23', 'IN_PROGRESS')).rejects.toEqual(
-      new AppException(AppErrorCode.INVALID_EXECUTION_TRANSITION),
+      new DomainException(AppErrorCode.INVALID_EXECUTION_TRANSITION),
     );
   });
 
@@ -342,7 +342,7 @@ describe('조각 서비스', () => {
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
     await expect(service.delete(7, 11)).rejects.toEqual(
-      new AppException(AppErrorCode.JOGAK_NOT_FOUND),
+      new DomainException(AppErrorCode.JOGAK_NOT_FOUND),
     );
   });
 

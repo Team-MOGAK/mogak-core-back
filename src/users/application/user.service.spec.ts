@@ -3,7 +3,7 @@ import { testMock } from '../../../test/test-mock';
 import type { ConfigService } from '@nestjs/config';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import type { AppEnv } from '../../config/app-env';
 import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
 import { TokenService } from '../../auth/infrastructure/token.service';
@@ -71,7 +71,7 @@ describe('사용자 서비스', () => {
     );
 
     await expect(service.verifyNickname('   ')).rejects.toEqual(
-      new AppException(AppErrorCode.INVALID_PARAMETER),
+      new DomainException(AppErrorCode.INVALID_PARAMETER),
     );
     expect(users.existsByNickname).not.toHaveBeenCalled();
   });
@@ -88,7 +88,7 @@ describe('사용자 서비스', () => {
     );
 
     await expect(service.verifyNickname('모각러')).rejects.toEqual(
-      new AppException(AppErrorCode.INVALID_NICKNAME),
+      new DomainException(AppErrorCode.INVALID_NICKNAME),
     );
   });
 

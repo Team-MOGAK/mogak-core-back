@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 
 import { AppErrorCode } from '../http/app-error-code';
-import { AppException } from '../http/app.exception';
+import { DomainException } from '../http/domain.exception';
 
 export function parseMultipartJson<TSchema extends z.ZodType>(
   body: unknown,
@@ -10,7 +10,7 @@ export function parseMultipartJson<TSchema extends z.ZodType>(
   const input = isMultipartBody(body) ? parseJson(body.request) : body;
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
-    throw new AppException(AppErrorCode.INVALID_PARAMETER);
+    throw new DomainException(AppErrorCode.INVALID_PARAMETER);
   }
   return parsed.data;
 }
@@ -28,6 +28,6 @@ function parseJson(value: string): unknown {
   try {
     return JSON.parse(value) as unknown;
   } catch {
-    throw new AppException(AppErrorCode.INVALID_PARAMETER);
+    throw new DomainException(AppErrorCode.INVALID_PARAMETER);
   }
 }

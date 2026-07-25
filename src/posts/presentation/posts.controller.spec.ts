@@ -7,7 +7,7 @@ import request from 'supertest';
 
 import { configureApp } from '../../app.setup';
 import { AppErrorCode } from '../../common/http/app-error-code';
-import { AppException } from '../../common/http/app.exception';
+import { DomainException } from '../../common/http/domain.exception';
 import { STORAGE_PORT, type StoragePort } from '../../storage/application/storage.port';
 import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
 import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
@@ -146,7 +146,7 @@ describe('게시글 HTTP 계약', () => {
 
     jest
       .mocked(storage.uploadPostImages)
-      .mockRejectedValue(new AppException(AppErrorCode.STORAGE_DISABLED));
+      .mockRejectedValue(new DomainException(AppErrorCode.STORAGE_DISABLED));
     await request(app.getHttpServer())
       .post('/api/jogaks/11/posts')
       .field('request', JSON.stringify({ targetDate: '2026-07-23', contents: '오늘 회고' }))
