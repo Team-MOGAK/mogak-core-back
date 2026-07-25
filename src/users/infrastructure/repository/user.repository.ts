@@ -9,13 +9,17 @@ import type {
   UpdateProfileImageCommand,
 } from '../../application/type/user.command';
 import type { User } from '../../domain/entity/user.entity';
+import {
+  DuplicateNicknameException,
+  UserPersistenceException,
+} from '../../domain/exception/user-persistence.exception';
 import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
 import { authSessions, jobs, userConsents, users } from '../../../database/schema';
 import type { UserProjection } from '../type/user.projection';
 
 @Injectable()
-export class DrizzleUserRepository implements UserRepositoryPort {
+export class UserRepository implements UserRepositoryPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async existsByNickname(nickname: string): Promise<boolean> {
@@ -45,12 +49,16 @@ export class DrizzleUserRepository implements UserRepositoryPort {
   }
 
   async updateNickname(command: UpdateNicknameCommand): Promise<boolean> {
-    const updated = await this.db
-      .update(users)
-      .set({ nickname: command.nickname, updatedAt: command.now })
-      .where(eq(users.id, command.userId))
-      .returning({ id: users.id });
-    return updated.length === 1;
+    try {
+      const updated = await this.db
+        .update(users)
+        .set({ nickname: command.nickname, updatedAt: command.now })
+        .where(eq(users.id, command.userId))
+        .returning({ id: users.id });
+      return updated.length === 1;
+    } catch (error: unknown) {
+      throw asUserPersistenceException(error, 'Failed to update user nickname');
+    }
   }
 
   async updateJob(command: UpdateJobCommand): Promise<boolean> {
@@ -74,60 +82,66 @@ export class DrizzleUserRepository implements UserRepositoryPort {
   async completeRegistration(
     command: CompleteRegistrationCommand,
   ): Promise<Readonly<{ id: number; nickname: string }>> {
-    return this.db.transaction(async (tx) => {
-      const [registered] = await tx
-        .update(users)
-        .set({
-          nickname: command.nickname,
-          jobId: command.jobId,
-          addressId: command.addressId,
-          role: 'USER',
-          updatedAt: command.now,
-        })
-        .where(and(eq(users.id, command.userId), eq(users.role, 'PENDING')))
-        .returning({ id: users.id, nickname: users.nickname });
-      const nickname = registered?.nickname;
-      if (registered === undefined || nickname === null || nickname === undefined) {
-        throw new Error('pending user registration update did not return a row');
-      }
-
-      for (const consent of command.consents) {
-        await tx
-          .insert(userConsents)
-          .values({
-            userId: command.userId,
-            consentItemId: consent.consentItemId,
-            agreed: consent.agreed,
-            agreedAt: consent.agreed ? command.now : null,
-            withdrawnAt: consent.agreed ? null : command.now,
+    try {
+      return await this.db.transaction(async (tx) => {
+        const [registered] = await tx
+          .update(users)
+          .set({
+            nickname: command.nickname,
+            jobId: command.jobId,
+            addressId: command.addressId,
+            role: 'USER',
+            updatedAt: command.now,
           })
-          .onConflictDoUpdate({
-            target: [userConsents.userId, userConsents.consentItemId],
-            set: {
+          .where(and(eq(users.id, command.userId), eq(users.role, 'PENDING')))
+          .returning({ id: users.id, nickname: users.nickname });
+        const nickname = registered?.nickname;
+        if (registered === undefined || nickname === null || nickname === undefined) {
+          throw new UserPersistenceException(
+            'Pending user registration update did not return a row',
+          );
+        }
+
+        for (const consent of command.consents) {
+          await tx
+            .insert(userConsents)
+            .values({
+              userId: command.userId,
+              consentItemId: consent.consentItemId,
               agreed: consent.agreed,
               agreedAt: consent.agreed ? command.now : null,
               withdrawnAt: consent.agreed ? null : command.now,
-              updatedAt: command.now,
-            },
-          });
-      }
+            })
+            .onConflictDoUpdate({
+              target: [userConsents.userId, userConsents.consentItemId],
+              set: {
+                agreed: consent.agreed,
+                agreedAt: consent.agreed ? command.now : null,
+                withdrawnAt: consent.agreed ? null : command.now,
+                updatedAt: command.now,
+              },
+            });
+        }
 
-      await tx.insert(authSessions).values({
-        id: command.replacementSession.id,
-        userId: command.userId,
-        refreshTokenHash: command.replacementSession.refreshTokenHash,
-        expiresAt: command.replacementSession.expiresAt,
+        await tx.insert(authSessions).values({
+          id: command.replacementSession.id,
+          userId: command.userId,
+          refreshTokenHash: command.replacementSession.refreshTokenHash,
+          expiresAt: command.replacementSession.expiresAt,
+        });
+        await tx
+          .delete(authSessions)
+          .where(
+            and(
+              eq(authSessions.id, command.currentSessionId),
+              eq(authSessions.userId, command.userId),
+            ),
+          );
+        return { id: registered.id, nickname };
       });
-      await tx
-        .delete(authSessions)
-        .where(
-          and(
-            eq(authSessions.id, command.currentSessionId),
-            eq(authSessions.userId, command.userId),
-          ),
-        );
-      return { id: registered.id, nickname };
-    });
+    } catch (error: unknown) {
+      throw asUserPersistenceException(error, 'Failed to complete user registration');
+    }
   }
 }
 
@@ -145,7 +159,7 @@ function asUserRecord(user: {
   updatedAt: Date;
 }): User {
   if (user.role !== 'PENDING' && user.role !== 'USER') {
-    throw new Error(`Unsupported persisted user role: ${user.role}`);
+    throw new UserPersistenceException(`Unsupported persisted user role: ${user.role}`);
   }
   return {
     id: user.id,
@@ -160,4 +174,21 @@ function asUserRecord(user: {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+}
+
+function asUserPersistenceException(error: unknown, message: string): UserPersistenceException {
+  if (error instanceof UserPersistenceException) return error;
+  if (isNicknameUniqueConstraint(error)) return new DuplicateNicknameException();
+  return new UserPersistenceException(message, { cause: error });
+}
+
+function isNicknameUniqueConstraint(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === '23505' &&
+    'constraint' in error &&
+    error.constraint === 'users_nickname_unique'
+  );
 }

@@ -22,6 +22,15 @@ describe('layer boundaries', () => {
     expect(formatViolations(violations)).toEqual([]);
   });
 
+  it('keeps PostgreSQL unique-violation details out of auth and user application services', () => {
+    expect(readFileSync('src/auth/application/service/auth.service.ts', 'utf8')).not.toMatch(
+      /23505|users_email_unique|social_accounts_provider_user_unique/,
+    );
+    expect(readFileSync('src/users/application/service/user.service.ts', 'utf8')).not.toMatch(
+      /23505|users_nickname_unique/,
+    );
+  });
+
   it('rejects dynamic module references and generic type-contract bypasses', () => {
     const root = mkdtempSync(resolve(tmpdir(), 'mogak-layer-boundaries-'));
     try {

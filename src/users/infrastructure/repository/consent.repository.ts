@@ -8,12 +8,13 @@ import type {
 } from '../../application/type/consent.command';
 import type { MarketingConsentResult } from '../../application/type/consent.result';
 import type { ConsentItem } from '../../domain/entity/consent.entity';
+import { UserPersistenceException } from '../../domain/exception/user-persistence.exception';
 import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
 import { consentItems, userConsents } from '../../../database/schema';
 
 @Injectable()
-export class DrizzleConsentRepository implements ConsentRepositoryPort {
+export class ConsentRepository implements ConsentRepositoryPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async listActiveItems(): Promise<ConsentItem[]> {
@@ -109,7 +110,7 @@ export class DrizzleConsentRepository implements ConsentRepositoryPort {
       .from(consentItems)
       .where(inArray(consentItems.code, codes));
     if (items.length !== codes.length || items.some((item) => !item.active)) {
-      throw new Error('marketing consent item is not active');
+      throw new UserPersistenceException('Marketing consent item is not active');
     }
     await this.upsertUserConsents(
       userId,

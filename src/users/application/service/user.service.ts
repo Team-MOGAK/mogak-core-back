@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
-
 import { Inject, Injectable } from '@nestjs/common';
+
+import { generateId } from '../../../common/util/id-generator';
 
 import type { AuthenticatedPrincipal } from '../../../auth/application/type/authenticated-principal';
 import {
@@ -12,13 +12,13 @@ import { DomainException } from '../../../common/http/domain.exception';
 import { requiredTrimmed } from '../../../common/validation/required-text';
 import { STORAGE_PORT, type StoragePort } from '../../../storage/application/storage.port';
 import { canCompleteRegistration, normalizeNickname } from '../../domain/entity/user.entity';
+import { DuplicateNicknameException } from '../../domain/exception/user-persistence.exception';
 import { METADATA_REPOSITORY, type MetadataRepositoryPort } from '../port/metadata.repository.port';
 import { USER_REPOSITORY, type UserRepositoryPort } from '../port/user.repository.port';
 import type { JoinUserCommand } from '../type/user.command';
 import type { JoinUserResult, UserProfileResult } from '../type/user.result';
 import { ConsentService } from './consent.service';
 
-export const SESSION_ID_GENERATOR = Symbol('USER_SESSION_ID_GENERATOR');
 const REFRESH_TOKEN_TTL_MILLISECONDS = 31 * 24 * 60 * 60 * 1_000;
 
 @Injectable()
@@ -29,7 +29,6 @@ export class UserService {
     @Inject(ConsentService) private readonly consents: ConsentService,
     @Inject(TOKEN_ISSUER) private readonly tokens: TokenIssuerPort,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
-    @Inject(SESSION_ID_GENERATOR) private readonly createSessionId: () => string = randomUUID,
   ) {}
 
   async verifyNickname(nickname: string): Promise<void> {
@@ -57,7 +56,7 @@ export class UserService {
     if (address === null) throw new DomainException(AppErrorCode.ADDRESS_NOT_FOUND);
     await this.consents.validate(command.consents);
 
-    const sessionId = this.createSessionId();
+    const sessionId = generateId();
     const tokens = await this.tokens.issue({
       userId: user.id,
       role: 'USER',
@@ -82,7 +81,7 @@ export class UserService {
       });
       return { userId: registered.id, nickname: registered.nickname, tokens };
     } catch (error: unknown) {
-      if (isNicknameUniqueViolation(error)) {
+      if (error instanceof DuplicateNicknameException) {
         throw new DomainException(AppErrorCode.INVALID_NICKNAME);
       }
       throw error;
@@ -116,7 +115,7 @@ export class UserService {
         throw new DomainException(AppErrorCode.USER_NOT_FOUND);
       }
     } catch (error: unknown) {
-      if (isNicknameUniqueViolation(error)) {
+      if (error instanceof DuplicateNicknameException) {
         throw new DomainException(AppErrorCode.INVALID_NICKNAME);
       }
       throw error;
@@ -159,15 +158,4 @@ function requiredNickname(value: string): string {
   const normalized = normalizeNickname(value);
   if (normalized === null) throw new DomainException(AppErrorCode.INVALID_PARAMETER);
   return normalized;
-}
-
-function isNicknameUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === '23505' &&
-    'constraint' in error &&
-    error.constraint === 'users_nickname_unique'
-  );
 }
