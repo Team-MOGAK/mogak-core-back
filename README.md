@@ -39,9 +39,8 @@ flowchart LR
 | -------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | 날짜별 Jogak   | 매일 배치가 `DailyJogak` 행을 미리 만들어 기간에 비례해 데이터가 증가 | 일정에서 발생 건을 계산하고, 실행 저장 시 `UNIQUE (jogak_id, scheduled_date)`로 중복만 방지 |
 | 실행 상태      | 동시 생성·재호출 시 중복과 상태 경합 가능성                           | 최소 UNIQUE 제약과 `ON CONFLICT DO NOTHING`·조건부 update로 멱등 처리                       |
-| 좋아요·댓글 수 | 저장 카운터와 비관적 락에 정합성이 의존                               | 원본 행에서 집계해 stale 카운터와 넓은 쓰기 락 제거                                         |
-| 회원 탈퇴      | 복구 기능 없는 soft delete와 수동 삭제 순서                           | 관계를 따라 정리되는 hard delete                                                            |
-| 로그인 세션    | 사용자당 refresh token 하나로 동시 로그인 제한                        | `auth_sessions` 기반 다중 기기 세션과 refresh token 회전                                    |
+| 좋아요·댓글 수 | 저장 카운터와 비관적 락에 정합성이 의존                               | 원본 행에서 집계해 stale 카운터와 넓은 쓰기 락 제거                                             |
+| 회원 탈퇴      | 복구 기능 없는 soft delete와 수동 삭제 순서                           | 관계를 따라 정리되는 hard delete                                                            |                |
 | 입력 검증      | 요청 경계별 검증 규칙이 분산                                          | Zod와 Nest 어댑터로 Body·Query·Path Parameter를 strict 검증                                 |
 
 ## 기술 구성
@@ -90,24 +89,6 @@ pnpm start:dev
 curl http://localhost:8080/health
 # {"status":"ok"}
 ```
-
-## API 사용 규칙
-
-- 보호 API에는 `Authorization: Bearer <accessToken>`을 보냅니다.
-- 토큰 갱신은 `POST /api/auth/refresh`와 `RefreshToken` 헤더를 사용합니다. refresh token은 매번 회전하므로 access·refresh token을 함께 교체해야 합니다.
-- 성공 응답의 데이터는 기존 `BaseResponse` 형식의 `result`에 들어갑니다.
-- 요청 Body·Query·Path Parameter는 strict 검증됩니다. 정의되지 않은 이전 필드를 함께 보내지 않습니다.
-- 날짜별 Jogak은 `dailyJogakId` 대신 `jogakId + scheduledDate`로 선택합니다. 저장된 실행 행의 PK는 `executionId`이며, 게시글은 서버가 이 실행 행을 연결합니다.
-
-주요 API 영역은 다음과 같습니다.
-
-| 영역     | 예시 경로                                                                           |
-| -------- | ----------------------------------------------------------------------------------- |
-| 인증     | `POST /api/auth/login`, `POST /api/auth/{provider}/login`, `POST /api/auth/refresh` |
-| 사용자   | `POST /api/users/join`, `GET /api/users/profile`                                    |
-| 모각     | `/api/modarats`, `/api/mogaks`, `/api/jogaks`                                       |
-| 회고     | `POST /api/jogaks/{jogakId}/posts`, `/api/posts`                                    |
-| 네트워킹 | `/api/users/follows/{nickname}`, `/api/posts/pacemakers`                            |
 
 ## 검증
 
