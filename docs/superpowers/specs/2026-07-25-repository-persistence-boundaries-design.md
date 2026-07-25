@@ -10,17 +10,21 @@ This change covers production repository implementations in `auth`, `users`, `mo
 
 ## Exception boundaries
 
-Each domain receives an explicit persistence exception type:
+Each repository-facing domain receives an explicit persistence exception type, such as
+`AuthPersistenceException`, `UserPersistenceException`, `MogaksPersistenceException`,
+`PostsPersistenceException`, or `SocialPersistenceException`. These types express an unexpected
+storage-boundary failure; they are not catch-all `AuthException`-style domain exception families.
 
-- `AuthPersistenceException`
-- `UserPersistenceException`
-- `MogaksPersistenceException`
-- `PostsPersistenceException`
-- `SocialPersistenceException`
+Repository methods convert unexpected database-driver failures, missing rows following a successful
+write, and invalid persisted enum values to their domain's persistence exception. The original
+error is retained as the cause when available. Application services do not handle these generic
+persistence failures; the global exception boundary reports them as server failures.
 
-Repository methods convert unexpected database-driver failures, missing rows following a successful write, and invalid persisted enum values to their domain's persistence exception. The original error is retained as the cause when available.
-
-Business-relevant uniqueness races are represented by specific persistence exceptions. The repository alone inspects PostgreSQL error code `23505` and constraint names. The initial cases are duplicate social email, duplicate social identity, and duplicate nickname. Application services catch only these domain exceptions; they never inspect error codes or constraint identifiers.
+Business-relevant uniqueness races are represented by specific exceptions only where an application
+service must branch. The repository alone inspects PostgreSQL error code `23505` and constraint
+names. The initial cases are duplicate social email, duplicate social identity, and duplicate
+nickname. Application services catch only these precise conflict exceptions; they never inspect
+error codes or constraint identifiers.
 
 Expected absence and idempotency remain part of each port contract (`null`, `false`, or an explicit result union) and are not turned into exceptions.
 
