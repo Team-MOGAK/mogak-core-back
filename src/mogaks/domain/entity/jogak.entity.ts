@@ -110,9 +110,8 @@ export const JogakSchedule = {
 
   occursOn(schedule: ValidatedJogakSchedule, scheduledDate: string): boolean {
     if (!isDateWithin(schedule, scheduledDate)) return false;
-    return (
-      schedule.scheduleType === 'ONCE' || schedule.weekdays.includes(weekdayFor(scheduledDate))
-    );
+    if (schedule.scheduleType === 'ONCE') return scheduledDate === schedule.effectiveFrom;
+    return schedule.weekdays.includes(weekdayFor(scheduledDate));
   },
 
   deriveOccurrenceStatus(

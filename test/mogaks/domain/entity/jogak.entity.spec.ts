@@ -60,6 +60,15 @@ describe('조각 도메인 규칙', () => {
     expect(JogakSchedule.deriveOccurrenceStatus(null, '2026-07-23', '2026-07-23')).toBe('PENDING');
   });
 
+  it('한 번 일정은 시작일 다음 날에 발생하지 않는다', () => {
+    const schedule = JogakSchedule.validate({
+      scheduleType: 'ONCE',
+      effectiveFrom: '2026-07-23',
+    });
+
+    expect(JogakSchedule.occursOn(schedule, '2026-07-24')).toBe(false);
+  });
+
   it('실행 상태 전이와 생성 시점 제목 스냅샷을 결정한다', () => {
     expect(JogakExecution.decideTransition(null, 'IN_PROGRESS')).toEqual({ type: 'INSERT' });
     expect(JogakExecution.decideTransition('SUCCESS', 'IN_PROGRESS')).toEqual({ type: 'REJECT' });
