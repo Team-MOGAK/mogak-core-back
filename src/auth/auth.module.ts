@@ -8,7 +8,6 @@ import { SOCIAL_IDENTITY_VERIFIER } from './application/port/social-identity-ver
 import { TOKEN_ISSUER } from './application/port/token-issuer.port';
 import { AuthService, SESSION_ID_GENERATOR } from './application/service/auth.service';
 import { DrizzleAuthRepository } from './infrastructure/repository/auth.repository';
-import { AuthSessionsRepository } from './infrastructure/repository/auth-sessions.repository';
 import { TokenService } from './infrastructure/service/token.service';
 import { AppleIdentityVerifier } from './infrastructure/verifier/apple-identity-verifier';
 import { GoogleIdentityVerifier } from './infrastructure/verifier/google-identity-verifier';
@@ -23,7 +22,6 @@ import { RegisteredUserGuard } from './presentation/controller/registered-user.g
   controllers: [AuthController],
   providers: [
     TokenService,
-    AuthSessionsRepository,
     DrizzleAuthRepository,
     AppleIdentityVerifier,
     GoogleIdentityVerifier,
@@ -56,7 +54,6 @@ import { RegisteredUserGuard } from './presentation/controller/registered-user.g
   ],
   exports: [
     TokenService,
-    AuthSessionsRepository,
     AuthService,
     AccessTokenGuard,
     RegisteredUserGuard,

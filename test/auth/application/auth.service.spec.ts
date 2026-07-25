@@ -6,6 +6,7 @@ import type { AuthPersistencePort } from '../../../src/auth/application/port/aut
 import type { SocialIdentityVerifierPort } from '../../../src/auth/application/port/social-identity-verifier.port';
 import type { TokenIssuerPort } from '../../../src/auth/application/port/token-issuer.port';
 import { AuthService } from '../../../src/auth/application/service/auth.service';
+import type { AuthenticatedPrincipal } from '../../../src/auth/application/type/authenticated-principal';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
@@ -33,6 +34,55 @@ function createPersistence(): AuthPersistencePort {
 }
 
 describe('인증 서비스', () => {
+  const verifiers = { verify: testMock() } as unknown as SocialIdentityVerifierPort;
+
+  it('활성 세션의 검증된 액세스 주체를 반환한다', async () => {
+    const principal: AuthenticatedPrincipal = {
+      userId: 3,
+      email: 'mogak@example.test',
+      role: 'USER',
+      sessionId: SESSION_ID,
+    };
+    const persistence = createPersistence();
+    const tokens = createTokenIssuer();
+    jest.mocked(tokens.verifyAccess).mockResolvedValue(principal);
+    jest.mocked(persistence.isSessionActive).mockResolvedValue(true);
+    const service = new AuthService(verifiers, persistence, tokens);
+
+    await expect(service.authenticateAccessToken('access-token')).resolves.toEqual(principal);
+    expect(persistence.isSessionActive).toHaveBeenCalledWith(SESSION_ID, 3);
+  });
+
+  it.each(['없는', '비활성', '만료된'])(
+    '%s 세션의 액세스 토큰은 로그아웃 토큰 오류로 거부한다',
+    async () => {
+      const persistence = createPersistence();
+      const tokens = createTokenIssuer();
+      jest.mocked(tokens.verifyAccess).mockResolvedValue({
+        userId: 3,
+        role: 'USER',
+        sessionId: SESSION_ID,
+      });
+      jest.mocked(persistence.isSessionActive).mockResolvedValue(false);
+      const service = new AuthService(verifiers, persistence, tokens);
+
+      await expect(service.authenticateAccessToken('access-token')).rejects.toEqual(
+        new DomainException(AppErrorCode.LOGOUT_TOKEN),
+      );
+    },
+  );
+
+  it('액세스 토큰 검증 실패를 그대로 전파한다', async () => {
+    const persistence = createPersistence();
+    const tokens = createTokenIssuer();
+    const failure = new DomainException(AppErrorCode.WRONG_TOKEN);
+    jest.mocked(tokens.verifyAccess).mockRejectedValue(failure);
+    const service = new AuthService(verifiers, persistence, tokens);
+
+    await expect(service.authenticateAccessToken('invalid-access-token')).rejects.toBe(failure);
+    expect(persistence.isSessionActive).not.toHaveBeenCalled();
+  });
+
   it('새로 검증된 구글 식별자로 대기 사용자와 세션을 생성한다', async () => {
     const verifiers = {
       verify: testMock().mockResolvedValue({
