@@ -1,5 +1,7 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, relative, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
+import ts from 'typescript';
 
 type Violation = Readonly<{ file: string; message: string }>;
 
@@ -12,16 +14,65 @@ const forbiddenDomainPackages = [
   /^(?:express|fastify|axios)(?:\/|$)/,
 ];
 const forbiddenLayerNames = new Set(['application', 'infrastructure', 'presentation']);
-const importPattern =
-  /^\s*(?:import|export)\s+(?:type\s+)?(?:[^'";]+?\s+from\s+)?['"]([^'"]+)['"]/gm;
-const dtoClassPattern =
-  /\b(?:abstract\s+)?class\s+[A-Za-z_$][\w$]*(?:Dto|DTO|Request|Response|Command|Query|Result)\b/;
 
 describe('layer boundaries', () => {
   it('keeps source imports and request contracts within the agreed architecture', () => {
     const violations = collectLayerBoundaryViolations(sourceRoot);
 
     expect(formatViolations(violations)).toEqual([]);
+  });
+
+  it('rejects dynamic module references and generic type-contract bypasses', () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'mogak-layer-boundaries-'));
+    try {
+      writeFixture(
+        root,
+        'social/domain/entity/probe.entity.ts',
+        `
+          type NestType = import('@nestjs/common').NestInterceptor;
+          void import('../../application/service/social.service');
+          require('../../infrastructure/repository/social.repository');
+        `,
+      );
+      writeFixture(
+        root,
+        'social/application/type/probe.query.ts',
+        `void import('../../infrastructure/repository/social.repository');`,
+      );
+      writeFixture(
+        root,
+        'social/application/type/probe.payload.ts',
+        `export class TransportPayload {}`,
+      );
+      writeFixture(
+        root,
+        'social/presentation/type/probe.contract.ts',
+        `import { z } from 'zod'; export const probeSchema = z.object({ value: z.string() });`,
+      );
+
+      expect(formatViolations(collectLayerBoundaryViolations(root))).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining(
+            "domain must not import framework, persistence, or HTTP package '@nestjs/common'",
+          ),
+          expect.stringContaining(
+            "domain must not import another application layer '../../application/service/social.service'",
+          ),
+          expect.stringContaining(
+            "domain must not import another application layer '../../infrastructure/repository/social.repository'",
+          ),
+          expect.stringContaining(
+            "application must not import infrastructure '../../infrastructure/repository/social.repository'",
+          ),
+          expect.stringContaining('type-contract modules must not declare classes'),
+          expect.stringContaining(
+            "presentation schema 'probeSchema' must have an exported z.infer type alias",
+          ),
+        ]),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
@@ -31,9 +82,10 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
 
   for (const file of files) {
     const source = readFileSync(file, 'utf8');
+    const sourceFile = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true);
     const projectPath = relative(root, file);
     const segments = projectPath.split(sep);
-    const imports = collectModuleSpecifiers(source);
+    const imports = collectModuleSpecifiers(sourceFile);
 
     if (segments.includes('domain')) {
       for (const moduleSpecifier of imports) {
@@ -69,15 +121,22 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
       }
     }
 
-    if (hasDtoResidual(projectPath, source)) {
+    if (hasDtoResidual(source)) {
       violations.push({
         file: projectPath,
-        message: 'DTO classes and nestjs-zod/createZodDto are not permitted',
+        message: 'nestjs-zod/createZodDto are not permitted',
       });
     }
 
-    if (isPresentationRequestContract(segments)) {
-      violations.push(...findRequestContractViolations(projectPath, source));
+    if (isTypeContract(segments) && containsClassDeclaration(sourceFile)) {
+      violations.push({
+        file: projectPath,
+        message: 'type-contract modules must not declare classes',
+      });
+    }
+
+    if (isPresentationTypeContract(segments)) {
+      violations.push(...findPresentationContractViolations(projectPath, sourceFile));
     }
   }
 
@@ -92,8 +151,41 @@ function listTypeScriptFiles(directory: string): string[] {
   });
 }
 
-function collectModuleSpecifiers(source: string): string[] {
-  return [...source.matchAll(importPattern)].flatMap((match) => (match[1] ? [match[1]] : []));
+function writeFixture(root: string, projectPath: string, source: string): void {
+  const file = resolve(root, projectPath);
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, source);
+}
+
+function collectModuleSpecifiers(sourceFile: ts.SourceFile): string[] {
+  const moduleSpecifiers = new Set<string>();
+
+  const addModuleSpecifier = (expression: ts.Expression | undefined): void => {
+    if (expression !== undefined && ts.isStringLiteralLike(expression)) {
+      moduleSpecifiers.add(expression.text);
+    }
+  };
+
+  const visit = (node: ts.Node): void => {
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+      addModuleSpecifier(node.moduleSpecifier);
+    } else if (
+      ts.isImportEqualsDeclaration(node) &&
+      ts.isExternalModuleReference(node.moduleReference)
+    ) {
+      addModuleSpecifier(node.moduleReference.expression);
+    } else if (ts.isCallExpression(node)) {
+      const isDynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
+      const isRequire = ts.isIdentifier(node.expression) && node.expression.text === 'require';
+      if (isDynamicImport || isRequire) addModuleSpecifier(node.arguments[0]);
+    } else if (ts.isImportTypeNode(node) && ts.isLiteralTypeNode(node.argument)) {
+      addModuleSpecifier(node.argument.literal);
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return [...moduleSpecifiers];
 }
 
 function targetsLayer(
@@ -107,49 +199,90 @@ function targetsLayer(
   return target.split(sep).some((segment) => layers.has(segment));
 }
 
-function hasDtoResidual(projectPath: string, source: string): boolean {
-  return (
-    /(^|[/.])dto(?:[/.]|$)/i.test(projectPath) ||
-    /\bdto\.(?:ts|tsx)$/i.test(projectPath) ||
-    /\b(?:createZodDto|nestjs-zod)\b/.test(source) ||
-    dtoClassPattern.test(source)
-  );
+function hasDtoResidual(source: string): boolean {
+  return /\b(?:createZodDto|nestjs-zod)\b/.test(source);
 }
 
-function isPresentationRequestContract(segments: readonly string[]): boolean {
-  const typeIndex = segments.lastIndexOf('type');
-  return (
-    segments.includes('presentation') &&
-    typeIndex !== -1 &&
-    segments.at(-1)?.endsWith('.request.ts') === true
-  );
+function isTypeContract(segments: readonly string[]): boolean {
+  return segments.includes('type');
 }
 
-function findRequestContractViolations(projectPath: string, source: string): Violation[] {
+function isPresentationTypeContract(segments: readonly string[]): boolean {
+  return segments.includes('presentation') && isTypeContract(segments);
+}
+
+function containsClassDeclaration(sourceFile: ts.SourceFile): boolean {
+  let found = false;
+  const visit = (node: ts.Node): void => {
+    if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+  return found;
+}
+
+function findPresentationContractViolations(
+  projectPath: string,
+  sourceFile: ts.SourceFile,
+): Violation[] {
   const violations: Violation[] = [];
-  if (/\bexport\s+(?:abstract\s+)?class\b/.test(source)) {
-    violations.push({
-      file: projectPath,
-      message: 'presentation request contracts must export types, not classes',
-    });
-  }
-
-  const schemas = [...source.matchAll(/\bexport\s+const\s+(\w+Schema)\s*=/g)].map(
-    (match) => match[1],
-  );
+  const schemas = exportedSchemaNames(sourceFile);
+  const inferredSchemas = exportedZodInferredSchemaNames(sourceFile);
   for (const schema of schemas) {
-    const inferredType = new RegExp(
-      `\\bexport\\s+type\\s+\\w+\\s*=\\s*z\\.infer\\s*<\\s*typeof\\s+${schema}\\s*>`,
-    );
-    if (!inferredType.test(source)) {
+    if (!inferredSchemas.has(schema)) {
       violations.push({
         file: projectPath,
-        message: `request schema '${schema}' must have an exported z.infer type alias`,
+        message: `presentation schema '${schema}' must have an exported z.infer type alias`,
       });
     }
   }
 
   return violations;
+}
+
+function exportedSchemaNames(sourceFile: ts.SourceFile): string[] {
+  return sourceFile.statements.flatMap((statement) => {
+    if (!ts.isVariableStatement(statement) || !isExported(statement)) return [];
+    return statement.declarationList.declarations.flatMap((declaration) =>
+      ts.isIdentifier(declaration.name) && declaration.name.text.endsWith('Schema')
+        ? [declaration.name.text]
+        : [],
+    );
+  });
+}
+
+function exportedZodInferredSchemaNames(sourceFile: ts.SourceFile): Set<string> {
+  const schemas = new Set<string>();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isTypeAliasDeclaration(statement) || !isExported(statement)) continue;
+    const schema = zInferSchemaName(statement.type);
+    if (schema !== null) schemas.add(schema);
+  }
+  return schemas;
+}
+
+function isExported(node: ts.Node): boolean {
+  return (
+    ts.canHaveModifiers(node) &&
+    ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ===
+      true
+  );
+}
+
+function zInferSchemaName(type: ts.TypeNode): string | null {
+  if (!ts.isTypeReferenceNode(type) || !ts.isQualifiedName(type.typeName)) return null;
+  if (!ts.isIdentifier(type.typeName.left) || type.typeName.left.text !== 'z') return null;
+  if (type.typeName.right.text !== 'infer' || type.typeArguments?.length !== 1) return null;
+
+  const [argument] = type.typeArguments;
+  return argument !== undefined &&
+    ts.isTypeQueryNode(argument) &&
+    ts.isIdentifier(argument.exprName)
+    ? argument.exprName.text
+    : null;
 }
 
 function formatViolations(violations: readonly Violation[]): string[] {
