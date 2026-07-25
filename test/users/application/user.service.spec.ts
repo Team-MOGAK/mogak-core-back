@@ -1,52 +1,62 @@
 import { jest } from '@jest/globals';
 import { testMock } from '../../test-mock';
-import type { ConfigService } from '@nestjs/config';
 
+import type { TokenIssuerPort } from '../../../src/auth/application/port/token-issuer.port';
+import type { AuthenticatedPrincipal } from '../../../src/auth/application/type/authenticated-principal';
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import type { AppEnv } from '../../../src/config/app-env';
-import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../../src/auth/application/type/authenticated-principal';
-import { TokenService } from '../../../src/auth/infrastructure/service/token.service';
 import type { StoragePort } from '../../../src/storage/application/storage.port';
-import type { ConsentRepository } from '../../../src/users/infrastructure/consent.repository';
-import type { UserRepository } from '../../../src/users/infrastructure/user.repository';
-import { ConsentService } from '../../../src/users/application/consent.service';
-import { UserService } from '../../../src/users/application/user.service';
+import type { ConsentRepositoryPort } from '../../../src/users/application/port/consent.repository.port';
+import type { MetadataRepositoryPort } from '../../../src/users/application/port/metadata.repository.port';
+import type { UserRepositoryPort } from '../../../src/users/application/port/user.repository.port';
+import { ConsentService } from '../../../src/users/application/service/consent.service';
+import { UserService } from '../../../src/users/application/service/user.service';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
+const now = new Date('2026-07-25T00:00:00.000Z');
 
-function currentPendingUser(): AuthenticatedUser {
+function currentPendingUser(): AuthenticatedPrincipal {
   return { userId: 7, role: 'PENDING', sessionId: SESSION_ID };
 }
 
-function tokenService(): TokenService {
-  const config = {
-    getOrThrow: testMock().mockReturnValue('test-jwt-secret-with-at-least-thirty-two-characters'),
-  } as unknown as ConfigService<AppEnv, true>;
-  return new TokenService(config);
+function tokenIssuer(): TokenIssuerPort {
+  return {
+    issue: testMock().mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh' }),
+    verifyAccess: testMock(),
+    verifyRefresh: testMock(),
+    hashRefreshToken: testMock().mockReturnValue('refresh-hash'),
+  } as unknown as TokenIssuerPort;
 }
 
-function userRepository(): UserRepository {
+function userRepository(): UserRepositoryPort {
   return {
     existsByNickname: testMock(),
     findById: testMock(),
-    findJobByName: testMock(),
-    findAddressByName: testMock(),
-    completeRegistration: testMock(),
     findProfile: testMock(),
+    completeRegistration: testMock(),
     updateNickname: testMock(),
     updateJob: testMock(),
-  } as unknown as UserRepository;
+    updateProfileImageKey: testMock(),
+  } as unknown as UserRepositoryPort;
 }
 
-function consentRepository(): ConsentRepository {
+function metadataRepository(): MetadataRepositoryPort {
+  return {
+    listJobs: testMock(),
+    listAddresses: testMock(),
+    findJobByName: testMock(),
+    findAddressByName: testMock(),
+  } as unknown as MetadataRepositoryPort;
+}
+
+function consentRepository(): ConsentRepositoryPort {
   return {
     listActiveItems: testMock(),
     findItemsByIds: testMock(),
     upsertUserConsents: testMock(),
     getMarketingConsents: testMock(),
     updateMarketingConsents: testMock(),
-  } as unknown as ConsentRepository;
+  } as unknown as ConsentRepositoryPort;
 }
 
 function storage(): StoragePort {
@@ -64,8 +74,9 @@ describe('사용자 서비스', () => {
     const users = userRepository();
     const service = new UserService(
       users,
+      metadataRepository(),
       new ConsentService(consentRepository()),
-      tokenService(),
+      tokenIssuer(),
       storage(),
       () => SESSION_ID,
     );
@@ -81,8 +92,9 @@ describe('사용자 서비스', () => {
     jest.mocked(users.existsByNickname).mockResolvedValue(true);
     const service = new UserService(
       users,
+      metadataRepository(),
       new ConsentService(consentRepository()),
-      tokenService(),
+      tokenIssuer(),
       storage(),
       () => SESSION_ID,
     );
@@ -94,29 +106,53 @@ describe('사용자 서비스', () => {
 
   it('대기 사용자를 완료하고 동의 상태를 저장한 뒤 세션을 사용자 토큰으로 교체한다', async () => {
     const users = userRepository();
+    const metadata = metadataRepository();
     const consents = consentRepository();
     jest.mocked(users.findById).mockResolvedValue({
       id: 7,
+      jobId: null,
+      addressId: null,
       email: 'mogak@example.test',
       nickname: null,
+      gender: null,
+      age: null,
       role: 'PENDING',
+      profileImageKey: null,
+      createdAt: now,
+      updatedAt: now,
     });
-    jest.mocked(users.findJobByName).mockResolvedValue({ id: 2, name: '개발/데이터' });
-    jest.mocked(users.findAddressByName).mockResolvedValue({ id: 3, name: '서울특별시' });
-    jest
-      .mocked(consents.listActiveItems)
-      .mockResolvedValue([{ id: 1, code: 'MARKETING', required: false, active: true }]);
-    jest
-      .mocked(consents.findItemsByIds)
-      .mockResolvedValue([{ id: 1, code: 'MARKETING', required: false, active: true }]);
-    jest.mocked(users.completeRegistration).mockResolvedValue({
-      id: 7,
-      nickname: '모각러',
-    });
+    jest.mocked(metadata.findJobByName).mockResolvedValue({ id: 2, name: '개발/데이터' });
+    jest.mocked(metadata.findAddressByName).mockResolvedValue({ id: 3, name: '서울특별시' });
+    jest.mocked(consents.listActiveItems).mockResolvedValue([
+      {
+        id: 1,
+        code: 'MARKETING',
+        name: '마케팅',
+        description: null,
+        required: false,
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    jest.mocked(consents.findItemsByIds).mockResolvedValue([
+      {
+        id: 1,
+        code: 'MARKETING',
+        name: '마케팅',
+        description: null,
+        required: false,
+        active: true,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ]);
+    jest.mocked(users.completeRegistration).mockResolvedValue({ id: 7, nickname: '모각러' });
     const service = new UserService(
       users,
+      metadata,
       new ConsentService(consents),
-      tokenService(),
+      tokenIssuer(),
       storage(),
       () => SESSION_ID,
     );
@@ -128,10 +164,10 @@ describe('사용자 서비스', () => {
         address: '서울특별시',
         consents: [{ consentItemId: 1, agreed: true }],
       }),
-    ).resolves.toMatchObject({
+    ).resolves.toEqual({
       userId: 7,
       nickname: '모각러',
-      tokens: { accessToken: expect.any(String), refreshToken: expect.any(String) },
+      tokens: { accessToken: 'access', refreshToken: 'refresh' },
     });
     expect(users.completeRegistration).toHaveBeenCalledWith(
       expect.objectContaining({

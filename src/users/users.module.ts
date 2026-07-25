@@ -5,23 +5,29 @@ import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
 import { AuthModule } from '../auth/auth.module';
 import { StorageModule } from '../storage/storage.module';
-import { ConsentService } from './application/consent.service';
-import { MetadataService } from './application/metadata.service';
-import { SESSION_ID_GENERATOR, UserService } from './application/user.service';
-import { ConsentRepository } from './infrastructure/consent.repository';
-import { MetadataRepository } from './infrastructure/metadata.repository';
-import { UserRepository } from './infrastructure/user.repository';
-import { ConsentController } from './presentation/consent.controller';
-import { MetadataController } from './presentation/metadata.controller';
-import { UserController } from './presentation/user.controller';
+import { CONSENT_REPOSITORY } from './application/port/consent.repository.port';
+import { METADATA_REPOSITORY } from './application/port/metadata.repository.port';
+import { USER_REPOSITORY } from './application/port/user.repository.port';
+import { ConsentService } from './application/service/consent.service';
+import { MetadataService } from './application/service/metadata.service';
+import { SESSION_ID_GENERATOR, UserService } from './application/service/user.service';
+import { DrizzleConsentRepository } from './infrastructure/repository/consent.repository';
+import { DrizzleMetadataRepository } from './infrastructure/repository/metadata.repository';
+import { DrizzleUserRepository } from './infrastructure/repository/user.repository';
+import { ConsentController } from './presentation/controller/consent.controller';
+import { MetadataController } from './presentation/controller/metadata.controller';
+import { UsersController } from './presentation/controller/users.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule, StorageModule],
-  controllers: [UserController, ConsentController, MetadataController],
+  controllers: [UsersController, ConsentController, MetadataController],
   providers: [
-    UserRepository,
-    ConsentRepository,
-    MetadataRepository,
+    DrizzleUserRepository,
+    DrizzleConsentRepository,
+    DrizzleMetadataRepository,
+    { provide: USER_REPOSITORY, useExisting: DrizzleUserRepository },
+    { provide: CONSENT_REPOSITORY, useExisting: DrizzleConsentRepository },
+    { provide: METADATA_REPOSITORY, useExisting: DrizzleMetadataRepository },
     UserService,
     ConsentService,
     MetadataService,

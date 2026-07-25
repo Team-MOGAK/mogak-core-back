@@ -2,58 +2,60 @@ import { randomUUID } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
 
-import { AppErrorCode } from '../../common/http/app-error-code';
-import { DomainException } from '../../common/http/domain.exception';
-import { requiredTrimmed } from '../../common/validation/required-text';
-import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../auth/application/type/authenticated-principal';
-import { TokenService } from '../../auth/infrastructure/service/token.service';
-import { ConsentService, type ConsentCommand } from './consent.service';
-import { UserRepository } from '../infrastructure/user.repository';
-import { STORAGE_PORT, type StoragePort } from '../../storage/application/storage.port';
+import type { AuthenticatedPrincipal } from '../../../auth/application/type/authenticated-principal';
+import {
+  TOKEN_ISSUER,
+  type TokenIssuerPort,
+} from '../../../auth/application/port/token-issuer.port';
+import { AppErrorCode } from '../../../common/http/app-error-code';
+import { DomainException } from '../../../common/http/domain.exception';
+import { requiredTrimmed } from '../../../common/validation/required-text';
+import { STORAGE_PORT, type StoragePort } from '../../../storage/application/storage.port';
+import { canCompleteRegistration, normalizeNickname } from '../../domain/entity/user.entity';
+import { METADATA_REPOSITORY, type MetadataRepositoryPort } from '../port/metadata.repository.port';
+import { USER_REPOSITORY, type UserRepositoryPort } from '../port/user.repository.port';
+import type { JoinUserCommand } from '../type/user.command';
+import type { JoinUserResult, UserProfileResult } from '../type/user.result';
+import { ConsentService } from './consent.service';
 
-const SESSION_ID_GENERATOR = Symbol('USER_SESSION_ID_GENERATOR');
+export const SESSION_ID_GENERATOR = Symbol('USER_SESSION_ID_GENERATOR');
 const REFRESH_TOKEN_TTL_MILLISECONDS = 31 * 24 * 60 * 60 * 1_000;
-
-export type JoinInput = Readonly<{
-  nickname: string;
-  job: string;
-  address: string;
-  consents: readonly ConsentCommand[];
-}>;
 
 @Injectable()
 export class UserService {
   constructor(
-    @Inject(UserRepository) private readonly users: UserRepository,
+    @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort,
+    @Inject(METADATA_REPOSITORY) private readonly metadata: MetadataRepositoryPort,
     @Inject(ConsentService) private readonly consents: ConsentService,
-    @Inject(TokenService) private readonly tokens: TokenService,
+    @Inject(TOKEN_ISSUER) private readonly tokens: TokenIssuerPort,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     @Inject(SESSION_ID_GENERATOR) private readonly createSessionId: () => string = randomUUID,
   ) {}
 
   async verifyNickname(nickname: string): Promise<void> {
-    if (await this.users.existsByNickname(requiredTrimmed(nickname))) {
+    const normalized = requiredNickname(nickname);
+    if (await this.users.existsByNickname(normalized)) {
       throw new DomainException(AppErrorCode.INVALID_NICKNAME);
     }
   }
 
-  async join(current: AuthenticatedUser, input: JoinInput) {
+  async join(current: AuthenticatedPrincipal, command: JoinUserCommand): Promise<JoinUserResult> {
     const user = await this.users.findById(current.userId);
     if (user === null) throw new DomainException(AppErrorCode.USER_NOT_FOUND);
-    if (current.role !== 'PENDING' || user.role !== 'PENDING') {
+    if (!canCompleteRegistration(current.role, user.role)) {
       throw new DomainException(AppErrorCode.USER_ALREADY_EXISTS);
     }
-    const nickname = requiredTrimmed(input.nickname);
-    const jobName = requiredTrimmed(input.job);
-    const addressName = requiredTrimmed(input.address);
+    const nickname = requiredNickname(command.nickname);
+    const jobName = requiredTrimmed(command.job);
+    const addressName = requiredTrimmed(command.address);
     await this.verifyNickname(nickname);
     const [job, address] = await Promise.all([
-      this.users.findJobByName(jobName),
-      this.users.findAddressByName(addressName),
+      this.metadata.findJobByName(jobName),
+      this.metadata.findAddressByName(addressName),
     ]);
     if (job === null) throw new DomainException(AppErrorCode.JOB_NOT_FOUND);
     if (address === null) throw new DomainException(AppErrorCode.ADDRESS_NOT_FOUND);
-    await this.consents.validate(input.consents);
+    await this.consents.validate(command.consents);
 
     const sessionId = this.createSessionId();
     const tokens = await this.tokens.issue({
@@ -69,7 +71,7 @@ export class UserService {
         nickname,
         jobId: job.id,
         addressId: address.id,
-        consents: input.consents,
+        consents: command.consents,
         currentSessionId: current.sessionId,
         replacementSession: {
           id: sessionId,
@@ -87,7 +89,7 @@ export class UserService {
     }
   }
 
-  async profile(userId: number) {
+  async profile(userId: number): Promise<UserProfileResult> {
     const profile = await this.users.findProfile(userId);
     if (profile === null) throw new DomainException(AppErrorCode.USER_NOT_FOUND);
     return {
@@ -101,10 +103,16 @@ export class UserService {
   }
 
   async updateNickname(userId: number, nickname: string): Promise<void> {
-    const normalizedNickname = requiredTrimmed(nickname);
+    const normalizedNickname = requiredNickname(nickname);
     await this.verifyNickname(normalizedNickname);
     try {
-      if (!(await this.users.updateNickname(userId, normalizedNickname, new Date()))) {
+      if (
+        !(await this.users.updateNickname({
+          userId,
+          nickname: normalizedNickname,
+          now: new Date(),
+        }))
+      ) {
         throw new DomainException(AppErrorCode.USER_NOT_FOUND);
       }
     } catch (error: unknown) {
@@ -116,9 +124,9 @@ export class UserService {
   }
 
   async updateJob(userId: number, jobName: string): Promise<void> {
-    const job = await this.users.findJobByName(requiredTrimmed(jobName));
+    const job = await this.metadata.findJobByName(requiredTrimmed(jobName));
     if (job === null) throw new DomainException(AppErrorCode.JOB_NOT_FOUND);
-    if (!(await this.users.updateJob(userId, job.id, new Date()))) {
+    if (!(await this.users.updateJob({ userId, jobId: job.id, now: new Date() }))) {
       throw new DomainException(AppErrorCode.USER_NOT_FOUND);
     }
   }
@@ -129,18 +137,28 @@ export class UserService {
     const now = new Date();
     if (file !== undefined && file.size > 0) {
       const uploaded = await this.storage.replaceProfile(profile.profileImageKey, file);
-      if (!(await this.users.updateProfileImageKey(userId, uploaded.storageKey, now))) {
+      if (
+        !(await this.users.updateProfileImageKey({
+          userId,
+          profileImageKey: uploaded.storageKey,
+          now,
+        }))
+      ) {
         throw new DomainException(AppErrorCode.USER_NOT_FOUND);
       }
       return;
     }
-    if (profile.profileImageKey !== null) {
-      await this.storage.deleteProfile(profile.profileImageKey);
-    }
-    if (!(await this.users.updateProfileImageKey(userId, null, now))) {
+    if (profile.profileImageKey !== null) await this.storage.deleteProfile(profile.profileImageKey);
+    if (!(await this.users.updateProfileImageKey({ userId, profileImageKey: null, now }))) {
       throw new DomainException(AppErrorCode.USER_NOT_FOUND);
     }
   }
+}
+
+function requiredNickname(value: string): string {
+  const normalized = normalizeNickname(value);
+  if (normalized === null) throw new DomainException(AppErrorCode.INVALID_PARAMETER);
+  return normalized;
 }
 
 function isNicknameUniqueViolation(error: unknown): boolean {
@@ -153,5 +171,3 @@ function isNicknameUniqueViolation(error: unknown): boolean {
     error.constraint === 'users_nickname_unique'
   );
 }
-
-export { SESSION_ID_GENERATOR };

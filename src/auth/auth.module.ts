@@ -52,11 +52,6 @@ import { RegisteredUserGuard } from './presentation/controller/registered-user.g
     AccessTokenGuard,
     RegisteredUserGuard,
   ],
-  exports: [
-    TokenService,
-    AuthService,
-    AccessTokenGuard,
-    RegisteredUserGuard,
-  ],
+  exports: [TOKEN_ISSUER, AuthService, AccessTokenGuard, RegisteredUserGuard],
 })
 export class AuthModule {}

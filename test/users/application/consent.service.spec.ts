@@ -2,8 +2,8 @@ import { testMock } from '../../test-mock';
 
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import type { ConsentRepository } from '../../../src/users/infrastructure/consent.repository';
-import { ConsentService } from '../../../src/users/application/consent.service';
+import type { ConsentRepositoryPort } from '../../../src/users/application/port/consent.repository.port';
+import { ConsentService } from '../../../src/users/application/service/consent.service';
 
 describe('동의 서비스', () => {
   it('상태를 저장하기 전에 중복 동의 식별자를 거부한다', async () => {
@@ -13,7 +13,7 @@ describe('동의 서비스', () => {
       upsertUserConsents: testMock(),
       getMarketingConsents: testMock(),
       updateMarketingConsents: testMock(),
-    } as unknown as ConsentRepository;
+    } as unknown as ConsentRepositoryPort;
     const service = new ConsentService(repository);
 
     await expect(

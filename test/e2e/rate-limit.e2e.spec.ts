@@ -4,7 +4,7 @@ import request from 'supertest';
 
 import { AppModule } from '../../src/app.module';
 import { configureApp } from '../../src/app.setup';
-import { MetadataService } from '../../src/users/application/metadata.service';
+import { MetadataService } from '../../src/users/application/service/metadata.service';
 
 describe('전역 HTTP rate limit', () => {
   let app: INestApplication;

@@ -10,12 +10,12 @@ import { BoundedThrottlerStorage } from '../../../src/common/http/bounded-thrott
 import { configureApp } from '../../../src/app.setup';
 import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
 import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
-import { ConsentService } from '../../../src/users/application/consent.service';
-import { MetadataService } from '../../../src/users/application/metadata.service';
-import { UserService } from '../../../src/users/application/user.service';
-import { ConsentController } from '../../../src/users/presentation/consent.controller';
-import { MetadataController } from '../../../src/users/presentation/metadata.controller';
-import { UserController } from '../../../src/users/presentation/user.controller';
+import { ConsentService } from '../../../src/users/application/service/consent.service';
+import { MetadataService } from '../../../src/users/application/service/metadata.service';
+import { UserService } from '../../../src/users/application/service/user.service';
+import { ConsentController } from '../../../src/users/presentation/controller/consent.controller';
+import { MetadataController } from '../../../src/users/presentation/controller/metadata.controller';
+import { UsersController } from '../../../src/users/presentation/controller/users.controller';
 
 describe('사용자 HTTP 계약', () => {
   let app: INestApplication;
@@ -46,7 +46,7 @@ describe('사용자 HTTP 계약', () => {
           throttlers: [{ ttl: 60_000, limit: 300 }],
         }),
       ],
-      controllers: [UserController, ConsentController, MetadataController],
+      controllers: [UsersController, ConsentController, MetadataController],
       providers: [
         { provide: UserService, useValue: users },
         { provide: ConsentService, useValue: consents },
