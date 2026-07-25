@@ -153,10 +153,11 @@ posts/
 ```
 
 Subdirectory names are singular: `entity`, `vo`, `type`, `service`, `port`, `repository`, and
-`controller`. Empty directories are not created. Small features may use fewer contract files, but
-every artifact still resides in its role-specific directory and retains its semantic suffix. Files
-split when they contain independent responsibilities or become difficult to understand as one
-unit, not merely because another type was added.
+`controller`. Infrastructure may add an equally explicit role directory such as `verifier` for
+provider-specific identity verification. Empty directories are not created. Small features may use
+fewer contract files, but every artifact still resides in its role-specific directory and retains
+its semantic suffix. Files split when they contain independent responsibilities or become
+difficult to understand as one unit, not merely because another type was added.
 
 ## Layer Contracts and Naming
 
