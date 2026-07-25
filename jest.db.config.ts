@@ -18,7 +18,7 @@ if (suppliedDatabaseUrl === undefined) {
 const config: Config = {
   ...createDefaultEsmPreset({ tsconfig: '<rootDir>/tsconfig.spec.json' }),
   testEnvironment: 'node',
-  testMatch: ['<rootDir>/test/database/**/*.spec.ts'],
+  testMatch: ['<rootDir>/test/database/**/*.integration.spec.ts'],
   modulePathIgnorePatterns: ['<rootDir>/.worktrees/'],
   globalSetup: '<rootDir>/test/database/global-setup.ts',
   setupFiles: ['<rootDir>/test/database/setup.ts'],
