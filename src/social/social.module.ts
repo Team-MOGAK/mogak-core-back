@@ -4,16 +4,16 @@ import { AuthModule } from '../auth/auth.module';
 import { StorageModule } from '../storage/storage.module';
 import { SOCIAL_REPOSITORY } from './application/port/social.repository.port';
 import { SocialService } from './application/service/social.service';
-import { DrizzleSocialRepository } from './infrastructure/repository/social.repository';
+import { SocialRepository } from './infrastructure/repository/social.repository';
 import { SocialController } from './presentation/controller/social.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule, StorageModule],
   controllers: [SocialController],
   providers: [
-    DrizzleSocialRepository,
-    { provide: SOCIAL_REPOSITORY, useExisting: DrizzleSocialRepository },
     SocialService,
+    SocialRepository,
+    { provide: SOCIAL_REPOSITORY, useExisting: SocialRepository },
   ],
 })
 export class SocialModule {}

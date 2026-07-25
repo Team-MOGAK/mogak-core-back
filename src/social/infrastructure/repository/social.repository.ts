@@ -30,7 +30,7 @@ import type {
 } from '../type/social.projection';
 
 @Injectable()
-export class DrizzleSocialRepository implements SocialRepositoryPort {
+export class SocialRepository implements SocialRepositoryPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async findUserByNickname(nickname: string): Promise<SocialUserResult | null> {

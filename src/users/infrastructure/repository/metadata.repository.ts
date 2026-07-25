@@ -8,7 +8,7 @@ import { DATABASE } from '../../../database/database.tokens';
 import { addresses, jobs } from '../../../database/schema';
 
 @Injectable()
-export class DrizzleMetadataRepository implements MetadataRepositoryPort {
+export class MetadataRepository implements MetadataRepositoryPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async listJobs(): Promise<Job[]> {

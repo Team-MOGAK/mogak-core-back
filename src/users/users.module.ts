@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto';
-
 import { Module } from '@nestjs/common';
 
 import { DatabaseModule } from '../database/database.module';
@@ -10,10 +8,10 @@ import { METADATA_REPOSITORY } from './application/port/metadata.repository.port
 import { USER_REPOSITORY } from './application/port/user.repository.port';
 import { ConsentService } from './application/service/consent.service';
 import { MetadataService } from './application/service/metadata.service';
-import { SESSION_ID_GENERATOR, UserService } from './application/service/user.service';
-import { DrizzleConsentRepository } from './infrastructure/repository/consent.repository';
-import { DrizzleMetadataRepository } from './infrastructure/repository/metadata.repository';
-import { DrizzleUserRepository } from './infrastructure/repository/user.repository';
+import { UserService } from './application/service/user.service';
+import { ConsentRepository } from './infrastructure/repository/consent.repository';
+import { MetadataRepository } from './infrastructure/repository/metadata.repository';
+import { UserRepository } from './infrastructure/repository/user.repository';
 import { ConsentController } from './presentation/controller/consent.controller';
 import { MetadataController } from './presentation/controller/metadata.controller';
 import { UsersController } from './presentation/controller/users.controller';
@@ -22,16 +20,15 @@ import { UsersController } from './presentation/controller/users.controller';
   imports: [DatabaseModule, AuthModule, StorageModule],
   controllers: [UsersController, ConsentController, MetadataController],
   providers: [
-    DrizzleUserRepository,
-    DrizzleConsentRepository,
-    DrizzleMetadataRepository,
-    { provide: USER_REPOSITORY, useExisting: DrizzleUserRepository },
-    { provide: CONSENT_REPOSITORY, useExisting: DrizzleConsentRepository },
-    { provide: METADATA_REPOSITORY, useExisting: DrizzleMetadataRepository },
+    UserRepository,
+    ConsentRepository,
+    MetadataRepository,
+    { provide: USER_REPOSITORY, useExisting: UserRepository },
+    { provide: CONSENT_REPOSITORY, useExisting: ConsentRepository },
+    { provide: METADATA_REPOSITORY, useExisting: MetadataRepository },
     UserService,
     ConsentService,
     MetadataService,
-    { provide: SESSION_ID_GENERATOR, useValue: randomUUID },
   ],
   exports: [UserService, ConsentService, MetadataService],
 })
