@@ -8,9 +8,9 @@ import request from 'supertest';
 
 import { BoundedThrottlerStorage } from '../../../src/common/http/bounded-throttler.storage';
 import { configureApp } from '../../../src/app.setup';
-import { AuthService } from '../../../src/auth/application/auth.service';
-import { AccessTokenGuard } from '../../../src/auth/presentation/access-token.guard';
-import { AuthController } from '../../../src/auth/presentation/auth.controller';
+import { AuthService } from '../../../src/auth/application/service/auth.service';
+import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
+import { AuthController } from '../../../src/auth/presentation/controller/auth.controller';
 
 describe('인증 HTTP 계약', () => {
   let app: INestApplication;

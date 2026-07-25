@@ -15,10 +15,10 @@ import { z } from 'zod';
 import { successResponse } from '../../common/http/api-response';
 import { AppErrorCode } from '../../common/http/app-error-code';
 import { DomainException } from '../../common/http/domain.exception';
-import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
-import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
-import { CurrentUser } from '../../auth/presentation/current-user.decorator';
-import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
+import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../auth/application/type/authenticated-principal';
+import { AccessTokenGuard } from '../../auth/presentation/controller/access-token.guard';
+import { CurrentUser } from '../../auth/presentation/controller/current-user.decorator';
+import { RegisteredUserGuard } from '../../auth/presentation/controller/registered-user.guard';
 import { ConsentService } from '../application/consent.service';
 
 const consentAgreementSchema = z

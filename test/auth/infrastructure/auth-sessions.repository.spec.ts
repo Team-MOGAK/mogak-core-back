@@ -2,7 +2,7 @@ import { testMock } from '../../test-mock';
 import type { Database } from '../../../src/database/database.provider';
 import { authSessions } from '../../../src/database/schema';
 
-import { AuthSessionsRepository } from '../../../src/auth/infrastructure/auth-sessions.repository';
+import { AuthSessionsRepository } from '../../../src/auth/infrastructure/repository/auth-sessions.repository';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 

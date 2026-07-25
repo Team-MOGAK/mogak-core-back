@@ -1,6 +1,6 @@
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import { identityFromJwtClaims } from '../../../src/auth/infrastructure/identity-claims';
+import { identityFromJwtClaims } from '../../../src/auth/infrastructure/verifier/identity-claims';
 
 describe('식별 토큰 클레임 해석', () => {
   it('식별 토큰의 문자열 이메일 검증 클레임을 정규화한다', () => {

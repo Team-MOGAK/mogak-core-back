@@ -29,10 +29,10 @@ import {
   positiveIdSchema,
   requiredTextSchema,
 } from '../../common/validation/request-schema';
-import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
-import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
-import { CurrentUser } from '../../auth/presentation/current-user.decorator';
-import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
+import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../auth/application/type/authenticated-principal';
+import { AccessTokenGuard } from '../../auth/presentation/controller/access-token.guard';
+import { CurrentUser } from '../../auth/presentation/controller/current-user.decorator';
+import { RegisteredUserGuard } from '../../auth/presentation/controller/registered-user.guard';
 import { STORAGE_PORT, type StoragePort } from '../../storage/application/storage.port';
 import { PostsService } from '../application/posts.service';
 

@@ -8,8 +8,8 @@ import request from 'supertest';
 
 import { BoundedThrottlerStorage } from '../../../src/common/http/bounded-throttler.storage';
 import { configureApp } from '../../../src/app.setup';
-import { AccessTokenGuard } from '../../../src/auth/presentation/access-token.guard';
-import { RegisteredUserGuard } from '../../../src/auth/presentation/registered-user.guard';
+import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
+import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
 import { ConsentService } from '../../../src/users/application/consent.service';
 import { MetadataService } from '../../../src/users/application/metadata.service';
 import { UserService } from '../../../src/users/application/user.service';

@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import { KakaoIdentityVerifier } from '../../../src/auth/infrastructure/kakao-identity-verifier';
+import { KakaoIdentityVerifier } from '../../../src/auth/infrastructure/verifier/kakao-identity-verifier';
 
 describe('카카오 식별자 검증기', () => {
   afterEach(() => {

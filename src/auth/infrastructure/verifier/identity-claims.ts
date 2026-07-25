@@ -1,18 +1,16 @@
 import type { JWTPayload } from 'jose';
 
-import { AppErrorCode } from '../../common/http/app-error-code';
-import { DomainException } from '../../common/http/domain.exception';
-import type { SocialIdentity } from '../domain/social-identity';
-import type { SocialProvider } from '../domain/social-provider';
+import { AppErrorCode } from '../../../common/http/app-error-code';
+import { DomainException } from '../../../common/http/domain.exception';
+import type { SocialProvider, VerifiedSocialIdentity } from '../../domain/entity/auth.entity';
 
 export function identityFromJwtClaims(
   provider: SocialProvider,
   claims: Pick<JWTPayload, 'sub'> & Record<string, unknown>,
-): SocialIdentity {
+): VerifiedSocialIdentity {
   if (typeof claims.sub !== 'string' || claims.sub.length === 0) {
     throw new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN);
   }
-
   return {
     provider,
     providerUserId: claims.sub,

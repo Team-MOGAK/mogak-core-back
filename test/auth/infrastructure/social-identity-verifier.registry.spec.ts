@@ -2,8 +2,8 @@ import { testMock } from '../../test-mock';
 
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import type { SocialIdentityVerifier } from '../../../src/auth/domain/social-identity-verifier.port';
-import { SocialIdentityVerifierRegistry } from '../../../src/auth/infrastructure/social-identity-verifier.registry';
+import type { SocialIdentityVerifier } from '../../../src/auth/application/port/social-identity-verifier.port';
+import { SocialIdentityVerifierRegistry } from '../../../src/auth/infrastructure/verifier/social-identity-verifier.registry';
 
 describe('소셜 식별자 검증기 레지스트리', () => {
   it('요청한 공급자를 지원하는 검증기를 선택한다', async () => {

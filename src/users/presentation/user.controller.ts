@@ -19,10 +19,10 @@ import { z } from 'zod';
 import { successResponse } from '../../common/http/api-response';
 import { profileImageUploadOptions } from '../../common/http/image-upload.options';
 import { requiredTextSchema } from '../../common/validation/request-schema';
-import type { AuthenticatedUser } from '../../auth/domain/authenticated-user';
-import { AccessTokenGuard } from '../../auth/presentation/access-token.guard';
-import { CurrentUser } from '../../auth/presentation/current-user.decorator';
-import { RegisteredUserGuard } from '../../auth/presentation/registered-user.guard';
+import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../auth/application/type/authenticated-principal';
+import { AccessTokenGuard } from '../../auth/presentation/controller/access-token.guard';
+import { CurrentUser } from '../../auth/presentation/controller/current-user.decorator';
+import { RegisteredUserGuard } from '../../auth/presentation/controller/registered-user.guard';
 import { UserService } from '../application/user.service';
 
 const consentAgreementSchema = z

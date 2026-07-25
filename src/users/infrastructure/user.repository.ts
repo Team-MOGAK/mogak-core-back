@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
 import { addresses, authSessions, jobs, userConsents, users } from '../../database/schema';
-import type { UserRole } from '../../auth/domain/authenticated-user';
+import type { UserRole } from '../../auth/application/type/authenticated-principal';
 
 export type UserRecord = Readonly<{
   id: number;

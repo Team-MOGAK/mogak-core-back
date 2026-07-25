@@ -2,7 +2,7 @@ import type { ExecutionContext } from '@nestjs/common';
 
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import { RegisteredUserGuard } from '../../../src/auth/presentation/registered-user.guard';
+import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
 
 function executionContext(request: Record<string, unknown>): ExecutionContext {
   return {

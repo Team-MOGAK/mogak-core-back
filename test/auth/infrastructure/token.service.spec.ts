@@ -4,7 +4,7 @@ import { testMock } from '../../test-mock';
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
 import type { AppEnv } from '../../../src/config/app-env';
-import { TokenService } from '../../../src/auth/infrastructure/token.service';
+import { TokenService } from '../../../src/auth/infrastructure/service/token.service';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 

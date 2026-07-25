@@ -9,8 +9,8 @@ import { configureApp } from '../../../src/app.setup';
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
 import { STORAGE_PORT, type StoragePort } from '../../../src/storage/application/storage.port';
-import { AccessTokenGuard } from '../../../src/auth/presentation/access-token.guard';
-import { RegisteredUserGuard } from '../../../src/auth/presentation/registered-user.guard';
+import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
+import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
 import { PostsService } from '../../../src/posts/application/posts.service';
 import { PostsController } from '../../../src/posts/presentation/posts.controller';
 

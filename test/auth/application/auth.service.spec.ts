@@ -1,25 +1,24 @@
 import { jest } from '@jest/globals';
 import { testMock } from '../../test-mock';
-import type { ConfigService } from '@nestjs/config';
-
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import type { AppEnv } from '../../../src/config/app-env';
-import type { AuthPersistence } from '../../../src/auth/domain/auth-persistence.port';
-import { AuthService } from '../../../src/auth/application/auth.service';
-import type { SocialIdentityVerifierRegistry } from '../../../src/auth/infrastructure/social-identity-verifier.registry';
-import { TokenService } from '../../../src/auth/infrastructure/token.service';
+import type { AuthPersistencePort } from '../../../src/auth/application/port/auth-persistence.port';
+import type { SocialIdentityVerifierPort } from '../../../src/auth/application/port/social-identity-verifier.port';
+import type { TokenIssuerPort } from '../../../src/auth/application/port/token-issuer.port';
+import { AuthService } from '../../../src/auth/application/service/auth.service';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
-function createTokenService(): TokenService {
-  const config = {
-    getOrThrow: testMock().mockReturnValue('test-jwt-secret-with-at-least-thirty-two-characters'),
-  } as unknown as ConfigService<AppEnv, true>;
-  return new TokenService(config);
+function createTokenIssuer(): TokenIssuerPort {
+  return {
+    issue: testMock().mockResolvedValue({ accessToken: 'access-token', refreshToken: 'refresh-token' }),
+    verifyAccess: testMock(),
+    verifyRefresh: testMock(),
+    hashRefreshToken: testMock().mockReturnValue('refresh-token-hash'),
+  };
 }
 
-function createPersistence(): AuthPersistence {
+function createPersistence(): AuthPersistencePort {
   return {
     findUserById: testMock(),
     findUserByEmail: testMock(),
@@ -27,6 +26,7 @@ function createPersistence(): AuthPersistence {
     createAccount: testMock(),
     createSession: testMock(),
     rotateSession: testMock(),
+    isSessionActive: testMock(),
     deleteSession: testMock(),
     deleteUser: testMock(),
   };
@@ -41,7 +41,7 @@ describe('인증 서비스', () => {
         email: 'mogak@example.test',
         emailVerified: true,
       }),
-    } as unknown as SocialIdentityVerifierRegistry;
+    } as unknown as SocialIdentityVerifierPort;
     const persistence = createPersistence();
     jest.mocked(persistence.findUserByEmail).mockResolvedValue(null);
     jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue(null);
@@ -56,7 +56,7 @@ describe('인증 서비스', () => {
           })
         ).result,
     );
-    const service = new AuthService(verifiers, persistence, createTokenService(), () => SESSION_ID);
+    const service = new AuthService(verifiers, persistence, createTokenIssuer(), () => SESSION_ID);
 
     await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({
       isRegistered: false,
@@ -87,7 +87,7 @@ describe('인증 서비스', () => {
         email: 'mogak@example.test',
         emailVerified: true,
       }),
-    } as unknown as SocialIdentityVerifierRegistry;
+    } as unknown as SocialIdentityVerifierPort;
     const persistence = createPersistence();
     jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue(null);
     jest.mocked(persistence.findUserByEmail).mockResolvedValue({
@@ -96,7 +96,7 @@ describe('인증 서비스', () => {
       nickname: '기존사용자',
       role: 'USER',
     });
-    const service = new AuthService(verifiers, persistence, createTokenService(), () => SESSION_ID);
+    const service = new AuthService(verifiers, persistence, createTokenIssuer(), () => SESSION_ID);
 
     await expect(service.login('KAKAO', 'access-token')).rejects.toEqual(
       new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED),
@@ -119,7 +119,7 @@ describe('인증 서비스', () => {
           email: 'mogak@example.test',
           emailVerified: false,
         }),
-    } as unknown as SocialIdentityVerifierRegistry;
+    } as unknown as SocialIdentityVerifierPort;
     const persistence = createPersistence();
     jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue(null);
     jest.mocked(persistence.findUserByEmail).mockResolvedValue(null);
@@ -129,7 +129,7 @@ describe('인증 서비스', () => {
         async (_input, createSession) =>
           (await createSession({ id: 7, email: null, nickname: null, role: 'PENDING' })).result,
       );
-    const service = new AuthService(verifiers, persistence, createTokenService(), () => SESSION_ID);
+    const service = new AuthService(verifiers, persistence, createTokenIssuer(), () => SESSION_ID);
 
     await expect(service.login('KAKAO', 'access-token')).resolves.toMatchObject({ userId: 7 });
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(

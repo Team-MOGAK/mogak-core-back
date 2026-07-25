@@ -1,6 +1,6 @@
 export type UserRole = 'PENDING' | 'USER';
 
-export type AuthenticatedUser = Readonly<{
+export type AuthenticatedPrincipal = Readonly<{
   userId: number;
   email?: string;
   role: UserRole;

@@ -5,8 +5,8 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { configureApp } from '../../../src/app.setup';
-import { AccessTokenGuard } from '../../../src/auth/presentation/access-token.guard';
-import { RegisteredUserGuard } from '../../../src/auth/presentation/registered-user.guard';
+import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
+import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
 import { JogaksService } from '../../../src/mogaks/application/jogaks.service';
 import { JogaksController } from '../../../src/mogaks/presentation/jogaks.controller';
 

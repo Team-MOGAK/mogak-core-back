@@ -1,4 +1,4 @@
-import { GOOGLE_ISSUERS } from '../../../src/auth/infrastructure/google-identity-verifier';
+import { GOOGLE_ISSUERS } from '../../../src/auth/infrastructure/verifier/google-identity-verifier';
 
 describe('Google ID 토큰 검증 설정', () => {
   it('Google이 발급하는 두 issuer만 허용한다', () => {
