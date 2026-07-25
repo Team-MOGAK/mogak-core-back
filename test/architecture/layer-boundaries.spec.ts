@@ -49,6 +49,11 @@ describe('layer boundaries', () => {
         'social/presentation/type/probe.contract.ts',
         `import { z } from 'zod'; export const probeSchema = z.object({ value: z.string() });`,
       );
+      writeFixture(
+        root,
+        'social/presentation/dto/probe.dto.ts',
+        `export class TransportPayload {}`,
+      );
 
       expect(formatViolations(collectLayerBoundaryViolations(root))).toEqual(
         expect.arrayContaining([
@@ -68,6 +73,7 @@ describe('layer boundaries', () => {
           expect.stringContaining(
             "presentation schema 'probeSchema' must have an exported z.infer type alias",
           ),
+          expect.stringContaining('DTO contract paths are not permitted'),
         ]),
       );
     } finally {
@@ -125,6 +131,13 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
       violations.push({
         file: projectPath,
         message: 'nestjs-zod/createZodDto are not permitted',
+      });
+    }
+
+    if (isDtoContractPath(segments)) {
+      violations.push({
+        file: projectPath,
+        message: 'DTO contract paths are not permitted',
       });
     }
 
@@ -205,6 +218,12 @@ function hasDtoResidual(source: string): boolean {
 
 function isTypeContract(segments: readonly string[]): boolean {
   return segments.includes('type');
+}
+
+function isDtoContractPath(segments: readonly string[]): boolean {
+  return segments.some(
+    (segment) => segment.toLowerCase() === 'dto' || segment.toLowerCase().endsWith('.dto.ts'),
+  );
 }
 
 function isPresentationTypeContract(segments: readonly string[]): boolean {
