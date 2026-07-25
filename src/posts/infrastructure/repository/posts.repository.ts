@@ -17,6 +17,7 @@ import {
 } from '../../../database/schema';
 import type { PostsRepositoryPort } from '../../application/port/posts.repository.port';
 import type { CreatePostCommand } from '../../application/type/post.command';
+import { PostsPersistenceException } from '../../domain/exception/posts-persistence.exception';
 import type {
   PostCommentResult,
   PostDetailResult,
@@ -69,7 +70,9 @@ export class PostsRepository implements PostsRepositoryPort {
             )
         )[0];
       if (execution === undefined) {
-        throw new Error('execution insert conflict did not expose an execution row');
+        throw new PostsPersistenceException(
+          'execution insert conflict did not expose an execution row',
+        );
       }
 
       const [post] = await tx
@@ -248,10 +251,11 @@ export class PostsRepository implements PostsRepositoryPort {
       .insert(postComments)
       .values(input)
       .returning({ id: postComments.id });
-    if (created === undefined) throw new Error('comment insert did not return a row');
+    if (created === undefined)
+      throw new PostsPersistenceException('comment insert did not return a row');
 
     const comment = await this.findComment(input.postId, created.id);
-    if (comment === null) throw new Error('created comment was not found');
+    if (comment === null) throw new PostsPersistenceException('created comment was not found');
     return toPostCommentResult(comment);
   }
 

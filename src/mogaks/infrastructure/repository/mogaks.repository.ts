@@ -13,6 +13,7 @@ import {
   mogaks,
 } from '../../../database/schema';
 import type { MogaksRepositoryPort } from '../../application/port/mogaks.repository.port';
+import { MogaksPersistenceException } from '../../domain/exception/mogaks-persistence.exception';
 import type {
   JogakExecutionStatus as StoredExecutionStatus,
   JogakScheduleType as ScheduleType,
@@ -171,7 +172,8 @@ export class MogaksRepository implements MogaksRepositoryPort {
       .insert(modarats)
       .values({ userId: input.userId, title: input.title, color: input.color })
       .returning({ id: modarats.id, title: modarats.title, color: modarats.color });
-    if (created === undefined) throw new Error('Modarat insert did not return a row');
+    if (created === undefined)
+      throw new MogaksPersistenceException('Modarat insert did not return a row');
     return created;
   }
 
@@ -248,13 +250,15 @@ export class MogaksRepository implements MogaksRepositoryPort {
         categoryId: mogaks.categoryId,
         customCategoryName: mogaks.customCategoryName,
       });
-    if (created === undefined) throw new Error('Mogak insert did not return a row');
+    if (created === undefined)
+      throw new MogaksPersistenceException('Mogak insert did not return a row');
 
     if (created.categoryId === null) {
       return { ...created, categoryCode: null, categoryName: null };
     }
     const category = await this.findCategoryById(created.categoryId);
-    if (category === null) throw new Error('Created Mogak category did not exist');
+    if (category === null)
+      throw new MogaksPersistenceException('Created Mogak category did not exist');
     return { ...created, categoryCode: category.code, categoryName: category.name };
   }
 
@@ -408,7 +412,7 @@ export class MogaksRepository implements MogaksRepositoryPort {
         })
         .returning({ id: jogakSchedules.id });
       if (createdSchedule === undefined)
-        throw new Error('Jogak schedule insert did not return a row');
+        throw new MogaksPersistenceException('Jogak schedule insert did not return a row');
       if (input.schedule.weekdays.length > 0) {
         await tx.insert(jogakScheduleWeekdays).values(
           input.schedule.weekdays.map((weekday) => ({
@@ -447,7 +451,8 @@ export class MogaksRepository implements MogaksRepositoryPort {
         .insert(jogaks)
         .values({ mogakId: input.mogak.id, title: input.title })
         .returning({ id: jogaks.id });
-      if (createdJogak === undefined) throw new Error('Jogak insert did not return a row');
+      if (createdJogak === undefined)
+        throw new MogaksPersistenceException('Jogak insert did not return a row');
 
       const [schedule] = await tx
         .insert(jogakSchedules)
@@ -458,7 +463,8 @@ export class MogaksRepository implements MogaksRepositoryPort {
           effectiveTo: input.schedule.effectiveTo,
         })
         .returning({ id: jogakSchedules.id });
-      if (schedule === undefined) throw new Error('Jogak schedule insert did not return a row');
+      if (schedule === undefined)
+        throw new MogaksPersistenceException('Jogak schedule insert did not return a row');
 
       if (input.schedule.weekdays.length > 0) {
         await tx
@@ -679,7 +685,9 @@ function asExecutionRecord(execution: {
     execution.status !== 'SUCCESS' &&
     execution.status !== 'FAIL'
   ) {
-    throw new Error(`Unsupported persisted execution status: ${execution.status}`);
+    throw new MogaksPersistenceException(
+      `Unsupported persisted execution status: ${execution.status}`,
+    );
   }
   return {
     id: execution.id,
@@ -706,7 +714,9 @@ function asOccurrenceScheduleRow(row: {
   weekday: string | null;
 }): OccurrenceScheduleRow {
   if (row.scheduleType !== 'ONCE' && row.scheduleType !== 'WEEKLY') {
-    throw new Error(`Unsupported persisted schedule type: ${row.scheduleType}`);
+    throw new MogaksPersistenceException(
+      `Unsupported persisted schedule type: ${row.scheduleType}`,
+    );
   }
   if (
     row.weekday !== null &&
@@ -714,7 +724,7 @@ function asOccurrenceScheduleRow(row: {
       ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] as const
     ).includes(row.weekday as IsoWeekday)
   ) {
-    throw new Error(`Unsupported persisted weekday: ${row.weekday}`);
+    throw new MogaksPersistenceException(`Unsupported persisted weekday: ${row.weekday}`);
   }
   return { ...row, scheduleType: row.scheduleType, weekday: row.weekday as IsoWeekday | null };
 }
