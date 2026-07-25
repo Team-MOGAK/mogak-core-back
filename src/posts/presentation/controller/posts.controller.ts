@@ -1,79 +1,54 @@
 import {
-  Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  Param,
   Post,
   Put,
-  Query,
   UploadedFiles,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { createZodDto } from 'nestjs-zod';
-import { z } from 'zod';
 
-import { successResponse } from '../../common/http/api-response';
+import { successResponse } from '../../../common/http/api-response';
 import {
   MAX_POST_IMAGE_COUNT,
   postImageUploadOptions,
-} from '../../common/http/image-upload.options';
-import { parseMultipartJson } from '../../common/validation/multipart-json';
+} from '../../../common/http/image-upload.options';
+import { parseMultipartJson } from '../../../common/validation/multipart-json';
+import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../../auth/application/type/authenticated-principal';
+import { AccessTokenGuard } from '../../../auth/presentation/controller/access-token.guard';
+import { CurrentUser } from '../../../auth/presentation/controller/current-user.decorator';
+import { RegisteredUserGuard } from '../../../auth/presentation/controller/registered-user.guard';
+import { STORAGE_PORT, type StoragePort } from '../../../storage/application/storage.port';
+import { ZodBody, ZodParams, ZodQuery } from '../../../common/validation/zod-parameter.decorator';
+import { PostsService } from '../../application/service/posts.service';
 import {
-  calendarDateSchema,
-  positiveIdSchema,
-  requiredTextSchema,
-} from '../../common/validation/request-schema';
-import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../auth/application/type/authenticated-principal';
-import { AccessTokenGuard } from '../../auth/presentation/controller/access-token.guard';
-import { CurrentUser } from '../../auth/presentation/controller/current-user.decorator';
-import { RegisteredUserGuard } from '../../auth/presentation/controller/registered-user.guard';
-import { STORAGE_PORT, type StoragePort } from '../../storage/application/storage.port';
-import { PostsService } from '../application/posts.service';
-
-const createPostSchema = z
-  .object({
-    targetDate: calendarDateSchema,
-    contents: requiredTextSchema(1, 350),
-  })
-  .strict();
-
-class CreatePostTransportRequest extends createZodDto(
-  z
-    .object({
-      targetDate: z.unknown().optional(),
-      contents: z.unknown().optional(),
-      request: z.string().optional(),
-    })
-    .strict(),
-) {}
-class UpdatePostRequest extends createZodDto(
-  z.object({ contents: requiredTextSchema(1, 350) }).strict(),
-) {}
-class CommentRequest extends createZodDto(
-  z.object({ contents: requiredTextSchema(1, 200) }).strict(),
-) {}
-class LikePostRequest extends createZodDto(z.object({ postId: positiveIdSchema }).strict()) {}
-class PostDateQuery extends createZodDto(z.object({ targetDate: calendarDateSchema }).strict()) {}
-class PostPageQuery extends createZodDto(
-  z
-    .object({
-      page: z.coerce.number().int().min(0).default(0),
-      size: positiveIdSchema,
-    })
-    .strict(),
-) {}
-class JogakIdParam extends createZodDto(z.object({ jogakId: positiveIdSchema }).strict()) {}
-class MogakIdParam extends createZodDto(z.object({ mogakId: positiveIdSchema }).strict()) {}
-class PostIdParam extends createZodDto(z.object({ postId: positiveIdSchema }).strict()) {}
-class PostCommentParam extends createZodDto(
-  z.object({ postId: positiveIdSchema, commentId: positiveIdSchema }).strict(),
-) {}
+  commentRequestSchema,
+  createPostRequestSchema,
+  createPostTransportSchema,
+  jogakIdParamsSchema,
+  likePostRequestSchema,
+  mogakIdParamsSchema,
+  postCommentParamsSchema,
+  postDateQuerySchema,
+  postIdParamsSchema,
+  postPageQuerySchema,
+  updatePostRequestSchema,
+  type CommentRequest,
+  type CreatePostTransportRequest,
+  type JogakIdParams,
+  type LikePostRequest,
+  type MogakIdParams,
+  type PostCommentParams,
+  type PostDateQuery,
+  type PostIdParams,
+  type PostPageQuery,
+  type UpdatePostRequest,
+} from '../type/posts.request';
 
 @Controller('api')
 export class PostsController {
@@ -88,11 +63,11 @@ export class PostsController {
   @HttpCode(HttpStatus.OK)
   async createPost(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: JogakIdParam,
-    @Body() body: CreatePostTransportRequest,
+    @ZodParams(jogakIdParamsSchema) params: JogakIdParams,
+    @ZodBody(createPostTransportSchema) body: CreatePostTransportRequest,
     @UploadedFiles() files: Express.Multer.File[] | undefined,
   ) {
-    const request = parseMultipartJson(body, createPostSchema);
+    const request = parseMultipartJson(body, createPostRequestSchema);
     const uploadedFiles = (files ?? []).filter((file) => file.size > 0);
     if (uploadedFiles.length > 0) {
       await this.storage.uploadPostImages(uploadedFiles);
@@ -110,8 +85,8 @@ export class PostsController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async listMogakPosts(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: MogakIdParam,
-    @Query() query: PostPageQuery,
+    @ZodParams(mogakIdParamsSchema) params: MogakIdParams,
+    @ZodQuery(postPageQuerySchema) query: PostPageQuery,
   ) {
     return successResponse(
       await this.posts.listMogakPosts(user.userId, params.mogakId, query.page, query.size),
@@ -122,8 +97,8 @@ export class PostsController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async getPostByJogakAndDate(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: JogakIdParam,
-    @Query() query: PostDateQuery,
+    @ZodParams(jogakIdParamsSchema) params: JogakIdParams,
+    @ZodQuery(postDateQuerySchema) query: PostDateQuery,
   ) {
     return successResponse(
       await this.posts.getPostByJogakAndDate(user.userId, params.jogakId, query.targetDate),
@@ -132,7 +107,7 @@ export class PostsController {
 
   @Get('posts/:postId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async getPost(@CurrentUser() user: AuthenticatedUser, @Param() params: PostIdParam) {
+  async getPost(@CurrentUser() user: AuthenticatedUser, @ZodParams(postIdParamsSchema) params: PostIdParams) {
     return successResponse(await this.posts.getPost(user.userId, params.postId));
   }
 
@@ -140,8 +115,8 @@ export class PostsController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updatePost(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: PostIdParam,
-    @Body() request: UpdatePostRequest,
+    @ZodParams(postIdParamsSchema) params: PostIdParams,
+    @ZodBody(updatePostRequestSchema) request: UpdatePostRequest,
   ) {
     const updated = await this.posts.updatePost(user.userId, params.postId, request.contents);
     return successResponse({
@@ -153,7 +128,7 @@ export class PostsController {
 
   @Delete('posts/:postId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async deletePost(@CurrentUser() user: AuthenticatedUser, @Param() params: PostIdParam) {
+  async deletePost(@CurrentUser() user: AuthenticatedUser, @ZodParams(postIdParamsSchema) params: PostIdParams) {
     await this.posts.deletePost(user.userId, params.postId);
     return successResponse({ deleted: true });
   }
@@ -163,8 +138,8 @@ export class PostsController {
   @HttpCode(HttpStatus.OK)
   async createComment(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: PostIdParam,
-    @Body() request: CommentRequest,
+    @ZodParams(postIdParamsSchema) params: PostIdParams,
+    @ZodBody(commentRequestSchema) request: CommentRequest,
   ) {
     return successResponse(
       await this.posts.createComment(user.userId, params.postId, request.contents),
@@ -173,7 +148,7 @@ export class PostsController {
 
   @Get('posts/:postId/comments')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async listComments(@Param() params: PostIdParam) {
+  async listComments(@ZodParams(postIdParamsSchema) params: PostIdParams) {
     return successResponse(await this.posts.listComments(params.postId));
   }
 
@@ -181,8 +156,8 @@ export class PostsController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateComment(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: PostCommentParam,
-    @Body() request: CommentRequest,
+    @ZodParams(postCommentParamsSchema) params: PostCommentParams,
+    @ZodBody(commentRequestSchema) request: CommentRequest,
   ) {
     return successResponse(
       await this.posts.updateComment(
@@ -196,7 +171,7 @@ export class PostsController {
 
   @Delete('posts/:postId/comments/:commentId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async deleteComment(@CurrentUser() user: AuthenticatedUser, @Param() params: PostCommentParam) {
+  async deleteComment(@CurrentUser() user: AuthenticatedUser, @ZodParams(postCommentParamsSchema) params: PostCommentParams) {
     await this.posts.deleteComment(user.userId, params.postId, params.commentId);
     return successResponse({ deleted: true });
   }
@@ -204,7 +179,7 @@ export class PostsController {
   @Post('posts/like')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @HttpCode(HttpStatus.OK)
-  async toggleLike(@CurrentUser() user: AuthenticatedUser, @Body() request: LikePostRequest) {
+  async toggleLike(@CurrentUser() user: AuthenticatedUser, @ZodBody(likePostRequestSchema) request: LikePostRequest) {
     return successResponse(await this.posts.toggleLike(user.userId, request.postId));
   }
 }

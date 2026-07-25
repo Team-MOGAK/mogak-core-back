@@ -6,10 +6,10 @@ import { DomainException } from '../../../src/common/http/domain.exception';
 import type { OwnedMogakPort } from '../../../src/mogaks/application/port/owned-mogak.port';
 import type { OwnedOccurrencePort } from '../../../src/mogaks/application/port/owned-occurrence.port';
 import type { StoragePort } from '../../../src/storage/application/storage.port';
-import type { PostsRepository } from '../../../src/posts/infrastructure/posts.repository';
-import { PostsService } from '../../../src/posts/application/posts.service';
+import type { PostsRepositoryPort } from '../../../src/posts/application/port/posts.repository.port';
+import { PostsService } from '../../../src/posts/application/service/posts.service';
 
-function repository(): PostsRepository {
+function repository(): PostsRepositoryPort {
   return {
     createForOccurrence: testMock(),
     findPost: testMock(),
@@ -26,7 +26,7 @@ function repository(): PostsRepository {
     listImagesForPosts: testMock(),
     listCommentIds: testMock(),
     listOwnedMogakPosts: testMock(),
-  } as unknown as PostsRepository;
+  } as unknown as PostsRepositoryPort;
 }
 
 function jogaks(): OwnedOccurrencePort {

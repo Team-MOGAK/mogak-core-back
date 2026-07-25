@@ -11,8 +11,8 @@ import { DomainException } from '../../../src/common/http/domain.exception';
 import { STORAGE_PORT, type StoragePort } from '../../../src/storage/application/storage.port';
 import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
 import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
-import { PostsService } from '../../../src/posts/application/posts.service';
-import { PostsController } from '../../../src/posts/presentation/posts.controller';
+import { PostsService } from '../../../src/posts/application/service/posts.service';
+import { PostsController } from '../../../src/posts/presentation/controller/posts.controller';
 
 describe('게시글 HTTP 계약', () => {
   let app: INestApplication;

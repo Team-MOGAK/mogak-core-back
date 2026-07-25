@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 
-import type { Database } from '../../database/database.provider';
-import { DATABASE } from '../../database/database.tokens';
+import type { Database } from '../../../database/database.provider';
+import { DATABASE } from '../../../database/database.tokens';
 import {
   jobs,
   jogakExecutions,
@@ -14,57 +14,28 @@ import {
   postLikes,
   posts,
   users,
-} from '../../database/schema';
+} from '../../../database/schema';
+import type { PostsRepositoryPort } from '../../application/port/posts.repository.port';
+import type { CreatePostCommand } from '../../application/type/post.command';
+import type {
+  PostCommentProjection,
+  PostDetailProjection,
+  PostImageProjection,
+  ToggleLikeResult,
+} from '../../application/type/post.result';
 
-export type CreatePostForOccurrenceInput = Readonly<{
-  authorId: number;
-  jogakId: number;
-  scheduledDate: string;
-  jogakTitleSnapshot: string;
-  contents: string;
-}>;
-
-export type CreatedPostRecord = Readonly<{
-  id: number;
-  jogakExecutionId: number;
-  authorId: number;
-  jogakId: number;
-  scheduledDate: string;
-  contents: string;
-  createdAt: Date;
-}>;
-
-export type CreatePostForOccurrenceResult =
-  Readonly<{ type: 'CREATED'; post: CreatedPostRecord }> | Readonly<{ type: 'DUPLICATE' }>;
-
-export type PostRecord = Readonly<{ id: number }>;
-export type ToggleLikeResult = 'CREATED' | 'REMOVED';
-export type UpdatedPostRecord = Readonly<{ id: number; contents: string; updatedAt: Date }>;
-export type PostDetailRecord = Readonly<{
-  id: number;
-  authorId: number;
-  jogakId: number;
-  mogakId: number;
-  scheduledDate: string;
-  contents: string;
-  likeCount: number;
-  commentCount: number;
-}>;
-export type PostImageRecord = Readonly<{ postId: number; storageKey: string; position: number }>;
-export type PostCommentRecord = Readonly<{
-  id: number;
-  postId: number;
-  authorId: number;
-  authorNickname: string | null;
-  authorJob: string | null;
-  authorProfileImageKey: string | null;
-  contents: string;
-  createdAt: Date;
-  updatedAt: Date;
-}>;
+type CreatePostForOccurrenceInput = CreatePostCommand & Readonly<{ jogakTitleSnapshot: string }>;
+type CreatePostForOccurrenceResult =
+  | Readonly<{ type: 'CREATED'; post: Readonly<{ id: number; jogakExecutionId: number; authorId: number; jogakId: number; scheduledDate: string; contents: string; createdAt: Date }> }>
+  | Readonly<{ type: 'DUPLICATE' }>;
+type PostRecord = Readonly<{ id: number }>;
+type UpdatedPostRecord = Readonly<{ id: number; contents: string; updatedAt: Date }>;
+type PostDetailRecord = PostDetailProjection;
+type PostImageRecord = PostImageProjection;
+type PostCommentRecord = PostCommentProjection;
 
 @Injectable()
-export class PostsRepository {
+export class PostsRepository implements PostsRepositoryPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async createForOccurrence(
