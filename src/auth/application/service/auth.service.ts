@@ -15,31 +15,37 @@ import {
 } from '../../domain/exception/auth-persistence.exception';
 import { AUTH_PERSISTENCE, type AuthPersistencePort } from '../port/auth-persistence.port';
 import {
+  AUTH_TOKEN_VERIFIER,
+  type AuthTokenVerifierPort,
+} from '../port/auth-token-verifier.port';
+import {
+  SESSION_TOKEN_ISSUER,
+  type SessionTokenIssuerPort,
+} from '../port/session-token-issuer.port';
+import {
   SOCIAL_IDENTITY_VERIFIER,
   type SocialIdentityVerifierPort,
 } from '../port/social-identity-verifier.port';
-import { TOKEN_ISSUER, type TokenIssuerPort } from '../port/token-issuer.port';
 import type { TokenResult, SocialLoginResult, AuthUser } from '../type/auth.result';
 import type { AuthenticatedPrincipal } from '../type/authenticated-principal';
-
-const REFRESH_TOKEN_TTL_MILLISECONDS = 31 * 24 * 60 * 60 * 1_000;
 
 @Injectable()
 export class AuthService {
   constructor(
     @Inject(SOCIAL_IDENTITY_VERIFIER)
-    private readonly verifiers: SocialIdentityVerifierPort,
-    @Inject(AUTH_PERSISTENCE) private readonly persistence: AuthPersistencePort,
-    @Inject(TOKEN_ISSUER) private readonly tokens: TokenIssuerPort,
+    private readonly socialIdentityVerifier: SocialIdentityVerifierPort,
+    @Inject(AUTH_PERSISTENCE) private readonly authPersistence: AuthPersistencePort,
+    @Inject(SESSION_TOKEN_ISSUER) private readonly sessionTokenIssuer: SessionTokenIssuerPort,
+    @Inject(AUTH_TOKEN_VERIFIER) private readonly authTokenVerifier: AuthTokenVerifierPort,
   ) {}
 
   async login(provider: SocialProvider, token: string): Promise<SocialLoginResult> {
-    const identity = await this.verifiers.verify(provider, token);
+    const identity = await this.socialIdentityVerifier.verify(provider, token);
     if (identity.provider !== provider) {
       throw new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN);
     }
 
-    const existingUser = await this.persistence.findUserBySocialIdentity(
+    const existingUser = await this.authPersistence.findUserBySocialIdentity(
       identity.provider,
       identity.providerUserId,
     );
@@ -50,20 +56,20 @@ export class AuthService {
     this.throwForInvalidIdentity(validateNewSocialIdentity(identity));
     if (
       identity.email !== null &&
-      (await this.persistence.findUserByEmail(identity.email)) !== null
+      (await this.authPersistence.findUserByEmail(identity.email)) !== null
     ) {
       throw new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
     }
 
     try {
-      const newUser = await this.persistence.createAccount(identity);
+      const newUser = await this.authPersistence.createAccount(identity);
       return this.issueSession(newUser);
     } catch (error: unknown) {
       if (error instanceof DuplicateEmailException) {
         throw new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
       }
       if (error instanceof DuplicateSocialAccountException) {
-        const winner = await this.persistence.findUserBySocialIdentity(
+        const winner = await this.authPersistence.findUserBySocialIdentity(
           identity.provider,
           identity.providerUserId,
         );
@@ -76,40 +82,39 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string): Promise<TokenResult> {
-    const claims = await this.tokens.verifyRefresh(refreshToken);
-    const user = await this.persistence.findUserById(claims.userId);
+    const claims = await this.authTokenVerifier.verifyRefresh(refreshToken);
+    const user = await this.authPersistence.findUserById(claims.userId);
     if (user === null) {
       throw new DomainException(AppErrorCode.WRONG_TOKEN);
     }
-    const nextTokens = await this.tokens.issue(this.principal(user, claims.sessionId));
-    const now = new Date();
-    const rotated = await this.persistence.rotateSession({
+    const nextTokens = await this.sessionTokenIssuer.issue(this.principal(user, claims.sessionId));
+    const rotated = await this.authPersistence.rotateSession({
       sessionId: claims.sessionId,
-      currentRefreshTokenHash: this.tokens.hashRefreshToken(refreshToken),
-      nextRefreshTokenHash: this.tokens.hashRefreshToken(nextTokens.refreshToken),
-      nextExpiresAt: new Date(now.getTime() + REFRESH_TOKEN_TTL_MILLISECONDS),
-      now,
+      currentRefreshTokenHash: claims.refreshTokenHash,
+      nextRefreshTokenHash: nextTokens.refreshTokenHash,
+      nextExpiresAt: nextTokens.refreshTokenExpiresAt,
+      now: new Date(),
     });
     if (!rotated) {
       throw new DomainException(AppErrorCode.WRONG_TOKEN);
     }
-    return nextTokens;
+    return this.tokens(nextTokens);
   }
 
   async authenticateAccessToken(token: string): Promise<AuthenticatedPrincipal> {
-    const principal = await this.tokens.verifyAccess(token);
-    if (!(await this.persistence.isSessionActive(principal.sessionId, principal.userId))) {
+    const principal = await this.authTokenVerifier.verifyAccess(token);
+    if (!(await this.authPersistence.isSessionActive(principal.sessionId, principal.userId))) {
       throw new DomainException(AppErrorCode.LOGOUT_TOKEN);
     }
     return principal;
   }
 
   async logout(userId: number, sessionId: string): Promise<void> {
-    await this.persistence.deleteSession(sessionId, userId);
+    await this.authPersistence.deleteSession(sessionId, userId);
   }
 
   async withdraw(userId: number): Promise<void> {
-    if (!(await this.persistence.deleteUser(userId))) {
+    if (!(await this.authPersistence.deleteUser(userId))) {
       throw new DomainException(AppErrorCode.USER_NOT_FOUND);
     }
   }
@@ -126,16 +131,16 @@ export class AuthService {
 
   private async issueSession(user: AuthUser): Promise<SocialLoginResult> {
     const sessionId = generateId();
-    const tokens = await this.tokens.issue(this.principal(user, sessionId));
-    await this.persistence.createSession(user.id, {
+    const issuedTokens = await this.sessionTokenIssuer.issue(this.principal(user, sessionId));
+    await this.authPersistence.createSession(user.id, {
       id: sessionId,
-      refreshTokenHash: this.tokens.hashRefreshToken(tokens.refreshToken),
-      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MILLISECONDS),
+      refreshTokenHash: issuedTokens.refreshTokenHash,
+      expiresAt: issuedTokens.refreshTokenExpiresAt,
     });
     return {
       isRegistered: user.nickname !== null && user.nickname.length > 0,
       userId: user.id,
-      tokens,
+      tokens: this.tokens(issuedTokens),
     };
   }
 
@@ -146,5 +151,9 @@ export class AuthService {
       sessionId,
       ...(user.email === null ? {} : { email: user.email }),
     };
+  }
+
+  private tokens(tokens: { accessToken: string; refreshToken: string }): TokenResult {
+    return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }
 }

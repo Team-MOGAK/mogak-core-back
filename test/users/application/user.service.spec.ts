@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
 import { testMock } from '../../test-mock';
 
-import type { TokenIssuerPort } from '../../../src/auth/application/port/token-issuer.port';
+import type { SessionTokenIssuerPort } from '../../../src/auth/application/port/session-token-issuer.port';
 import type { AuthenticatedPrincipal } from '../../../src/auth/application/type/authenticated-principal';
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
@@ -20,13 +20,15 @@ function currentPendingUser(): AuthenticatedPrincipal {
   return { userId: 7, role: 'PENDING', sessionId: SESSION_ID };
 }
 
-function tokenIssuer(): TokenIssuerPort {
+function sessionTokenIssuer(): SessionTokenIssuerPort {
   return {
-    issue: testMock().mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh' }),
-    verifyAccess: testMock(),
-    verifyRefresh: testMock(),
-    hashRefreshToken: testMock().mockReturnValue('refresh-hash'),
-  } as unknown as TokenIssuerPort;
+    issue: testMock().mockResolvedValue({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      refreshTokenHash: 'refresh-hash',
+      refreshTokenExpiresAt: new Date('2026-08-25T00:00:00.000Z'),
+    }),
+  };
 }
 
 function userRepository(): UserRepositoryPort {
@@ -77,7 +79,7 @@ describe('사용자 서비스', () => {
       users,
       metadataRepository(),
       new ConsentService(consentRepository()),
-      tokenIssuer(),
+      sessionTokenIssuer(),
       storage(),
     );
 
@@ -94,7 +96,7 @@ describe('사용자 서비스', () => {
       users,
       metadataRepository(),
       new ConsentService(consentRepository()),
-      tokenIssuer(),
+      sessionTokenIssuer(),
       storage(),
     );
 
@@ -111,7 +113,7 @@ describe('사용자 서비스', () => {
       users,
       metadataRepository(),
       new ConsentService(consentRepository()),
-      tokenIssuer(),
+      sessionTokenIssuer(),
       storage(),
     );
 
@@ -132,7 +134,7 @@ describe('사용자 서비스', () => {
       users,
       metadataRepository(),
       new ConsentService(consentRepository()),
-      tokenIssuer(),
+      sessionTokenIssuer(),
       storage(),
     );
 
@@ -166,7 +168,7 @@ describe('사용자 서비스', () => {
       users,
       metadata,
       new ConsentService(consents),
-      tokenIssuer(),
+      sessionTokenIssuer(),
       storage(),
     );
 
@@ -228,7 +230,7 @@ describe('사용자 서비스', () => {
       users,
       metadata,
       new ConsentService(consents),
-      tokenIssuer(),
+      sessionTokenIssuer(),
       storage(),
     );
 

@@ -3,8 +3,9 @@ import { testMock } from '../../test-mock';
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
 import type { AuthPersistencePort } from '../../../src/auth/application/port/auth-persistence.port';
+import type { AuthTokenVerifierPort } from '../../../src/auth/application/port/auth-token-verifier.port';
+import type { SessionTokenIssuerPort } from '../../../src/auth/application/port/session-token-issuer.port';
 import type { SocialIdentityVerifierPort } from '../../../src/auth/application/port/social-identity-verifier.port';
-import type { TokenIssuerPort } from '../../../src/auth/application/port/token-issuer.port';
 import { AuthService } from '../../../src/auth/application/service/auth.service';
 import type { AuthenticatedPrincipal } from '../../../src/auth/application/type/authenticated-principal';
 import {
@@ -14,15 +15,16 @@ import {
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
-function createTokenIssuer(): TokenIssuerPort {
+function createTokenPorts(): SessionTokenIssuerPort & AuthTokenVerifierPort {
   return {
     issue: testMock().mockResolvedValue({
       accessToken: 'access-token',
       refreshToken: 'refresh-token',
+      refreshTokenHash: 'refresh-token-hash',
+      refreshTokenExpiresAt: new Date('2026-08-25T00:00:00.000Z'),
     }),
     verifyAccess: testMock(),
     verifyRefresh: testMock(),
-    hashRefreshToken: testMock().mockReturnValue('refresh-token-hash'),
   };
 }
 
@@ -51,10 +53,10 @@ describe('인증 서비스', () => {
       sessionId: SESSION_ID,
     };
     const persistence = createPersistence();
-    const tokens = createTokenIssuer();
+    const tokens = createTokenPorts();
     jest.mocked(tokens.verifyAccess).mockResolvedValue(principal);
     jest.mocked(persistence.isSessionActive).mockResolvedValue(true);
-    const service = new AuthService(verifiers, persistence, tokens);
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.authenticateAccessToken('access-token')).resolves.toEqual(principal);
     expect(persistence.isSessionActive).toHaveBeenCalledWith(SESSION_ID, 3);
@@ -64,14 +66,14 @@ describe('인증 서비스', () => {
     '%s 세션의 액세스 토큰은 로그아웃 토큰 오류로 거부한다',
     async () => {
       const persistence = createPersistence();
-      const tokens = createTokenIssuer();
+      const tokens = createTokenPorts();
       jest.mocked(tokens.verifyAccess).mockResolvedValue({
         userId: 3,
         role: 'USER',
         sessionId: SESSION_ID,
       });
       jest.mocked(persistence.isSessionActive).mockResolvedValue(false);
-      const service = new AuthService(verifiers, persistence, tokens);
+      const service = new AuthService(verifiers, persistence, tokens, tokens);
 
       await expect(service.authenticateAccessToken('access-token')).rejects.toEqual(
         new DomainException(AppErrorCode.LOGOUT_TOKEN),
@@ -81,13 +83,65 @@ describe('인증 서비스', () => {
 
   it('액세스 토큰 검증 실패를 그대로 전파한다', async () => {
     const persistence = createPersistence();
-    const tokens = createTokenIssuer();
+    const tokens = createTokenPorts();
     const failure = new DomainException(AppErrorCode.WRONG_TOKEN);
     jest.mocked(tokens.verifyAccess).mockRejectedValue(failure);
-    const service = new AuthService(verifiers, persistence, tokens);
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.authenticateAccessToken('invalid-access-token')).rejects.toBe(failure);
     expect(persistence.isSessionActive).not.toHaveBeenCalled();
+  });
+
+  it('검증한 리프레시 토큰의 해시와 새 세션 토큰의 만료 시각으로 세션을 회전한다', async () => {
+    const persistence = createPersistence();
+    const tokens = createTokenPorts();
+    jest.mocked(tokens.verifyRefresh).mockResolvedValue({
+      userId: 3,
+      sessionId: SESSION_ID,
+      refreshTokenHash: 'current-refresh-token-hash',
+    });
+    jest.mocked(persistence.findUserById).mockResolvedValue({
+      id: 3,
+      email: 'mogak@example.test',
+      nickname: '모각러',
+      role: 'USER',
+    });
+    jest.mocked(persistence.rotateSession).mockResolvedValue(true);
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
+
+    await expect(service.refresh('current-refresh-token')).resolves.toEqual({
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+    });
+    expect(persistence.rotateSession).toHaveBeenCalledWith({
+      sessionId: SESSION_ID,
+      currentRefreshTokenHash: 'current-refresh-token-hash',
+      nextRefreshTokenHash: 'refresh-token-hash',
+      nextExpiresAt: new Date('2026-08-25T00:00:00.000Z'),
+      now: expect.any(Date),
+    });
+  });
+
+  it('세션 회전의 compare-and-set이 실패하면 토큰을 발급하지 않는다', async () => {
+    const persistence = createPersistence();
+    const tokens = createTokenPorts();
+    jest.mocked(tokens.verifyRefresh).mockResolvedValue({
+      userId: 3,
+      sessionId: SESSION_ID,
+      refreshTokenHash: 'current-refresh-token-hash',
+    });
+    jest.mocked(persistence.findUserById).mockResolvedValue({
+      id: 3,
+      email: 'mogak@example.test',
+      nickname: '모각러',
+      role: 'USER',
+    });
+    jest.mocked(persistence.rotateSession).mockResolvedValue(false);
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
+
+    await expect(service.refresh('current-refresh-token')).rejects.toEqual(
+      new DomainException(AppErrorCode.WRONG_TOKEN),
+    );
   });
 
   it('요청한 제공자와 다른 검증 식별자를 거부한다', async () => {
@@ -100,7 +154,8 @@ describe('인증 서비스', () => {
       }),
     } as unknown as SocialIdentityVerifierPort;
     const persistence = createPersistence();
-    const service = new AuthService(verifiers, persistence, createTokenIssuer());
+    const tokens = createTokenPorts();
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
       new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN),
@@ -127,8 +182,8 @@ describe('인증 서비스', () => {
       nickname: null,
       role: 'PENDING',
     });
-    const tokens = createTokenIssuer();
-    const service = new AuthService(verifiers, persistence, tokens);
+    const tokens = createTokenPorts();
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({
       isRegistered: false,
@@ -169,7 +224,8 @@ describe('인증 서비스', () => {
     jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue(null);
     jest.mocked(persistence.findUserByEmail).mockResolvedValue(null);
     jest.mocked(persistence.createAccount).mockRejectedValue(new DuplicateEmailException());
-    const service = new AuthService(verifiers, persistence, createTokenIssuer());
+    const tokens = createTokenPorts();
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
       new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED),
@@ -195,7 +251,8 @@ describe('인증 서비스', () => {
       .mockResolvedValueOnce(winner);
     jest.mocked(persistence.findUserByEmail).mockResolvedValue(null);
     jest.mocked(persistence.createAccount).mockRejectedValue(new DuplicateSocialAccountException());
-    const service = new AuthService(verifiers, persistence, createTokenIssuer());
+    const tokens = createTokenPorts();
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({ userId: winner.id });
     expect(persistence.findUserBySocialIdentity).toHaveBeenCalledTimes(2);
@@ -222,7 +279,8 @@ describe('인증 서비스', () => {
       nickname: '기존사용자',
       role: 'USER',
     });
-    const service = new AuthService(verifiers, persistence, createTokenIssuer());
+    const tokens = createTokenPorts();
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('KAKAO', 'access-token')).rejects.toEqual(
       new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED),
@@ -255,7 +313,8 @@ describe('인증 서비스', () => {
       nickname: null,
       role: 'PENDING',
     });
-    const service = new AuthService(verifiers, persistence, createTokenIssuer());
+    const tokens = createTokenPorts();
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('KAKAO', 'access-token')).resolves.toMatchObject({ userId: 7 });
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(

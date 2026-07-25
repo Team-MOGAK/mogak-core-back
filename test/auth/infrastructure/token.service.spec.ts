@@ -4,16 +4,16 @@ import { testMock } from '../../test-mock';
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
 import type { AppEnv } from '../../../src/config/app-env';
-import { TokenService } from '../../../src/auth/infrastructure/service/token.service';
+import { JwtTokenService } from '../../../src/auth/infrastructure/service/token.service';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
-function createService(): TokenService {
+function createService(): JwtTokenService {
   const config = {
     getOrThrow: testMock().mockReturnValue('test-jwt-secret-with-at-least-thirty-two-characters'),
   } as unknown as ConfigService<AppEnv, true>;
 
-  return new TokenService(config);
+  return new JwtTokenService(config);
 }
 
 describe('토큰 서비스', () => {
@@ -44,11 +44,14 @@ describe('토큰 서비스', () => {
     );
   });
 
-  it('원문 값을 보존하지 않고 리프레시 토큰을 해시한다', () => {
+  it('검증한 리프레시 토큰과 함께 원문을 보존하지 않는 해시를 반환한다', async () => {
     const service = createService();
+    const tokens = await service.issue({ userId: 7, role: 'USER', sessionId: SESSION_ID });
 
-    expect(service.hashRefreshToken('raw-refresh-token')).toBe(
-      '0881b36898a91d864edaf39d2b2bd5801d5f873e3142a9ec5b3b574c4f6b51e5',
-    );
+    await expect(service.verifyRefresh(tokens.refreshToken)).resolves.toMatchObject({
+      userId: 7,
+      sessionId: SESSION_ID,
+      refreshTokenHash: expect.not.stringContaining(tokens.refreshToken),
+    });
   });
 });

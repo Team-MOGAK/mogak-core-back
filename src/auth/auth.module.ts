@@ -2,11 +2,12 @@ import { Module } from '@nestjs/common';
 
 import { DatabaseModule } from '../database/database.module';
 import { AUTH_PERSISTENCE } from './application/port/auth-persistence.port';
+import { AUTH_TOKEN_VERIFIER } from './application/port/auth-token-verifier.port';
+import { SESSION_TOKEN_ISSUER } from './application/port/session-token-issuer.port';
 import { SOCIAL_IDENTITY_VERIFIER } from './application/port/social-identity-verifier.port';
-import { TOKEN_ISSUER } from './application/port/token-issuer.port';
 import { AuthService } from './application/service/auth.service';
 import { AuthRepository } from './infrastructure/repository/auth.repository';
-import { TokenService } from './infrastructure/service/token.service';
+import { JwtTokenService } from './infrastructure/service/token.service';
 import { AppleIdentityVerifier } from './infrastructure/verifier/apple-identity-verifier';
 import { GoogleIdentityVerifier } from './infrastructure/verifier/google-identity-verifier';
 import { KakaoIdentityVerifier } from './infrastructure/verifier/kakao-identity-verifier';
@@ -19,7 +20,7 @@ import { RegisteredUserGuard } from './presentation/controller/registered-user.g
   imports: [DatabaseModule],
   controllers: [AuthController],
   providers: [
-    TokenService,
+    JwtTokenService,
     AuthRepository,
     AppleIdentityVerifier,
     GoogleIdentityVerifier,
@@ -29,8 +30,12 @@ import { RegisteredUserGuard } from './presentation/controller/registered-user.g
       useExisting: AuthRepository,
     },
     {
-      provide: TOKEN_ISSUER,
-      useExisting: TokenService,
+      provide: SESSION_TOKEN_ISSUER,
+      useExisting: JwtTokenService,
+    },
+    {
+      provide: AUTH_TOKEN_VERIFIER,
+      useExisting: JwtTokenService,
     },
     {
       provide: SOCIAL_IDENTITY_VERIFIER,
@@ -46,6 +51,6 @@ import { RegisteredUserGuard } from './presentation/controller/registered-user.g
     AccessTokenGuard,
     RegisteredUserGuard,
   ],
-  exports: [TOKEN_ISSUER, AuthService, AccessTokenGuard, RegisteredUserGuard],
+  exports: [SESSION_TOKEN_ISSUER, AuthService, AccessTokenGuard, RegisteredUserGuard],
 })
 export class AuthModule {}

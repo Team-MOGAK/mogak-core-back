@@ -4,9 +4,9 @@ import { generateId } from '../../../common/util/id-generator';
 
 import type { AuthenticatedPrincipal } from '../../../auth/application/type/authenticated-principal';
 import {
-  TOKEN_ISSUER,
-  type TokenIssuerPort,
-} from '../../../auth/application/port/token-issuer.port';
+  SESSION_TOKEN_ISSUER,
+  type SessionTokenIssuerPort,
+} from '../../../auth/application/port/session-token-issuer.port';
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { DomainException } from '../../../common/http/domain.exception';
 import { requiredTrimmed } from '../../../common/validation/required-text';
@@ -19,15 +19,13 @@ import type { JoinUserCommand } from '../type/user.command';
 import type { JoinUserResult, UserProfileResult } from '../type/user.result';
 import { ConsentService } from './consent.service';
 
-const REFRESH_TOKEN_TTL_MILLISECONDS = 31 * 24 * 60 * 60 * 1_000;
-
 @Injectable()
 export class UserService {
   constructor(
     @Inject(USER_REPOSITORY) private readonly users: UserRepositoryPort,
     @Inject(METADATA_REPOSITORY) private readonly metadata: MetadataRepositoryPort,
     @Inject(ConsentService) private readonly consents: ConsentService,
-    @Inject(TOKEN_ISSUER) private readonly tokens: TokenIssuerPort,
+    @Inject(SESSION_TOKEN_ISSUER) private readonly sessionTokenIssuer: SessionTokenIssuerPort,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
   ) {}
 
@@ -57,7 +55,7 @@ export class UserService {
     await this.consents.validate(command.consents);
 
     const sessionId = generateId();
-    const tokens = await this.tokens.issue({
+    const issuedTokens = await this.sessionTokenIssuer.issue({
       userId: user.id,
       role: 'USER',
       sessionId,
@@ -74,12 +72,19 @@ export class UserService {
         currentSessionId: current.sessionId,
         replacementSession: {
           id: sessionId,
-          refreshTokenHash: this.tokens.hashRefreshToken(tokens.refreshToken),
-          expiresAt: new Date(now.getTime() + REFRESH_TOKEN_TTL_MILLISECONDS),
+          refreshTokenHash: issuedTokens.refreshTokenHash,
+          expiresAt: issuedTokens.refreshTokenExpiresAt,
         },
         now,
       });
-      return { userId: registered.id, nickname: registered.nickname, tokens };
+      return {
+        userId: registered.id,
+        nickname: registered.nickname,
+        tokens: {
+          accessToken: issuedTokens.accessToken,
+          refreshToken: issuedTokens.refreshToken,
+        },
+      };
     } catch (error: unknown) {
       if (error instanceof DuplicateNicknameException) {
         throw new DomainException(AppErrorCode.INVALID_NICKNAME);
