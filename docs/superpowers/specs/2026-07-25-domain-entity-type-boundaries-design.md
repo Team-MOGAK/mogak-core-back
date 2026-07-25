@@ -44,21 +44,21 @@ file per table while still representing every table explicitly.
 
 | Domain module | Domain types | Database tables |
 | --- | --- | --- |
-| `auth/domain/auth.entity.ts` | `SocialAccount`, `AuthSession` | `social_accounts`, `auth_sessions` |
-| `users/domain/user.entity.ts` | `User` | `users` |
-| `users/domain/user-metadata.entity.ts` | `Job`, `Address` | `jobs`, `addresses` |
-| `users/domain/consent.entity.ts` | `ConsentItem`, `UserConsent` | `consent_items`, `user_consents` |
-| `mogaks/domain/modarat.entity.ts` | `Modarat` | `modarats` |
-| `mogaks/domain/mogak.entity.ts` | `Mogak`, `MogakCategory` | `mogaks`, `mogak_categories` |
-| `mogaks/domain/jogak.entity.ts` | `Jogak`, `JogakSchedule`, `JogakScheduleWeekday`, `JogakExecution` | `jogaks`, `jogak_schedules`, `jogak_schedule_weekdays`, `jogak_executions` |
-| `posts/domain/post.entity.ts` | `Post`, `PostImage`, `PostComment`, `PostLike` | `posts`, `post_images`, `post_comments`, `post_likes` |
-| `social/domain/follow.entity.ts` | `Follow` | `follows` |
+| `auth/domain/entity/auth.entity.ts` | `SocialAccount`, `AuthSession` | `social_accounts`, `auth_sessions` |
+| `users/domain/entity/user.entity.ts` | `User` | `users` |
+| `users/domain/entity/user-metadata.entity.ts` | `Job`, `Address` | `jobs`, `addresses` |
+| `users/domain/entity/consent.entity.ts` | `ConsentItem`, `UserConsent` | `consent_items`, `user_consents` |
+| `mogaks/domain/entity/modarat.entity.ts` | `Modarat` | `modarats` |
+| `mogaks/domain/entity/mogak.entity.ts` | `Mogak`, `MogakCategory` | `mogaks`, `mogak_categories` |
+| `mogaks/domain/entity/jogak.entity.ts` | `Jogak`, `JogakSchedule`, `JogakScheduleWeekday`, `JogakExecution` | `jogaks`, `jogak_schedules`, `jogak_schedule_weekdays`, `jogak_executions` |
+| `posts/domain/entity/post.entity.ts` | `Post`, `PostImage`, `PostComment`, `PostLike` | `posts`, `post_images`, `post_comments`, `post_likes` |
+| `social/domain/entity/follow.entity.ts` | `Follow` | `follows` |
 
 Entity filenames use the `.entity.ts` suffix. Exported entity names do not repeat the `Entity`
 suffix:
 
 ```ts
-// posts/domain/post.entity.ts
+// posts/domain/entity/post.entity.ts
 export type Post = Readonly<{
   id: number;
   jogakExecutionId: number;
@@ -115,36 +115,48 @@ Potential value objects such as category selection, date-only values, or social 
 extracted only if the implementation demonstrates one of the conditions above. Token pairs are
 application results, not value objects.
 
-### 4. Files are grouped by responsibility, not accumulated in `types.ts`
+### 4. Each layer is subdivided by artifact role
 
-The project will not introduce feature-wide `types.ts`, `models.ts`, or `dto.ts` files. Each layer
-owns its own contracts:
+Feature and layer directories are not sufficient on their own. Each layer uses role-specific
+subdirectories so that types, services, ports, repositories, and controllers do not accumulate in
+one directory. The project will not introduce feature-wide `types.ts`, `models.ts`, or `dto.ts`
+files.
 
 ```text
 posts/
 ├── domain/
-│   └── post.entity.ts
+│   ├── entity/
+│   │   └── post.entity.ts
+│   └── vo/                    # only when a value object is justified
 ├── application/
-│   ├── post.command.ts
-│   ├── post.query.ts
-│   ├── post.result.ts
-│   ├── posts.service.ts
-│   └── port/
-│       ├── post.repository.port.ts
-│       └── owned-occurrence.port.ts
+│   ├── type/
+│   │   ├── post.command.ts
+│   │   ├── post.query.ts
+│   │   └── post.result.ts
+│   ├── port/
+│   │   ├── post.repository.port.ts
+│   │   └── owned-occurrence.port.ts
+│   └── service/
+│       └── posts.service.ts
 ├── infrastructure/
-│   ├── post.record.ts
-│   ├── post.projection.ts
-│   └── posts.repository.ts
+│   ├── type/
+│   │   ├── post.record.ts
+│   │   └── post.projection.ts
+│   └── repository/
+│       └── posts.repository.ts
 └── presentation/
-    ├── posts.request.ts
-    ├── posts.response.ts
-    └── posts.controller.ts
+    ├── type/
+    │   ├── posts.request.ts
+    │   └── posts.response.ts
+    └── controller/
+        └── posts.controller.ts
 ```
 
-Small features may use fewer contract files, but they retain the semantic suffix. Files split when
-they contain independent responsibilities or become difficult to understand as one unit, not
-merely because another type was added.
+Subdirectory names are singular: `entity`, `vo`, `type`, `service`, `port`, `repository`, and
+`controller`. Empty directories are not created. Small features may use fewer contract files, but
+every artifact still resides in its role-specific directory and retains its semantic suffix. Files
+split when they contain independent responsibilities or become difficult to understand as one
+unit, not merely because another type was added.
 
 ## Layer Contracts and Naming
 
@@ -179,9 +191,10 @@ application results into response types. A response type is not reused as an app
 - Use-case output: `CreatePostResult`, `PostDetailResult`
 - External capability: `PostRepositoryPort`, `TokenIssuerPort`, `SocialIdentityVerifierPort`
 
-Application contracts contain use-case language rather than HTTP or database terminology.
-Application services may depend on domain modules and application ports. They may not import
-infrastructure classes, records, or projections.
+Application contracts live under `application/type` and contain use-case language rather than HTTP
+or database terminology. Application services live under `application/service` and may depend on
+domain modules and application ports. They may not import infrastructure classes, records, or
+projections.
 
 Cross-feature collaboration also uses narrow application contracts. For example, Posts obtains an
 owned occurrence through `OwnedOccurrencePort`; it does not inject `JogaksService` as a concrete
@@ -195,9 +208,11 @@ dependency.
 - Persistence read input: `FindOwnedPostQuery`
 - Persistence branch result: `InsertPostResult`
 
-Infrastructure adapters implement application ports. They map Drizzle rows to domain entities for
-entity-based operations. Read-heavy endpoints may use projections, but those projections remain
-inside infrastructure and are mapped to the port's read result before crossing the boundary.
+Infrastructure Records and Projections live under `infrastructure/type`; repository adapters live
+under `infrastructure/repository`. Adapters implement application ports and map Drizzle rows to
+domain entities for entity-based operations. Read-heavy endpoints may use projections, but those
+projections remain inside infrastructure and are mapped to the port's read result before crossing
+the boundary.
 
 ### Domain
 
@@ -209,8 +224,8 @@ Entity types use natural domain names:
 - `JogakSchedule`
 - `AuthSession`
 
-The `Entity` postfix is prohibited on exported entity types. The file suffix already communicates
-their role.
+Entity files live under `domain/entity`. The `Entity` postfix is prohibited on exported entity
+types because the file suffix and directory already communicate their role.
 
 ## Request Validation Without DTO Classes
 
@@ -393,14 +408,18 @@ pnpm build
 ## Acceptance Criteria
 
 - Every database table listed in the schema has a corresponding domain entity type.
-- Entity modules use `.entity.ts`; exported entity types do not use the `Entity` postfix.
+- Entity modules live under `domain/entity` and use `.entity.ts`; exported entity types do not use
+  the `Entity` postfix.
 - Entity rules live with their entity unless an independently cohesive VO or policy justifies a
   split.
 - No DTO class or `createZodDto` usage remains.
 - `nestjs-zod` is removed when no longer used.
-- Request and response contracts live in presentation.
-- Commands, Queries, Results, and Ports live in application.
-- Records, Projections, and persistence-specific inputs live in infrastructure.
+- Request and response contracts live under `presentation/type`.
+- Controllers live under `presentation/controller`.
+- Commands, Queries, and Results live under `application/type`.
+- Services and Ports live under `application/service` and `application/port`, respectively.
+- Records and Projections live under `infrastructure/type`; repositories live under
+  `infrastructure/repository`.
 - Domain imports no framework, validation, persistence, or HTTP modules.
 - Application imports no infrastructure or presentation modules.
 - API behavior and database schema remain unchanged.
