@@ -15,6 +15,7 @@ export type PostImage = Readonly<{
   storageKey: string;
   position: number;
   createdAt: Date;
+  updatedAt: Date;
 }>;
 
 /** A row from the `post_comments` table. */
