@@ -102,6 +102,48 @@ describe('모각 PostgreSQL 통합', () => {
     await db.delete(users).where(eq(users.id, fixture.userId));
   });
 
+  it('과거 한 번 일정 여덟 개는 미래 조각 생성을 막지 않는다', async () => {
+    const fixture = await createJogakFixture({
+      scheduleType: 'ONCE',
+      effectiveFrom: '2026-07-01',
+    });
+    const pastJogaks = await db
+      .insert(jogaks)
+      .values(
+        Array.from({ length: 7 }, (_, index) => ({
+          mogakId: fixture.mogakId,
+          title: `과거 일정 ${index + 2}`,
+        })),
+      )
+      .returning({ id: jogaks.id });
+    await db.insert(jogakSchedules).values(
+      pastJogaks.map((jogak) => ({
+        jogakId: jogak.id,
+        scheduleType: 'ONCE',
+        effectiveFrom: '2026-07-01',
+      })),
+    );
+
+    const service = new JogaksService(
+      new MogaksRepository(db as unknown as Database),
+      () => '2026-07-23',
+    );
+
+    await expect(
+      service.create(fixture.userId, {
+        mogakId: fixture.mogakId,
+        title: '미래 루틴',
+        schedule: {
+          scheduleType: 'WEEKLY',
+          effectiveFrom: '2026-07-24',
+          weekdays: ['FRIDAY'],
+        },
+      }),
+    ).resolves.toMatchObject({ title: '미래 루틴' });
+
+    await db.delete(users).where(eq(users.id, fixture.userId));
+  });
+
   it('후속 일정 전까지만 교체 일정을 저장해 가상 발생 중복을 만들지 않는다', async () => {
     const fixture = await createJogakFixture({
       scheduleType: 'WEEKLY',
@@ -151,6 +193,50 @@ describe('모각 PostgreSQL 통합', () => {
     await expect(service.listDay(fixture.userId, '2026-08-06')).resolves.toMatchObject({
       size: 1,
       jogaks: [expect.objectContaining({ scheduledDate: '2026-08-06' })],
+    });
+
+    await db.delete(users).where(eq(users.id, fixture.userId));
+  });
+
+  it('후속 일정 사이에 넣은 한 번 일정의 종료일은 null로 유지한다', async () => {
+    const fixture = await createJogakFixture({
+      scheduleType: 'WEEKLY',
+      effectiveFrom: '2026-07-01',
+      weekdays: ['WEDNESDAY'],
+    });
+    await db.insert(jogakSchedules).values({
+      jogakId: fixture.jogakId,
+      scheduleType: 'WEEKLY',
+      effectiveFrom: '2026-08-01',
+    });
+    const service = new JogaksService(
+      new MogaksRepository(db as unknown as Database),
+      () => '2026-07-23',
+    );
+
+    await expect(
+      service.update(fixture.userId, fixture.jogakId, {
+        title: '한 번만 수행',
+        schedule: { scheduleType: 'ONCE', effectiveFrom: '2026-07-24' },
+      }),
+    ).resolves.toMatchObject({ title: '한 번만 수행' });
+
+    const [replacement] = await db
+      .select({ effectiveTo: jogakSchedules.effectiveTo })
+      .from(jogakSchedules)
+      .where(
+        and(
+          eq(jogakSchedules.jogakId, fixture.jogakId),
+          eq(jogakSchedules.effectiveFrom, '2026-07-24'),
+        ),
+      );
+    expect(replacement?.effectiveTo).toBeNull();
+    const detail = await service.getDetail(fixture.userId, fixture.jogakId);
+    expect(detail.schedules).toContainEqual({
+      scheduleType: 'ONCE',
+      effectiveFrom: '2026-07-24',
+      effectiveTo: null,
+      weekdays: [],
     });
 
     await db.delete(users).where(eq(users.id, fixture.userId));

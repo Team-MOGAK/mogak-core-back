@@ -383,8 +383,10 @@ export class MogaksRepository implements MogaksRepositoryPort {
       }
 
       const effectiveTo =
-        input.schedule.effectiveTo ??
-        (successor === undefined ? null : previousDate(successor.effectiveFrom));
+        input.schedule.scheduleType === 'ONCE'
+          ? null
+          : (input.schedule.effectiveTo ??
+            (successor === undefined ? null : previousDate(successor.effectiveFrom)));
 
       if (active !== undefined) {
         await tx
@@ -427,7 +429,13 @@ export class MogaksRepository implements MogaksRepositoryPort {
       .where(
         and(
           eq(jogaks.mogakId, mogakId),
-          or(isNull(jogakSchedules.effectiveTo), gte(jogakSchedules.effectiveTo, today)),
+          or(
+            and(eq(jogakSchedules.scheduleType, 'ONCE'), gte(jogakSchedules.effectiveFrom, today)),
+            and(
+              eq(jogakSchedules.scheduleType, 'WEEKLY'),
+              or(isNull(jogakSchedules.effectiveTo), gte(jogakSchedules.effectiveTo, today)),
+            ),
+          ),
         ),
       );
     return new Set(rows.map((row) => row.jogakId)).size;
