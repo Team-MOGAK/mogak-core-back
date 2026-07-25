@@ -11,13 +11,9 @@ import {
   type OwnedOccurrencePort,
 } from '../../../mogaks/application/port/owned-occurrence.port';
 import { STORAGE_PORT, type StoragePort } from '../../../storage/application/storage.port';
-import {
-  isCommentAuthor,
-  normalizeCommentContents,
-  normalizePostContents,
-} from '../../domain/entity/post.entity';
+import { isCommentAuthor, validateCommentContents, validatePostContents, type ContentsValidationResult } from '../../domain/entity/post.entity';
 import { POSTS_REPOSITORY, type PostsRepositoryPort } from '../port/posts.repository.port';
-import type { PostCommentProjection, PostDetailProjection } from '../type/post.result';
+import type { PostCommentResult, PostDetailResult } from '../type/post.result';
 
 export type CreatePostInput = Readonly<{ jogakId: number; targetDate: string; contents: string }>;
 
@@ -31,7 +27,7 @@ export class PostsService {
   ) {}
 
   async createPost(userId: number, input: CreatePostInput) {
-    const contents = normalizePostContents(input.contents);
+    const contents = requirePostContents(input.contents);
     const occurrence = await this.jogaks.resolveOwnedOccurrence(userId, input.jogakId, input.targetDate);
     const result = await this.repository.createForOccurrence({
       authorId: userId,
@@ -62,7 +58,7 @@ export class PostsService {
 
   async updatePost(userId: number, postId: number, contents: string) {
     const updated = await this.repository.updateOwnedPost({
-      postId, authorId: userId, contents: normalizePostContents(contents), now: new Date(),
+      postId, authorId: userId, contents: requirePostContents(contents), now: new Date(),
     });
     if (updated === null) throw new DomainException(AppErrorCode.POST_NOT_FOUND);
     return { postId: updated.id, contents: updated.contents, updatedAt: updated.updatedAt };
@@ -108,13 +104,13 @@ export class PostsService {
 
   async createComment(userId: number, postId: number, contents: string) {
     if ((await this.repository.findPost(postId)) === null) throw new DomainException(AppErrorCode.POST_NOT_FOUND);
-    const comment = await this.repository.createComment({ postId, authorId: userId, contents: normalizeCommentContents(contents) });
+    const comment = await this.repository.createComment({ postId, authorId: userId, contents: requireCommentContents(contents) });
     return { id: comment.id, postId: comment.postId, userId: comment.authorId, contents: comment.contents, createdAt: comment.createdAt, author: await toCommentAuthor(this.storage, comment) };
   }
 
   async updateComment(userId: number, postId: number, commentId: number, contents: string) {
     const comment = await this.requireOwnedComment(userId, postId, commentId);
-    const updated = await this.repository.updateComment({ postId, commentId: comment.id, authorId: userId, contents: normalizeCommentContents(contents), now: new Date() });
+    const updated = await this.repository.updateComment({ postId, commentId: comment.id, authorId: userId, contents: requireCommentContents(contents), now: new Date() });
     if (updated === null) throw new DomainException(AppErrorCode.COMMENT_NOT_FOUND);
     return { id: updated.id, contents: updated.contents, updatedAt: updated.updatedAt, author: await toCommentAuthor(this.storage, updated) };
   }
@@ -131,7 +127,7 @@ export class PostsService {
     return comment;
   }
 
-  private async toPostDetail(post: PostDetailProjection) {
+  private async toPostDetail(post: PostDetailResult) {
     const [images, commentIds] = await Promise.all([this.repository.listImagesForPosts([post.id]), this.repository.listCommentIds(post.id)]);
     const imgUrls = (await Promise.all(images.map((image) => this.storage.resolvePublicUrl(image.storageKey)))).filter((url): url is string => url !== null);
     return { postId: post.id, mogakId: post.mogakId, jogakId: post.jogakId, targetDate: post.scheduledDate, userId: post.authorId, contents: post.contents, imgUrls, commentId: commentIds, likeCnt: post.likeCount, commentCnt: post.commentCount };
@@ -142,10 +138,23 @@ export class PostsService {
   }
 }
 
-async function toCommentListItem(storage: StoragePort, comment: PostCommentProjection) {
+function requirePostContents(contents: string): string {
+  return requireContents(validatePostContents(contents), AppErrorCode.POST_CONTENTS_TOO_LONG);
+}
+
+function requireCommentContents(contents: string): string {
+  return requireContents(validateCommentContents(contents), AppErrorCode.COMMENT_CONTENTS_TOO_LONG);
+}
+
+function requireContents(result: ContentsValidationResult, tooLongCode: AppErrorCode): string {
+  if (result.valid) return result.value;
+  throw new DomainException(result.reason === 'EMPTY' ? AppErrorCode.INVALID_PARAMETER : tooLongCode);
+}
+
+async function toCommentListItem(storage: StoragePort, comment: PostCommentResult) {
   return { commentId: comment.id, postId: comment.postId, contents: comment.contents, createdAt: comment.createdAt, author: await toCommentAuthor(storage, comment) };
 }
 
-async function toCommentAuthor(storage: StoragePort, comment: PostCommentProjection) {
+async function toCommentAuthor(storage: StoragePort, comment: PostCommentResult) {
   return { userId: comment.authorId, nickname: comment.authorNickname, profileImageUrl: comment.authorProfileImageKey === null ? null : await storage.resolvePublicUrl(comment.authorProfileImageKey), job: comment.authorJob };
 }

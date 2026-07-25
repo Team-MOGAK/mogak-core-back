@@ -18,21 +18,19 @@ import {
 import type { PostsRepositoryPort } from '../../application/port/posts.repository.port';
 import type { CreatePostCommand } from '../../application/type/post.command';
 import type {
-  PostCommentProjection,
-  PostDetailProjection,
-  PostImageProjection,
+  PostCommentResult,
+  PostDetailResult,
+  PostImageResult,
   ToggleLikeResult,
 } from '../../application/type/post.result';
+import type { CreatedPostRow, PostCommentRow, PostDetailRow, PostImageRow } from '../type/post.projection';
 
 type CreatePostForOccurrenceInput = CreatePostCommand & Readonly<{ jogakTitleSnapshot: string }>;
 type CreatePostForOccurrenceResult =
-  | Readonly<{ type: 'CREATED'; post: Readonly<{ id: number; jogakExecutionId: number; authorId: number; jogakId: number; scheduledDate: string; contents: string; createdAt: Date }> }>
+  | Readonly<{ type: 'CREATED'; post: CreatedPostRow }>
   | Readonly<{ type: 'DUPLICATE' }>;
 type PostRecord = Readonly<{ id: number }>;
 type UpdatedPostRecord = Readonly<{ id: number; contents: string; updatedAt: Date }>;
-type PostDetailRecord = PostDetailProjection;
-type PostImageRecord = PostImageProjection;
-type PostCommentRecord = PostCommentProjection;
 
 @Injectable()
 export class PostsRepository implements PostsRepositoryPort {
@@ -134,7 +132,7 @@ export class PostsRepository implements PostsRepositoryPort {
     userId: number,
     jogakId: number,
     scheduledDate: string,
-  ): Promise<PostDetailRecord | null> {
+  ): Promise<PostDetailResult | null> {
     const [post] = await this.db
       .select(postDetailProjection())
       .from(posts)
@@ -148,10 +146,10 @@ export class PostsRepository implements PostsRepositoryPort {
           eq(jogakExecutions.scheduledDate, scheduledDate),
         ),
       );
-    return post ?? null;
+    return post === undefined ? null : toPostDetailResult(post);
   }
 
-  async findOwnedPost(userId: number, postId: number): Promise<PostDetailRecord | null> {
+  async findOwnedPost(userId: number, postId: number): Promise<PostDetailResult | null> {
     const [post] = await this.db
       .select(postDetailProjection())
       .from(posts)
@@ -159,7 +157,7 @@ export class PostsRepository implements PostsRepositoryPort {
       .innerJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
       .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
       .where(and(eq(posts.id, postId), eq(posts.authorId, userId)));
-    return post ?? null;
+    return post === undefined ? null : toPostDetailResult(post);
   }
 
   async listOwnedMogakPosts(
@@ -169,8 +167,8 @@ export class PostsRepository implements PostsRepositoryPort {
       limit: number;
       offset: number;
     }>,
-  ): Promise<PostDetailRecord[]> {
-    return this.db
+  ): Promise<PostDetailResult[]> {
+    const rows = await this.db
       .select(postDetailProjection())
       .from(posts)
       .innerJoin(jogakExecutions, eq(posts.jogakExecutionId, jogakExecutions.id))
@@ -181,11 +179,12 @@ export class PostsRepository implements PostsRepositoryPort {
       .orderBy(desc(posts.createdAt), desc(posts.id))
       .limit(input.limit)
       .offset(input.offset);
+    return rows.map(toPostDetailResult);
   }
 
-  async listImagesForPosts(postIds: readonly number[]): Promise<PostImageRecord[]> {
+  async listImagesForPosts(postIds: readonly number[]): Promise<PostImageResult[]> {
     if (postIds.length === 0) return [];
-    return this.db
+    const rows = await this.db
       .select({
         postId: postImages.postId,
         storageKey: postImages.storageKey,
@@ -194,6 +193,7 @@ export class PostsRepository implements PostsRepositoryPort {
       .from(postImages)
       .where(inArray(postImages.postId, [...postIds]))
       .orderBy(asc(postImages.position), asc(postImages.id));
+    return rows.map(toPostImageResult);
   }
 
   async listCommentIds(postId: number): Promise<number[]> {
@@ -219,8 +219,8 @@ export class PostsRepository implements PostsRepositoryPort {
     return 'REMOVED';
   }
 
-  async listComments(postId: number): Promise<PostCommentRecord[]> {
-    return this.db
+  async listComments(postId: number): Promise<PostCommentResult[]> {
+    const rows = await this.db
       .select({
         id: postComments.id,
         postId: postComments.postId,
@@ -236,6 +236,7 @@ export class PostsRepository implements PostsRepositoryPort {
       .innerJoin(users, eq(postComments.authorId, users.id))
       .leftJoin(jobs, eq(users.jobId, jobs.id))
       .where(eq(postComments.postId, postId));
+    return rows.map(toPostCommentResult);
   }
 
   async createComment(input: Readonly<{ postId: number; authorId: number; contents: string }>) {
@@ -247,10 +248,10 @@ export class PostsRepository implements PostsRepositoryPort {
 
     const comment = await this.findComment(input.postId, created.id);
     if (comment === null) throw new Error('created comment was not found');
-    return comment;
+    return toPostCommentResult(comment);
   }
 
-  async findComment(postId: number, commentId: number): Promise<PostCommentRecord | null> {
+  async findComment(postId: number, commentId: number): Promise<PostCommentResult | null> {
     const [comment] = await this.db
       .select({
         id: postComments.id,
@@ -267,7 +268,7 @@ export class PostsRepository implements PostsRepositoryPort {
       .innerJoin(users, eq(postComments.authorId, users.id))
       .leftJoin(jobs, eq(users.jobId, jobs.id))
       .where(and(eq(postComments.postId, postId), eq(postComments.id, commentId)));
-    return comment ?? null;
+    return comment === undefined ? null : toPostCommentResult(comment);
   }
 
   async updateComment(
@@ -278,7 +279,7 @@ export class PostsRepository implements PostsRepositoryPort {
       contents: string;
       now: Date;
     }>,
-  ): Promise<PostCommentRecord | null> {
+  ): Promise<PostCommentResult | null> {
     const [updated] = await this.db
       .update(postComments)
       .set({ contents: input.contents, updatedAt: input.now })
@@ -307,6 +308,18 @@ export class PostsRepository implements PostsRepositoryPort {
       .returning({ id: postComments.id });
     return deleted.length === 1;
   }
+}
+
+function toPostDetailResult(row: PostDetailRow): PostDetailResult {
+  return { ...row };
+}
+
+function toPostImageResult(row: PostImageRow): PostImageResult {
+  return { ...row };
+}
+
+function toPostCommentResult(row: PostCommentRow): PostCommentResult {
+  return { ...row };
 }
 
 function postDetailProjection() {

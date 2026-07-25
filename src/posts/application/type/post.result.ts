@@ -1,6 +1,6 @@
 export type ToggleLikeResult = 'CREATED' | 'REMOVED';
 
-export type PostDetailProjection = Readonly<{
+export type PostDetailResult = Readonly<{
   id: number;
   authorId: number;
   jogakId: number;
@@ -11,8 +11,8 @@ export type PostDetailProjection = Readonly<{
   commentCount: number;
 }>;
 
-export type PostImageProjection = Readonly<{ postId: number; storageKey: string; position: number }>;
-export type PostCommentProjection = Readonly<{
+export type PostImageResult = Readonly<{ postId: number; storageKey: string; position: number }>;
+export type PostCommentResult = Readonly<{
   id: number;
   postId: number;
   authorId: number;
