@@ -30,6 +30,7 @@ describe('layer boundaries', () => {
         'social/domain/entity/probe.entity.ts',
         `
           type NestType = import('@nestjs/common').NestInterceptor;
+          export type ProbeEntity = Readonly<{ id: number }>;
           void import('../../application/service/social.service');
           require('../../infrastructure/repository/social.repository');
         `,
@@ -38,6 +39,16 @@ describe('layer boundaries', () => {
         root,
         'social/application/type/probe.query.ts',
         `void import('../../infrastructure/repository/social.repository');`,
+      );
+      writeFixture(
+        root,
+        'social/application/type/probe.presentation.ts',
+        `void import('../../presentation/controller/social.controller');`,
+      );
+      writeFixture(
+        root,
+        'social/presentation/type/probe.infrastructure.ts',
+        `type Repository = import('../../infrastructure/repository/social.repository').SocialRepository;`,
       );
       writeFixture(
         root,
@@ -69,11 +80,20 @@ describe('layer boundaries', () => {
           expect.stringContaining(
             "application must not import infrastructure '../../infrastructure/repository/social.repository'",
           ),
+          expect.stringContaining(
+            "application must not import presentation '../../presentation/controller/social.controller'",
+          ),
+          expect.stringContaining(
+            "presentation must not import infrastructure '../../infrastructure/repository/social.repository'",
+          ),
           expect.stringContaining('type-contract modules must not declare classes'),
           expect.stringContaining(
             "presentation schema 'probeSchema' must have an exported z.infer type alias",
           ),
           expect.stringContaining('DTO contract paths are not permitted'),
+          expect.stringContaining(
+            "domain entities must not export 'Entity'-suffixed identifier 'ProbeEntity'",
+          ),
         ]),
       );
     } finally {
@@ -122,6 +142,34 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
           violations.push({
             file: projectPath,
             message: `application must not import infrastructure '${moduleSpecifier}'`,
+          });
+        }
+        if (targetsLayer(root, file, moduleSpecifier, new Set(['presentation']))) {
+          violations.push({
+            file: projectPath,
+            message: `application must not import presentation '${moduleSpecifier}'`,
+          });
+        }
+      }
+    }
+
+    if (segments.includes('presentation')) {
+      for (const moduleSpecifier of imports) {
+        if (targetsLayer(root, file, moduleSpecifier, new Set(['infrastructure']))) {
+          violations.push({
+            file: projectPath,
+            message: `presentation must not import infrastructure '${moduleSpecifier}'`,
+          });
+        }
+      }
+    }
+
+    if (isDomainEntity(segments)) {
+      for (const identifier of exportedIdentifiers(sourceFile)) {
+        if (identifier.endsWith('Entity')) {
+          violations.push({
+            file: projectPath,
+            message: `domain entities must not export 'Entity'-suffixed identifier '${identifier}'`,
           });
         }
       }
@@ -220,6 +268,10 @@ function isTypeContract(segments: readonly string[]): boolean {
   return segments.includes('type');
 }
 
+function isDomainEntity(segments: readonly string[]): boolean {
+  return segments.includes('domain') && segments.includes('entity');
+}
+
 function isDtoContractPath(segments: readonly string[]): boolean {
   return segments.some(
     (segment) => segment.toLowerCase() === 'dto' || segment.toLowerCase().endsWith('.dto.ts'),
@@ -241,6 +293,32 @@ function containsClassDeclaration(sourceFile: ts.SourceFile): boolean {
   };
   visit(sourceFile);
   return found;
+}
+
+function exportedIdentifiers(sourceFile: ts.SourceFile): string[] {
+  return sourceFile.statements.flatMap((statement) => {
+    if (ts.isExportDeclaration(statement)) {
+      return statement.exportClause !== undefined && ts.isNamedExports(statement.exportClause)
+        ? statement.exportClause.elements.map((element) => element.name.text)
+        : [];
+    }
+    if (!isExported(statement)) return [];
+    if (ts.isVariableStatement(statement)) {
+      return statement.declarationList.declarations.flatMap((declaration) =>
+        ts.isIdentifier(declaration.name) ? [declaration.name.text] : [],
+      );
+    }
+    if (
+      ts.isClassDeclaration(statement) ||
+      ts.isEnumDeclaration(statement) ||
+      ts.isFunctionDeclaration(statement) ||
+      ts.isInterfaceDeclaration(statement) ||
+      ts.isTypeAliasDeclaration(statement)
+    ) {
+      return statement.name === undefined ? [] : [statement.name.text];
+    }
+    return [];
+  });
 }
 
 function findPresentationContractViolations(
