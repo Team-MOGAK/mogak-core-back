@@ -1,13 +1,11 @@
-import { randomUUID } from 'node:crypto';
-
 import { Module } from '@nestjs/common';
 
 import { DatabaseModule } from '../database/database.module';
 import { AUTH_PERSISTENCE } from './application/port/auth-persistence.port';
 import { SOCIAL_IDENTITY_VERIFIER } from './application/port/social-identity-verifier.port';
 import { TOKEN_ISSUER } from './application/port/token-issuer.port';
-import { AuthService, SESSION_ID_GENERATOR } from './application/service/auth.service';
-import { DrizzleAuthRepository } from './infrastructure/repository/auth.repository';
+import { AuthService } from './application/service/auth.service';
+import { AuthRepository } from './infrastructure/repository/auth.repository';
 import { TokenService } from './infrastructure/service/token.service';
 import { AppleIdentityVerifier } from './infrastructure/verifier/apple-identity-verifier';
 import { GoogleIdentityVerifier } from './infrastructure/verifier/google-identity-verifier';
@@ -22,21 +20,17 @@ import { RegisteredUserGuard } from './presentation/controller/registered-user.g
   controllers: [AuthController],
   providers: [
     TokenService,
-    DrizzleAuthRepository,
+    AuthRepository,
     AppleIdentityVerifier,
     GoogleIdentityVerifier,
     KakaoIdentityVerifier,
     {
       provide: AUTH_PERSISTENCE,
-      useExisting: DrizzleAuthRepository,
+      useExisting: AuthRepository,
     },
     {
       provide: TOKEN_ISSUER,
       useExisting: TokenService,
-    },
-    {
-      provide: SESSION_ID_GENERATOR,
-      useValue: randomUUID,
     },
     {
       provide: SOCIAL_IDENTITY_VERIFIER,

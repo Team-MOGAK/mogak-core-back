@@ -9,9 +9,14 @@ import type { SessionRotationCommand } from '../../application/type/auth.command
 import type { AuthUser, SessionDraft } from '../../application/type/auth.result';
 import type { UserRole } from '../../application/type/authenticated-principal';
 import type { VerifiedSocialIdentity } from '../../domain/entity/auth.entity';
+import {
+  AuthPersistenceException,
+  DuplicateEmailException,
+  DuplicateSocialAccountException,
+} from '../../domain/exception/auth-persistence.exception';
 
 @Injectable()
-export class DrizzleAuthRepository implements AuthPersistencePort {
+export class AuthRepository implements AuthPersistencePort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async findUserById(userId: number): Promise<AuthUser | null> {
@@ -41,36 +46,50 @@ export class DrizzleAuthRepository implements AuthPersistencePort {
     return row === undefined ? null : asAuthUser(row);
   }
 
-  async createAccount<T>(
-    input: Readonly<{ identity: VerifiedSocialIdentity }>,
-    createSession: (user: AuthUser) => Promise<Readonly<{ result: T; session: SessionDraft }>>,
-  ): Promise<T> {
-    return this.db.transaction(async (tx) => {
-      const [createdUser] = await tx
-        .insert(users)
-        .values({ email: input.identity.email, role: 'PENDING' })
-        .returning();
-      if (createdUser === undefined) throw new Error('user insert did not return a row');
-      const user = asAuthUser(createdUser);
-      await tx.insert(socialAccounts).values({
-        userId: user.id,
-        provider: input.identity.provider,
-        providerUserId: input.identity.providerUserId,
-        email: input.identity.email,
+  async createAccount(identity: VerifiedSocialIdentity): Promise<AuthUser> {
+    try {
+      return await this.db.transaction(async (tx) => {
+        const [createdUser] = await tx
+          .insert(users)
+          .values({ email: identity.email, role: 'PENDING' })
+          .returning();
+        if (createdUser === undefined) {
+          throw new AuthPersistenceException('user insert did not return a row');
+        }
+
+        const user = asAuthUser(createdUser);
+        await tx.insert(socialAccounts).values({
+          userId: user.id,
+          provider: identity.provider,
+          providerUserId: identity.providerUserId,
+          email: identity.email,
+        });
+
+        return user;
       });
-      const prepared = await createSession(user);
-      await tx.insert(authSessions).values({
-        id: prepared.session.id,
-        userId: user.id,
-        refreshTokenHash: prepared.session.refreshTokenHash,
-        expiresAt: prepared.session.expiresAt,
-      });
-      return prepared.result;
-    });
+    } catch (error: unknown) {
+      if (error instanceof AuthPersistenceException) {
+        throw error;
+      }
+      if (isUniqueConstraint(error, 'users_email_unique')) {
+        throw new DuplicateEmailException();
+      }
+      if (isUniqueConstraint(error, 'social_accounts_provider_user_unique')) {
+        throw new DuplicateSocialAccountException();
+      }
+      throw new AuthPersistenceException('Failed to create auth account', { cause: error });
+    }
   }
 
   async createSession(userId: number, session: SessionDraft): Promise<void> {
-    await this.db.insert(authSessions).values({ ...session, userId });
+    try {
+      await this.db.insert(authSessions).values({ ...session, userId });
+    } catch (error: unknown) {
+      if (error instanceof AuthPersistenceException) {
+        throw error;
+      }
+      throw new AuthPersistenceException('Failed to create auth session', { cause: error });
+    }
   }
 
   async rotateSession(input: SessionRotationCommand): Promise<boolean> {
@@ -129,5 +148,16 @@ function asAuthUser(user: {
 
 function asUserRole(value: string): UserRole {
   if (value === 'PENDING' || value === 'USER') return value;
-  throw new Error(`Unsupported persisted user role: ${value}`);
+  throw new AuthPersistenceException(`Unsupported persisted user role: ${value}`);
+}
+
+function isUniqueConstraint(error: unknown, constraint: string): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === '23505' &&
+    'constraint' in error &&
+    error.constraint === constraint
+  );
 }

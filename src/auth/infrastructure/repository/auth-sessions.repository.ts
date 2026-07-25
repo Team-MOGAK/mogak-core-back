@@ -5,6 +5,7 @@ import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
 import { authSessions } from '../../../database/schema';
 import type { SessionRotationCommand } from '../../application/type/auth.command';
+import { AuthPersistenceException } from '../../domain/exception/auth-persistence.exception';
 import type { AuthSessionRecord } from '../type/auth.record';
 
 @Injectable()
@@ -14,9 +15,18 @@ export class AuthSessionsRepository {
   async create(
     input: Omit<AuthSessionRecord, 'createdAt' | 'updatedAt'>,
   ): Promise<AuthSessionRecord> {
-    const [session] = await this.db.insert(authSessions).values(input).returning();
-    if (session === undefined) throw new Error('auth session insert did not return a row');
-    return session;
+    try {
+      const [session] = await this.db.insert(authSessions).values(input).returning();
+      if (session === undefined) {
+        throw new AuthPersistenceException('auth session insert did not return a row');
+      }
+      return session;
+    } catch (error: unknown) {
+      if (error instanceof AuthPersistenceException) {
+        throw error;
+      }
+      throw new AuthPersistenceException('Failed to create auth session record', { cause: error });
+    }
   }
 
   async findActiveById(

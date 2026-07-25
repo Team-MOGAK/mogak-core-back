@@ -14,8 +14,10 @@ export class SocialIdentityVerifierRegistry implements SocialIdentityVerifierPor
 
   async verify(provider: SocialProvider, token: string): Promise<VerifiedSocialIdentity> {
     if (token.trim().length === 0) throw new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN);
+
     const verifier = this.verifiers.find((candidate) => candidate.supports(provider));
     if (verifier === undefined) throw new DomainException(AppErrorCode.UNSUPPORTED_SOCIAL_PROVIDER);
+
     return verifier.verify(token);
   }
 }

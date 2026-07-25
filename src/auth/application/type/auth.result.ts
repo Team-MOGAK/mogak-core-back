@@ -9,11 +9,6 @@ export type AuthUser = Readonly<{
   role: UserRole;
 }>;
 
-export type SessionIssueResult = Readonly<{
-  result: SocialLoginResult;
-  session: SessionDraft;
-}>;
-
 export type SessionDraft = Readonly<{
   id: string;
   refreshTokenHash: string;

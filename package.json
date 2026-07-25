@@ -40,6 +40,7 @@
     "pg": "^8.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "uuid": "^14.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -54,6 +55,7 @@
     "@types/node": "^26.1.1",
     "@types/pg": "^8.20.0",
     "@types/supertest": "^7.2.1",
+    "@types/uuid": "^11.0.0",
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.7.0",
     "jest": "^30.4.2",

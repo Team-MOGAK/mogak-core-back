@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
-
 import { Inject, Injectable } from '@nestjs/common';
+
+import { generateId } from '../../../common/util/id-generator';
 
 import { AppErrorCode } from '../../../common/http/app-error-code';
 import { DomainException } from '../../../common/http/domain.exception';
@@ -9,21 +9,18 @@ import {
   type SocialProvider,
   type SocialIdentityValidation,
 } from '../../domain/entity/auth.entity';
+import {
+  DuplicateEmailException,
+  DuplicateSocialAccountException,
+} from '../../domain/exception/auth-persistence.exception';
 import { AUTH_PERSISTENCE, type AuthPersistencePort } from '../port/auth-persistence.port';
 import {
   SOCIAL_IDENTITY_VERIFIER,
   type SocialIdentityVerifierPort,
 } from '../port/social-identity-verifier.port';
 import { TOKEN_ISSUER, type TokenIssuerPort } from '../port/token-issuer.port';
-import type {
-  TokenResult,
-  SocialLoginResult,
-  AuthUser,
-  SessionIssueResult,
-} from '../type/auth.result';
+import type { TokenResult, SocialLoginResult, AuthUser } from '../type/auth.result';
 import type { AuthenticatedPrincipal } from '../type/authenticated-principal';
-
-export const SESSION_ID_GENERATOR = Symbol('SESSION_ID_GENERATOR');
 
 const REFRESH_TOKEN_TTL_MILLISECONDS = 31 * 24 * 60 * 60 * 1_000;
 
@@ -34,7 +31,6 @@ export class AuthService {
     private readonly verifiers: SocialIdentityVerifierPort,
     @Inject(AUTH_PERSISTENCE) private readonly persistence: AuthPersistencePort,
     @Inject(TOKEN_ISSUER) private readonly tokens: TokenIssuerPort,
-    @Inject(SESSION_ID_GENERATOR) private readonly createSessionId: () => string = randomUUID,
   ) {}
 
   async login(provider: SocialProvider, token: string): Promise<SocialLoginResult> {
@@ -60,14 +56,13 @@ export class AuthService {
     }
 
     try {
-      return await this.persistence.createAccount({ identity }, async (user) =>
-        this.prepareLogin(user),
-      );
+      const newUser = await this.persistence.createAccount(identity);
+      return this.issueSession(newUser);
     } catch (error: unknown) {
-      if (isUniqueConstraint(error, 'users_email_unique')) {
+      if (error instanceof DuplicateEmailException) {
         throw new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
       }
-      if (isUniqueConstraint(error, 'social_accounts_provider_user_unique')) {
+      if (error instanceof DuplicateSocialAccountException) {
         const winner = await this.persistence.findUserBySocialIdentity(
           identity.provider,
           identity.providerUserId,
@@ -130,25 +125,17 @@ export class AuthService {
   }
 
   private async issueSession(user: AuthUser): Promise<SocialLoginResult> {
-    const prepared = await this.prepareLogin(user);
-    await this.persistence.createSession(prepared.result.userId, prepared.session);
-    return prepared.result;
-  }
-
-  private async prepareLogin(user: AuthUser): Promise<SessionIssueResult> {
-    const sessionId = this.createSessionId();
+    const sessionId = generateId();
     const tokens = await this.tokens.issue(this.principal(user, sessionId));
+    await this.persistence.createSession(user.id, {
+      id: sessionId,
+      refreshTokenHash: this.tokens.hashRefreshToken(tokens.refreshToken),
+      expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MILLISECONDS),
+    });
     return {
-      result: {
-        isRegistered: user.nickname !== null && user.nickname.length > 0,
-        userId: user.id,
-        tokens,
-      },
-      session: {
-        id: sessionId,
-        refreshTokenHash: this.tokens.hashRefreshToken(tokens.refreshToken),
-        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MILLISECONDS),
-      },
+      isRegistered: user.nickname !== null && user.nickname.length > 0,
+      userId: user.id,
+      tokens,
     };
   }
 
@@ -160,15 +147,4 @@ export class AuthService {
       ...(user.email === null ? {} : { email: user.email }),
     };
   }
-}
-
-function isUniqueConstraint(error: unknown, constraint: string): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === '23505' &&
-    'constraint' in error &&
-    error.constraint === constraint
-  );
 }

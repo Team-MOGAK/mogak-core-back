@@ -7,6 +7,10 @@ import type { SocialIdentityVerifierPort } from '../../../src/auth/application/p
 import type { TokenIssuerPort } from '../../../src/auth/application/port/token-issuer.port';
 import { AuthService } from '../../../src/auth/application/service/auth.service';
 import type { AuthenticatedPrincipal } from '../../../src/auth/application/type/authenticated-principal';
+import {
+  DuplicateEmailException,
+  DuplicateSocialAccountException,
+} from '../../../src/auth/domain/exception/auth-persistence.exception';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
@@ -86,30 +90,45 @@ describe('인증 서비스', () => {
     expect(persistence.isSessionActive).not.toHaveBeenCalled();
   });
 
-  it('새로 검증된 구글 식별자로 대기 사용자와 세션을 생성한다', async () => {
+  it('요청한 제공자와 다른 검증 식별자를 거부한다', async () => {
     const verifiers = {
       verify: testMock().mockResolvedValue({
-        provider: 'GOOGLE',
-        providerUserId: 'google-subject',
-        email: 'mogak@example.test',
-        emailVerified: true,
+        provider: 'KAKAO',
+        providerUserId: 'kakao-subject',
+        email: null,
+        emailVerified: false,
       }),
+    } as unknown as SocialIdentityVerifierPort;
+    const persistence = createPersistence();
+    const service = new AuthService(verifiers, persistence, createTokenIssuer());
+
+    await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
+      new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN),
+    );
+    expect(persistence.findUserBySocialIdentity).not.toHaveBeenCalled();
+  });
+
+  it('검증된 식별자를 직접 계정에 저장한 뒤 대기 사용자 세션을 생성한다', async () => {
+    const identity = {
+      provider: 'GOOGLE' as const,
+      providerUserId: 'google-subject',
+      email: 'mogak@example.test',
+      emailVerified: true,
+    };
+    const verifiers = {
+      verify: testMock().mockResolvedValue(identity),
     } as unknown as SocialIdentityVerifierPort;
     const persistence = createPersistence();
     jest.mocked(persistence.findUserByEmail).mockResolvedValue(null);
     jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue(null);
-    jest.mocked(persistence.createAccount).mockImplementation(
-      async (_input, createSession) =>
-        (
-          await createSession({
-            id: 7,
-            email: 'mogak@example.test',
-            nickname: null,
-            role: 'PENDING',
-          })
-        ).result,
-    );
-    const service = new AuthService(verifiers, persistence, createTokenIssuer(), () => SESSION_ID);
+    jest.mocked(persistence.createAccount).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: null,
+      role: 'PENDING',
+    });
+    const tokens = createTokenIssuer();
+    const service = new AuthService(verifiers, persistence, tokens);
 
     await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({
       isRegistered: false,
@@ -119,16 +138,70 @@ describe('인증 서비스', () => {
         refreshToken: expect.any(String),
       }),
     });
-    expect(persistence.createAccount).toHaveBeenCalledWith(
+    expect(persistence.createAccount).toHaveBeenCalledWith(identity);
+    expect(persistence.createSession).toHaveBeenCalledWith(
+      7,
       expect.objectContaining({
-        identity: expect.objectContaining({
-          email: 'mogak@example.test',
-          provider: 'GOOGLE',
-          providerUserId: 'google-subject',
-          emailVerified: true,
-        }),
+        id: expect.any(String),
+        refreshTokenHash: 'refresh-token-hash',
       }),
-      expect.any(Function),
+    );
+    const accountCreationCall = jest.mocked(persistence.createAccount).mock.invocationCallOrder[0];
+    const sessionCreationCall = jest.mocked(persistence.createSession).mock.invocationCallOrder[0];
+    expect(accountCreationCall).toBeDefined();
+    expect(sessionCreationCall).toBeDefined();
+    if (accountCreationCall === undefined || sessionCreationCall === undefined) {
+      throw new Error('expected account and session creation calls');
+    }
+    expect(accountCreationCall).toBeLessThan(sessionCreationCall);
+  });
+
+  it('계정 생성 중 이메일 중복이 발생하면 소셜 계정 연결을 요구한다', async () => {
+    const verifiers = {
+      verify: testMock().mockResolvedValue({
+        provider: 'GOOGLE',
+        providerUserId: 'google-subject',
+        email: 'mogak@example.test',
+        emailVerified: true,
+      }),
+    } as unknown as SocialIdentityVerifierPort;
+    const persistence = createPersistence();
+    jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue(null);
+    jest.mocked(persistence.findUserByEmail).mockResolvedValue(null);
+    jest.mocked(persistence.createAccount).mockRejectedValue(new DuplicateEmailException());
+    const service = new AuthService(verifiers, persistence, createTokenIssuer());
+
+    await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
+      new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED),
+    );
+    expect(persistence.createSession).not.toHaveBeenCalled();
+  });
+
+  it('계정 생성 중 소셜 식별자 중복이 발생하면 경쟁 요청의 사용자를 로그인한다', async () => {
+    const identity = {
+      provider: 'GOOGLE' as const,
+      providerUserId: 'google-subject',
+      email: 'mogak@example.test',
+      emailVerified: true,
+    };
+    const winner = { id: 7, email: identity.email, nickname: null, role: 'PENDING' as const };
+    const verifiers = {
+      verify: testMock().mockResolvedValue(identity),
+    } as unknown as SocialIdentityVerifierPort;
+    const persistence = createPersistence();
+    jest
+      .mocked(persistence.findUserBySocialIdentity)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(winner);
+    jest.mocked(persistence.findUserByEmail).mockResolvedValue(null);
+    jest.mocked(persistence.createAccount).mockRejectedValue(new DuplicateSocialAccountException());
+    const service = new AuthService(verifiers, persistence, createTokenIssuer());
+
+    await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({ userId: winner.id });
+    expect(persistence.findUserBySocialIdentity).toHaveBeenCalledTimes(2);
+    expect(persistence.createSession).toHaveBeenCalledWith(
+      winner.id,
+      expect.objectContaining({ refreshTokenHash: 'refresh-token-hash' }),
     );
   });
 
@@ -149,7 +222,7 @@ describe('인증 서비스', () => {
       nickname: '기존사용자',
       role: 'USER',
     });
-    const service = new AuthService(verifiers, persistence, createTokenIssuer(), () => SESSION_ID);
+    const service = new AuthService(verifiers, persistence, createTokenIssuer());
 
     await expect(service.login('KAKAO', 'access-token')).rejects.toEqual(
       new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED),
@@ -176,13 +249,13 @@ describe('인증 서비스', () => {
     const persistence = createPersistence();
     jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue(null);
     jest.mocked(persistence.findUserByEmail).mockResolvedValue(null);
-    jest
-      .mocked(persistence.createAccount)
-      .mockImplementation(
-        async (_input, createSession) =>
-          (await createSession({ id: 7, email: null, nickname: null, role: 'PENDING' })).result,
-      );
-    const service = new AuthService(verifiers, persistence, createTokenIssuer(), () => SESSION_ID);
+    jest.mocked(persistence.createAccount).mockResolvedValue({
+      id: 7,
+      email: null,
+      nickname: null,
+      role: 'PENDING',
+    });
+    const service = new AuthService(verifiers, persistence, createTokenIssuer());
 
     await expect(service.login('KAKAO', 'access-token')).resolves.toMatchObject({ userId: 7 });
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(

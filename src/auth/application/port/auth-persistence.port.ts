@@ -11,10 +11,7 @@ export interface AuthPersistencePort {
     provider: VerifiedSocialIdentity['provider'],
     providerUserId: string,
   ): Promise<AuthUser | null>;
-  createAccount<T>(
-    input: Readonly<{ identity: VerifiedSocialIdentity }>,
-    createSession: (user: AuthUser) => Promise<Readonly<{ result: T; session: SessionDraft }>>,
-  ): Promise<T>;
+  createAccount(identity: VerifiedSocialIdentity): Promise<AuthUser>;
   createSession(userId: number, session: SessionDraft): Promise<void>;
   rotateSession(input: SessionRotationCommand): Promise<boolean>;
   isSessionActive(sessionId: string, userId: number): Promise<boolean>;

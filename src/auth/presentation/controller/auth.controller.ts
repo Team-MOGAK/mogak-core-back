@@ -7,7 +7,7 @@ import { DomainException } from '../../../common/http/domain.exception';
 import { ZodBody, ZodParams } from '../../../common/validation/zod-parameter.decorator';
 import { AuthService } from '../../application/service/auth.service';
 import type { AuthenticatedPrincipal } from '../../application/type/authenticated-principal';
-import type { SocialProvider } from '../../domain/entity/auth.entity';
+import { SocialProvider } from '../../domain/entity/auth.entity';
 import {
   appleLoginRequestSchema,
   providerParamsSchema,
@@ -29,6 +29,7 @@ import { CurrentUser } from './current-user.decorator';
 export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
 
+  // TODO: iOS를 `/api/auth/apple/login`의 공통 provider 경로로 전환한 뒤 이 Spring 호환 경로를 제거한다.
   @Post('login')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
@@ -43,9 +44,17 @@ export class AuthController {
     @ZodParams(providerParamsSchema) params: ProviderParams,
     @ZodBody(socialLoginRequestSchema) request: SocialLoginRequest,
   ) {
-    return successResponse<LoginResponse>(
-      await this.authService.login(parseSocialProvider(params.provider), request.token),
-    );
+    const provider = params.provider.toUpperCase();
+    switch (provider) {
+      case SocialProvider.APPLE:
+      case SocialProvider.GOOGLE:
+      case SocialProvider.KAKAO:
+        return successResponse<LoginResponse>(
+          await this.authService.login(provider, request.token),
+        );
+      default:
+        throw new DomainException(AppErrorCode.UNSUPPORTED_SOCIAL_PROVIDER);
+    }
   }
 
   @Post('refresh')
@@ -71,12 +80,6 @@ export class AuthController {
     await this.authService.withdraw(user.userId);
     return successResponse<WithdrawResponse>({ isDeleted: true });
   }
-}
-
-function parseSocialProvider(value: string): SocialProvider {
-  const provider = value.toUpperCase();
-  if (provider === 'APPLE' || provider === 'GOOGLE' || provider === 'KAKAO') return provider;
-  throw new DomainException(AppErrorCode.UNSUPPORTED_SOCIAL_PROVIDER);
 }
 
 function requiredRefreshToken(value: string | undefined): string {

@@ -6,9 +6,10 @@ import {
   text,
   timestamp,
   unique,
-  uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+
+import { baseUuidPrimaryKey } from './common';
 
 const createdAt = timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
 const updatedAt = timestamp('updated_at', { withTimezone: true }).notNull().defaultNow();
@@ -98,7 +99,7 @@ export const socialAccounts = pgTable(
 );
 
 export const authSessions = pgTable('auth_sessions', {
-  id: uuid('id').primaryKey().defaultRandom(),
+  id: baseUuidPrimaryKey(),
   userId: bigint('user_id', { mode: 'number' })
     .notNull()
     .references(() => users.id, { onDelete: 'cascade' }),

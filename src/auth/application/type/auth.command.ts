@@ -1,4 +1,4 @@
-import type { SocialProvider, VerifiedSocialIdentity } from '../../domain/entity/auth.entity';
+import type { SocialProvider } from '../../domain/entity/auth.entity';
 import type { UserRole } from './authenticated-principal';
 
 export type LoginCommand = Readonly<{ provider: SocialProvider; token: string }>;
@@ -16,4 +16,3 @@ export type SessionRotationCommand = Readonly<{
   nextExpiresAt: Date;
   now: Date;
 }>;
-export type AccountCreationCommand = Readonly<{ identity: VerifiedSocialIdentity }>;
