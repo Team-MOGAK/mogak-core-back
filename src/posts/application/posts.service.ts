@@ -2,8 +2,14 @@ import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../common/http/app-error-code';
 import { DomainException } from '../../common/http/domain.exception';
-import { MogaksService } from '../../mogaks/application/mogaks.service';
-import { JogaksService } from '../../mogaks/application/jogaks.service';
+import {
+  OWNED_MOGAK_PORT,
+  type OwnedMogakPort,
+} from '../../mogaks/application/port/owned-mogak.port';
+import {
+  OWNED_OCCURRENCE_PORT,
+  type OwnedOccurrencePort,
+} from '../../mogaks/application/port/owned-occurrence.port';
 import { STORAGE_PORT, type StoragePort } from '../../storage/application/storage.port';
 import { PostsRepository, type PostCommentRecord } from '../infrastructure/posts.repository';
 
@@ -19,9 +25,9 @@ export type CreatePostInput = Readonly<{
 export class PostsService {
   constructor(
     @Inject(PostsRepository) private readonly repository: PostsRepository,
-    @Inject(JogaksService) private readonly jogaks: JogaksService,
+    @Inject(OWNED_OCCURRENCE_PORT) private readonly jogaks: OwnedOccurrencePort,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
-    @Inject(MogaksService) private readonly mogaks: MogaksService,
+    @Inject(OWNED_MOGAK_PORT) private readonly mogaks: OwnedMogakPort,
   ) {}
 
   async createPost(userId: number, input: CreatePostInput) {

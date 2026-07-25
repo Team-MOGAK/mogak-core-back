@@ -3,8 +3,8 @@ import { testMock } from '../../test-mock';
 
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import type { MogaksService } from '../../../src/mogaks/application/mogaks.service';
-import type { JogaksService } from '../../../src/mogaks/application/jogaks.service';
+import type { OwnedMogakPort } from '../../../src/mogaks/application/port/owned-mogak.port';
+import type { OwnedOccurrencePort } from '../../../src/mogaks/application/port/owned-occurrence.port';
 import type { StoragePort } from '../../../src/storage/application/storage.port';
 import type { PostsRepository } from '../../../src/posts/infrastructure/posts.repository';
 import { PostsService } from '../../../src/posts/application/posts.service';
@@ -29,10 +29,10 @@ function repository(): PostsRepository {
   } as unknown as PostsRepository;
 }
 
-function jogaks(): JogaksService {
+function jogaks(): OwnedOccurrencePort {
   return {
     resolveOwnedOccurrence: testMock(),
-  } as unknown as JogaksService;
+  } as unknown as OwnedOccurrencePort;
 }
 
 function storage(): StoragePort {
@@ -41,10 +41,10 @@ function storage(): StoragePort {
   } as unknown as StoragePort;
 }
 
-function mogaks(): MogaksService {
+function mogaks(): OwnedMogakPort {
   return {
     resolveOwnedMogak: testMock(),
-  } as unknown as MogaksService;
+  } as unknown as OwnedMogakPort;
 }
 
 describe('게시글 서비스', () => {

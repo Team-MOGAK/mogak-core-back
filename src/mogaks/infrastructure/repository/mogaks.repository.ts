@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, count, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 
-import type { Database } from '../../database/database.provider';
-import { DATABASE } from '../../database/database.tokens';
+import type { Database } from '../../../database/database.provider';
+import { DATABASE } from '../../../database/database.tokens';
 import {
   jogakExecutions,
   jogakSchedules,
@@ -11,8 +11,13 @@ import {
   modarats,
   mogakCategories,
   mogaks,
-} from '../../database/schema';
-import type { IsoWeekday, ScheduleType, StoredExecutionStatus } from '../domain/occurrence';
+} from '../../../database/schema';
+import type { MogaksRepositoryPort } from '../../application/port/mogaks.repository.port';
+import type {
+  JogakExecutionStatus as StoredExecutionStatus,
+  JogakScheduleType as ScheduleType,
+  JogakScheduleWeekdayName as IsoWeekday,
+} from '../../domain/entity/jogak.entity';
 
 export type ModaratRecord = Readonly<{
   id: number;
@@ -57,10 +62,10 @@ export type OccurrenceScheduleRow = Readonly<{
   categoryCode: string | null;
   categoryName: string | null;
   customCategoryName: string | null;
-  scheduleType: string;
+  scheduleType: ScheduleType;
   effectiveFrom: string;
   effectiveTo: string | null;
-  weekday: string | null;
+  weekday: IsoWeekday | null;
 }>;
 
 export type ExecutionRecord = Readonly<{
@@ -158,7 +163,7 @@ export type ReplaceOwnedJogakScheduleInput = Readonly<{
 export type ReplaceOwnedJogakScheduleResult = OwnedJogakRecord | null | 'INVALID_EFFECTIVE_FROM';
 
 @Injectable()
-export class MogaksRepository {
+export class MogaksRepository implements MogaksRepositoryPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async createModarat(input: CreateModaratInput): Promise<ModaratRecord> {
@@ -484,7 +489,7 @@ export class MogaksRepository {
       conditions.push(eq(jogakSchedules.scheduleType, query.scheduleType));
     }
 
-    return this.db
+    const rows = await this.db
       .select(occurrenceScheduleProjection())
       .from(jogakSchedules)
       .innerJoin(jogaks, eq(jogakSchedules.jogakId, jogaks.id))
@@ -493,13 +498,14 @@ export class MogaksRepository {
       .leftJoin(mogakCategories, eq(mogaks.categoryId, mogakCategories.id))
       .leftJoin(jogakScheduleWeekdays, eq(jogakScheduleWeekdays.scheduleId, jogakSchedules.id))
       .where(and(...conditions));
+    return rows.map(asOccurrenceScheduleRow);
   }
 
   async listScheduleRowsForOwnedJogak(
     userId: number,
     jogakId: number,
   ): Promise<OccurrenceScheduleRow[]> {
-    return this.db
+    const rows = await this.db
       .select(occurrenceScheduleProjection())
       .from(jogakSchedules)
       .innerJoin(jogaks, eq(jogakSchedules.jogakId, jogaks.id))
@@ -508,6 +514,7 @@ export class MogaksRepository {
       .leftJoin(mogakCategories, eq(mogaks.categoryId, mogakCategories.id))
       .leftJoin(jogakScheduleWeekdays, eq(jogakScheduleWeekdays.scheduleId, jogakSchedules.id))
       .where(and(eq(jogaks.id, jogakId), eq(modarats.userId, userId)));
+    return rows.map(asOccurrenceScheduleRow);
   }
 
   async listExecutionsForJogaks(
@@ -673,6 +680,35 @@ function asExecutionRecord(execution: {
     status: execution.status,
     jogakTitleSnapshot: execution.jogakTitleSnapshot,
   };
+}
+
+function asOccurrenceScheduleRow(row: {
+  scheduleId: number;
+  jogakId: number;
+  mogakId: number;
+  mogakTitle: string;
+  jogakTitle: string;
+  color: string | null;
+  categoryCode: string | null;
+  categoryName: string | null;
+  customCategoryName: string | null;
+  scheduleType: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  weekday: string | null;
+}): OccurrenceScheduleRow {
+  if (row.scheduleType !== 'ONCE' && row.scheduleType !== 'WEEKLY') {
+    throw new Error(`Unsupported persisted schedule type: ${row.scheduleType}`);
+  }
+  if (
+    row.weekday !== null &&
+    !(
+      ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'] as const
+    ).includes(row.weekday as IsoWeekday)
+  ) {
+    throw new Error(`Unsupported persisted weekday: ${row.weekday}`);
+  }
+  return { ...row, scheduleType: row.scheduleType, weekday: row.weekday as IsoWeekday | null };
 }
 
 function previousDate(value: string): string {

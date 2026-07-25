@@ -7,8 +7,8 @@ import request from 'supertest';
 import { configureApp } from '../../../src/app.setup';
 import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
 import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
-import { JogaksService } from '../../../src/mogaks/application/jogaks.service';
-import { JogaksController } from '../../../src/mogaks/presentation/jogaks.controller';
+import { JogaksService } from '../../../src/mogaks/application/service/jogaks.service';
+import { JogaksController } from '../../../src/mogaks/presentation/controller/jogaks.controller';
 
 describe('조각 HTTP 계약', () => {
   let app: INestApplication;

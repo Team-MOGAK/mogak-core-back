@@ -1,84 +1,44 @@
 import {
-  Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  Param,
   Post,
   Put,
-  Query,
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { createZodDto } from 'nestjs-zod';
 import type { Response } from 'express';
-import { z } from 'zod';
 
-import { successResponse } from '../../common/http/api-response';
-import { AppErrorCode } from '../../common/http/app-error-code';
-import { DomainException } from '../../common/http/domain.exception';
+import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../../auth/application/type/authenticated-principal';
+import { AccessTokenGuard } from '../../../auth/presentation/controller/access-token.guard';
+import { CurrentUser } from '../../../auth/presentation/controller/current-user.decorator';
+import { RegisteredUserGuard } from '../../../auth/presentation/controller/registered-user.guard';
+import { successResponse } from '../../../common/http/api-response';
+import { AppErrorCode } from '../../../common/http/app-error-code';
+import { DomainException } from '../../../common/http/domain.exception';
+import { ZodBody, ZodParams, ZodQuery } from '../../../common/validation/zod-parameter.decorator';
+import { JogaksService } from '../../application/service/jogaks.service';
+import type { JogakExecutionStatus } from '../../domain/entity/jogak.entity';
 import {
-  calendarDateSchema,
-  positiveIdSchema,
-  requiredTextSchema,
-} from '../../common/validation/request-schema';
-import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../auth/application/type/authenticated-principal';
-import { AccessTokenGuard } from '../../auth/presentation/controller/access-token.guard';
-import { CurrentUser } from '../../auth/presentation/controller/current-user.decorator';
-import { RegisteredUserGuard } from '../../auth/presentation/controller/registered-user.guard';
-import { JogaksService } from '../application/jogaks.service';
-import type { StoredExecutionStatus } from '../domain/occurrence';
-
-const scheduleSchema = z
-  .object({
-    scheduleType: z.string().min(1),
-    effectiveFrom: calendarDateSchema,
-    effectiveTo: calendarDateSchema.optional(),
-    weekdays: z.array(z.string()).optional(),
-  })
-  .strict();
-
-type ScheduleRequest = z.infer<typeof scheduleSchema>;
-
-class DateQuery extends createZodDto(z.object({ date: calendarDateSchema }).strict()) {}
-
-class DateRangeQuery extends createZodDto(
-  z.object({ startDay: calendarDateSchema, endDay: calendarDateSchema }).strict(),
-) {}
-
-class CreateJogakRequest extends createZodDto(
-  z
-    .object({
-      mogakId: positiveIdSchema,
-      title: requiredTextSchema(1, 100),
-      schedule: scheduleSchema.optional(),
-      isRoutine: z.boolean().optional(),
-      days: z.array(z.string()).optional(),
-      today: calendarDateSchema.optional(),
-      endDate: calendarDateSchema.optional(),
-    })
-    .strict(),
-) {}
-
-class UpdateJogakRequest extends createZodDto(
-  z
-    .object({
-      title: requiredTextSchema(1, 100),
-      schedule: scheduleSchema.optional(),
-    })
-    .strict(),
-) {}
-
-class MogakJogakParam extends createZodDto(z.object({ mogakId: positiveIdSchema }).strict()) {}
-
-class JogakIdParam extends createZodDto(z.object({ jogakId: positiveIdSchema }).strict()) {}
-
-class ExecutionParam extends createZodDto(
-  z.object({ jogakId: positiveIdSchema, scheduledDate: z.string().min(1) }).strict(),
-) {}
+  createJogakRequestSchema,
+  dateQuerySchema,
+  dateRangeQuerySchema,
+  executionParamSchema,
+  jogakIdParamSchema,
+  mogakJogakParamSchema,
+  updateJogakRequestSchema,
+  type CreateJogakRequest,
+  type DateQueryRequest,
+  type DateRangeQueryRequest,
+  type ExecutionParams,
+  type JogakIdParams,
+  type MogakJogakParams,
+  type ScheduleRequest,
+  type UpdateJogakRequest,
+} from '../type/jogaks.request';
 
 @Controller('api')
 export class JogaksController {
@@ -87,7 +47,10 @@ export class JogaksController {
   @Post('jogaks')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @HttpCode(HttpStatus.CREATED)
-  async create(@CurrentUser() user: AuthenticatedUser, @Body() request: CreateJogakRequest) {
+  async create(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodBody(createJogakRequestSchema) request: CreateJogakRequest,
+  ) {
     return successResponse(
       await this.jogaks.create(user.userId, {
         mogakId: request.mogakId,
@@ -100,13 +63,19 @@ export class JogaksController {
 
   @Get('jogaks/daily')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async listOneTime(@CurrentUser() user: AuthenticatedUser, @Query() query: DateQuery) {
+  async listOneTime(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodQuery(dateQuerySchema) query: DateQueryRequest,
+  ) {
     return successResponse(await this.jogaks.listOneTime(user.userId, query.date));
   }
 
   @Get('jogaks/routines')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async listRoutines(@CurrentUser() user: AuthenticatedUser, @Query() query: DateRangeQuery) {
+  async listRoutines(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodQuery(dateRangeQuerySchema) query: DateRangeQueryRequest,
+  ) {
     return successResponse(
       await this.jogaks.listRoutines(user.userId, query.startDay, query.endDay),
     );
@@ -116,21 +85,27 @@ export class JogaksController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async listMogakDay(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: MogakJogakParam,
-    @Query() query: DateQuery,
+    @ZodParams(mogakJogakParamSchema) params: MogakJogakParams,
+    @ZodQuery(dateQuerySchema) query: DateQueryRequest,
   ) {
     return successResponse(await this.jogaks.listMogakDay(user.userId, params.mogakId, query.date));
   }
 
   @Get('jogaks')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async listDay(@CurrentUser() user: AuthenticatedUser, @Query() query: DateQuery) {
+  async listDay(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodQuery(dateQuerySchema) query: DateQueryRequest,
+  ) {
     return successResponse(await this.jogaks.listDay(user.userId, query.date));
   }
 
   @Get('jogaks/:jogakId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async getDetail(@CurrentUser() user: AuthenticatedUser, @Param() params: JogakIdParam) {
+  async getDetail(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodParams(jogakIdParamSchema) params: JogakIdParams,
+  ) {
     return successResponse(await this.jogaks.getDetail(user.userId, params.jogakId));
   }
 
@@ -138,8 +113,8 @@ export class JogaksController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async update(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: JogakIdParam,
-    @Body() request: UpdateJogakRequest,
+    @ZodParams(jogakIdParamSchema) params: JogakIdParams,
+    @ZodBody(updateJogakRequestSchema) request: UpdateJogakRequest,
   ) {
     return successResponse(
       await this.jogaks.update(user.userId, params.jogakId, {
@@ -153,7 +128,10 @@ export class JogaksController {
 
   @Delete('jogaks/:jogakId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async delete(@CurrentUser() user: AuthenticatedUser, @Param() params: JogakIdParam) {
+  async delete(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodParams(jogakIdParamSchema) params: JogakIdParams,
+  ) {
     await this.jogaks.delete(user.userId, params.jogakId);
     return successResponse({});
   }
@@ -162,7 +140,7 @@ export class JogaksController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async start(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: ExecutionParam,
+    @ZodParams(executionParamSchema) params: ExecutionParams,
     @Res({ passthrough: true }) response: Response,
   ) {
     return this.command(user, params.jogakId, params.scheduledDate, 'IN_PROGRESS', response);
@@ -172,7 +150,7 @@ export class JogaksController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async success(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: ExecutionParam,
+    @ZodParams(executionParamSchema) params: ExecutionParams,
     @Res({ passthrough: true }) response: Response,
   ) {
     return this.command(user, params.jogakId, params.scheduledDate, 'SUCCESS', response);
@@ -182,7 +160,7 @@ export class JogaksController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async fail(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: ExecutionParam,
+    @ZodParams(executionParamSchema) params: ExecutionParams,
     @Res({ passthrough: true }) response: Response,
   ) {
     return this.command(user, params.jogakId, params.scheduledDate, 'FAIL', response);
@@ -192,7 +170,7 @@ export class JogaksController {
     user: AuthenticatedUser,
     jogakId: number,
     scheduledDate: string,
-    desiredStatus: StoredExecutionStatus,
+    desiredStatus: JogakExecutionStatus,
     response: Response,
   ) {
     const result = await this.jogaks.commandExecution(

@@ -2,10 +2,10 @@ import { jest } from '@jest/globals';
 import { testMock } from '../../test-mock';
 import { AppErrorCode } from '../../../src/common/http/app-error-code';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import type { MogaksRepository } from '../../../src/mogaks/infrastructure/mogaks.repository';
-import { JogaksService } from '../../../src/mogaks/application/jogaks.service';
+import type { MogaksRepositoryPort } from '../../../src/mogaks/application/port/mogaks.repository.port';
+import { JogaksService } from '../../../src/mogaks/application/service/jogaks.service';
 
-function repository(): MogaksRepository {
+function repository(): MogaksRepositoryPort {
   return {
     findOwnedMogak: testMock(),
     findOwnedJogak: testMock(),
@@ -21,7 +21,7 @@ function repository(): MogaksRepository {
     updateOwnedJogakTitle: testMock(),
     replaceOwnedJogakSchedule: testMock(),
     deleteOwnedJogak: testMock(),
-  } as unknown as MogaksRepository;
+  } as unknown as MogaksRepositoryPort;
 }
 
 const ownedMogak = {

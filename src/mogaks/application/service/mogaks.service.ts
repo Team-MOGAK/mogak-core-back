@@ -1,30 +1,19 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { AppErrorCode } from '../../common/http/app-error-code';
-import { DomainException } from '../../common/http/domain.exception';
-import { requiredTrimmed } from '../../common/validation/required-text';
-import {
-  MogaksRepository,
-  type MogakRecord,
-  type ModaratRecord,
-} from '../infrastructure/mogaks.repository';
-
-const MAX_MOGAKS_PER_MODARAT = 8;
-
-export type ModaratInput = Readonly<{ title: string; color: string }>;
-export type MogakInput = Readonly<{
-  modaratId: number;
-  title: string;
-  categoryCode?: string;
-  customCategoryName?: string;
-  color?: string;
-}>;
+import { AppErrorCode } from '../../../common/http/app-error-code';
+import { DomainException } from '../../../common/http/domain.exception';
+import { requiredTrimmed } from '../../../common/validation/required-text';
+import { selectMogakCategory, validateMogakCapacity } from '../../domain/entity/mogak.entity';
+import { MOGAKS_REPOSITORY, type MogaksRepositoryPort } from '../port/mogaks.repository.port';
+import type { CreateMogakCommand, ModaratCommand, UpdateMogakCommand } from '../type/mogak.command';
+import type { MogakResult, ModaratResult } from '../type/mogak.result';
+import type { OwnedMogakPort } from '../port/owned-mogak.port';
 
 @Injectable()
-export class MogaksService {
-  constructor(@Inject(MogaksRepository) private readonly repository: MogaksRepository) {}
+export class MogaksService implements OwnedMogakPort {
+  constructor(@Inject(MOGAKS_REPOSITORY) private readonly repository: MogaksRepositoryPort) {}
 
-  async createModarat(userId: number, input: ModaratInput): Promise<ModaratRecord> {
+  async createModarat(userId: number, input: ModaratCommand): Promise<ModaratResult> {
     return this.repository.createModarat({
       userId,
       title: requiredTrimmed(input.title),
@@ -32,7 +21,7 @@ export class MogaksService {
     });
   }
 
-  async listModarats(userId: number): Promise<ModaratRecord[]> {
+  async listModarats(userId: number): Promise<ModaratResult[]> {
     return this.repository.listModarats(userId);
   }
 
@@ -50,8 +39,8 @@ export class MogaksService {
   async updateModarat(
     userId: number,
     modaratId: number,
-    input: ModaratInput,
-  ): Promise<ModaratRecord> {
+    input: ModaratCommand,
+  ): Promise<ModaratResult> {
     const updated = await this.repository.updateOwnedModarat({
       userId,
       modaratId,
@@ -69,12 +58,12 @@ export class MogaksService {
     }
   }
 
-  async createMogak(userId: number, input: MogakInput) {
+  async createMogak(userId: number, input: CreateMogakCommand) {
+    const category = await this.resolveCategory(input);
     await this.requireOwnedModarat(userId, input.modaratId);
-    if ((await this.repository.countMogaks(input.modaratId)) >= MAX_MOGAKS_PER_MODARAT) {
+    if (!validateMogakCapacity(await this.repository.countMogaks(input.modaratId))) {
       throw new DomainException(AppErrorCode.MAX_MOGAKS);
     }
-    const category = await this.resolveCategory(input);
     return toMogakResponse(
       await this.repository.createMogak({
         modaratId: input.modaratId,
@@ -92,7 +81,7 @@ export class MogaksService {
     return { mogaks: mogaks.map(toMogakResponse), size: mogaks.length };
   }
 
-  async updateMogak(userId: number, mogakId: number, input: Omit<MogakInput, 'modaratId'>) {
+  async updateMogak(userId: number, mogakId: number, input: UpdateMogakCommand) {
     const category = await this.resolveCategory(input);
     const updated = await this.repository.updateOwnedMogak({
       userId,
@@ -129,24 +118,21 @@ export class MogaksService {
     }
   }
 
-  private async resolveCategory(input: {
-    categoryCode?: string;
-    customCategoryName?: string;
-  }): Promise<Readonly<{ categoryId: number | null; customCategoryName: string | null }>> {
-    const categoryCode = optionalTrim(input.categoryCode);
-    const customCategoryName = optionalTrim(input.customCategoryName);
-    if ((categoryCode === undefined) === (customCategoryName === undefined)) {
+  private async resolveCategory(
+    input: Pick<CreateMogakCommand, 'categoryCode' | 'customCategoryName'>,
+  ): Promise<Readonly<{ categoryId: number | null; customCategoryName: string | null }>> {
+    let selection;
+    try {
+      selection = selectMogakCategory(input);
+    } catch {
       throw new DomainException(AppErrorCode.INVALID_PARAMETER);
     }
-    if (categoryCode !== undefined) {
-      const category = await this.repository.findActiveCategoryByCode(categoryCode);
+    if (selection.type === 'OFFICIAL') {
+      const category = await this.repository.findActiveCategoryByCode(selection.code);
       if (category === null) throw new DomainException(AppErrorCode.MOGAK_CATEGORY_NOT_FOUND);
       return { categoryId: category.id, customCategoryName: null };
     }
-    if (customCategoryName === undefined) {
-      throw new DomainException(AppErrorCode.CUSTOM_CATEGORY_REQUIRED);
-    }
-    return { categoryId: null, customCategoryName };
+    return { categoryId: null, customCategoryName: selection.name };
   }
 }
 
@@ -156,7 +142,7 @@ function optionalTrim(value: string | undefined): string | undefined {
   return trimmed.length === 0 ? undefined : trimmed;
 }
 
-function toMogakResponse(record: MogakRecord) {
+function toMogakResponse(record: MogakResult) {
   const name = record.categoryName ?? record.customCategoryName;
   if (name === null) throw new Error('Mogak category was not populated');
   return {

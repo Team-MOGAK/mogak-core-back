@@ -1,62 +1,33 @@
 import {
-  Body,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpStatus,
   Inject,
-  Param,
   Post,
   Put,
   UseGuards,
 } from '@nestjs/common';
-import { createZodDto } from 'nestjs-zod';
-import { z } from 'zod';
-
-import { successResponse } from '../../common/http/api-response';
-import { positiveIdSchema, requiredTextSchema } from '../../common/validation/request-schema';
-import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../auth/application/type/authenticated-principal';
-import { AccessTokenGuard } from '../../auth/presentation/controller/access-token.guard';
-import { CurrentUser } from '../../auth/presentation/controller/current-user.decorator';
-import { RegisteredUserGuard } from '../../auth/presentation/controller/registered-user.guard';
-import { MogaksService } from '../application/mogaks.service';
-
-class ModaratRequest extends createZodDto(
-  z
-    .object({
-      title: requiredTextSchema(1, 100),
-      color: requiredTextSchema(1, 100),
-    })
-    .strict(),
-) {}
-
-class MogakRequest extends createZodDto(
-  z
-    .object({
-      modaratId: positiveIdSchema,
-      title: requiredTextSchema(1, 100),
-      categoryCode: z.string().min(1).max(100).optional(),
-      customCategoryName: z.string().min(1).max(200).optional(),
-      color: z.string().min(4).max(10).optional(),
-    })
-    .strict(),
-) {}
-
-class MogakUpdateRequest extends createZodDto(
-  z
-    .object({
-      title: requiredTextSchema(1, 100),
-      categoryCode: z.string().min(1).max(100).optional(),
-      customCategoryName: z.string().min(1).max(200).optional(),
-      color: z.string().min(4).max(10).optional(),
-    })
-    .strict(),
-) {}
-
-class ModaratIdParam extends createZodDto(z.object({ modaratId: positiveIdSchema }).strict()) {}
-
-class MogakIdParam extends createZodDto(z.object({ mogakId: positiveIdSchema }).strict()) {}
+import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../../auth/application/type/authenticated-principal';
+import { AccessTokenGuard } from '../../../auth/presentation/controller/access-token.guard';
+import { CurrentUser } from '../../../auth/presentation/controller/current-user.decorator';
+import { RegisteredUserGuard } from '../../../auth/presentation/controller/registered-user.guard';
+import { successResponse } from '../../../common/http/api-response';
+import { ZodBody, ZodParams } from '../../../common/validation/zod-parameter.decorator';
+import { MogaksService } from '../../application/service/mogaks.service';
+import {
+  moderatIdParamSchema,
+  moderatRequestSchema,
+  mogakIdParamSchema,
+  mogakRequestSchema,
+  mogakUpdateRequestSchema,
+  type ModaratIdParams,
+  type ModaratRequest,
+  type MogakIdParams,
+  type MogakRequest,
+  type MogakUpdateRequest,
+} from '../type/mogaks.request';
 
 @Controller('api')
 export class ModaratsMogaksController {
@@ -65,7 +36,10 @@ export class ModaratsMogaksController {
   @Post('modarats')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @HttpCode(HttpStatus.CREATED)
-  async createModarat(@CurrentUser() user: AuthenticatedUser, @Body() request: ModaratRequest) {
+  async createModarat(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodBody(moderatRequestSchema) request: ModaratRequest,
+  ) {
     return successResponse(
       await this.mogaks.createModarat(user.userId, { title: request.title, color: request.color }),
       HttpStatus.CREATED,
@@ -80,7 +54,10 @@ export class ModaratsMogaksController {
 
   @Get('modarats/:modaratId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async getModarat(@CurrentUser() user: AuthenticatedUser, @Param() params: ModaratIdParam) {
+  async getModarat(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodParams(moderatIdParamSchema) params: ModaratIdParams,
+  ) {
     return successResponse(await this.mogaks.getModarat(user.userId, params.modaratId));
   }
 
@@ -88,8 +65,8 @@ export class ModaratsMogaksController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateModarat(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: ModaratIdParam,
-    @Body() request: ModaratRequest,
+    @ZodParams(moderatIdParamSchema) params: ModaratIdParams,
+    @ZodBody(moderatRequestSchema) request: ModaratRequest,
   ) {
     return successResponse(
       await this.mogaks.updateModarat(user.userId, params.modaratId, {
@@ -102,14 +79,20 @@ export class ModaratsMogaksController {
   @Delete('modarats/:modaratId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @HttpCode(HttpStatus.OK)
-  async deleteModarat(@CurrentUser() user: AuthenticatedUser, @Param() params: ModaratIdParam) {
+  async deleteModarat(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodParams(moderatIdParamSchema) params: ModaratIdParams,
+  ) {
     await this.mogaks.deleteModarat(user.userId, params.modaratId);
   }
 
   @Post('mogaks')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   @HttpCode(HttpStatus.CREATED)
-  async createMogak(@CurrentUser() user: AuthenticatedUser, @Body() request: MogakRequest) {
+  async createMogak(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodBody(mogakRequestSchema) request: MogakRequest,
+  ) {
     return successResponse(
       await this.mogaks.createMogak(user.userId, {
         modaratId: request.modaratId,
@@ -126,7 +109,10 @@ export class ModaratsMogaksController {
 
   @Get('modarats/:modaratId/mogaks')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async listMogaks(@CurrentUser() user: AuthenticatedUser, @Param() params: ModaratIdParam) {
+  async listMogaks(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodParams(moderatIdParamSchema) params: ModaratIdParams,
+  ) {
     return successResponse(await this.mogaks.listMogaks(user.userId, params.modaratId));
   }
 
@@ -134,8 +120,8 @@ export class ModaratsMogaksController {
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateMogak(
     @CurrentUser() user: AuthenticatedUser,
-    @Param() params: MogakIdParam,
-    @Body() request: MogakUpdateRequest,
+    @ZodParams(mogakIdParamSchema) params: MogakIdParams,
+    @ZodBody(mogakUpdateRequestSchema) request: MogakUpdateRequest,
   ) {
     return successResponse(
       await this.mogaks.updateMogak(user.userId, params.mogakId, {
@@ -151,7 +137,10 @@ export class ModaratsMogaksController {
 
   @Delete('mogaks/:mogakId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async deleteMogak(@CurrentUser() user: AuthenticatedUser, @Param() params: MogakIdParam) {
+  async deleteMogak(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodParams(mogakIdParamSchema) params: MogakIdParams,
+  ) {
     await this.mogaks.deleteMogak(user.userId, params.mogakId);
     return successResponse({});
   }

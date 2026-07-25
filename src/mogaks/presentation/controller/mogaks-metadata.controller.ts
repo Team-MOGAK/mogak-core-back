@@ -1,7 +1,7 @@
 import { Controller, Get, Inject } from '@nestjs/common';
 
-import { successResponse } from '../../common/http/api-response';
-import { MogaksService } from '../application/mogaks.service';
+import { successResponse } from '../../../common/http/api-response';
+import { MogaksService } from '../../application/service/mogaks.service';
 
 const COLORS = [
   '#475FFD',

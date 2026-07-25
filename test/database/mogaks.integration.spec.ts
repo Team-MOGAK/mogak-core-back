@@ -14,8 +14,8 @@ import {
   mogaks,
   users,
 } from '../../src/database/schema';
-import { JogaksService } from '../../src/mogaks/application/jogaks.service';
-import { MogaksRepository } from '../../src/mogaks/infrastructure/mogaks.repository';
+import { JogaksService } from '../../src/mogaks/application/service/jogaks.service';
+import { MogaksRepository } from '../../src/mogaks/infrastructure/repository/mogaks.repository';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {

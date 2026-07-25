@@ -7,9 +7,9 @@ import request from 'supertest';
 import { configureApp } from '../../../src/app.setup';
 import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
 import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
-import { MogaksService } from '../../../src/mogaks/application/mogaks.service';
-import { MogaksMetadataController } from '../../../src/mogaks/presentation/mogaks-metadata.controller';
-import { ModaratsMogaksController } from '../../../src/mogaks/presentation/modarats-mogaks.controller';
+import { MogaksService } from '../../../src/mogaks/application/service/mogaks.service';
+import { MogaksMetadataController } from '../../../src/mogaks/presentation/controller/mogaks-metadata.controller';
+import { ModaratsMogaksController } from '../../../src/mogaks/presentation/controller/modarats-mogaks.controller';
 
 describe('모다랏과 모각 HTTP 계약', () => {
   let app: INestApplication;
