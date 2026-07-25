@@ -11,6 +11,7 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "esModuleInterop": true,
+    "types": ["node", "jest", "multer"],
     "skipLibCheck": true
   }
 }
