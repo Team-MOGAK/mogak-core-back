@@ -49,7 +49,7 @@ describe('인증 HTTP 계약', () => {
     await app?.close();
   });
 
-  it('기존 애플 로그인 경로와 응답 포맷을 유지한다', async () => {
+  it('공통 애플 로그인 경로와 응답 포맷을 유지한다', async () => {
     authService.login.mockResolvedValue({
       isRegistered: false,
       userId: 7,
@@ -57,8 +57,8 @@ describe('인증 HTTP 계약', () => {
     });
 
     await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ id_token: 'apple-id-token' })
+      .post('/api/auth/apple/login')
+      .send({ token: 'apple-id-token' })
       .expect(200)
       .expect(({ body }) => {
         expect(body).toMatchObject({
@@ -71,12 +71,11 @@ describe('인증 HTTP 계약', () => {
     expect(authService.login).toHaveBeenCalledWith('APPLE', 'apple-id-token');
   });
 
-  it('정의되지 않은 인증 필드와 빈 토큰을 Z005로 거부한다', async () => {
+  it('삭제된 레거시 애플 로그인 경로는 찾을 수 없다', async () => {
     await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ id_token: '', unexpected: true })
-      .expect(400)
-      .expect(({ body }) => expect(body.code).toBe('Z005'));
+      .send({ id_token: 'apple-id-token' })
+      .expect(404);
 
     expect(authService.login).not.toHaveBeenCalled();
   });
@@ -115,19 +114,10 @@ describe('인증 HTTP 계약', () => {
 
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await request(app.getHttpServer())
-        .post('/api/auth/login')
-        .send({ id_token: 'apple-id-token' })
-        .expect(200);
-      await request(app.getHttpServer())
         .post('/api/auth/google/login')
         .send({ token: 'google-id-token' })
         .expect(200);
     }
-    await request(app.getHttpServer())
-      .post('/api/auth/login')
-      .send({ id_token: 'apple-id-token' })
-      .expect(429)
-      .expect({ statusCode: 429, message: 'ThrottlerException: Too Many Requests' });
     await request(app.getHttpServer())
       .post('/api/auth/google/login')
       .send({ token: 'google-id-token' })
@@ -146,7 +136,7 @@ describe('인증 HTTP 계약', () => {
       .expect(429)
       .expect({ statusCode: 429, message: 'ThrottlerException: Too Many Requests' });
 
-    expect(authService.login).toHaveBeenCalledTimes(40);
+    expect(authService.login).toHaveBeenCalledTimes(20);
     expect(authService.refresh).toHaveBeenCalledTimes(60);
   });
 });

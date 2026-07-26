@@ -9,10 +9,8 @@ import { AuthService } from '../../application/service/auth.service';
 import type { AuthenticatedPrincipal } from '../../application/type/authenticated-principal';
 import { SocialProvider } from '../../domain/entity/auth.entity';
 import {
-  appleLoginRequestSchema,
   providerParamsSchema,
   socialLoginRequestSchema,
-  type AppleLoginRequest,
   type ProviderParams,
   type SocialLoginRequest,
 } from '../type/auth.request';
@@ -28,14 +26,6 @@ import { CurrentUser } from './current-user.decorator';
 @Controller('api/auth')
 export class AuthController {
   constructor(@Inject(AuthService) private readonly authService: AuthService) {}
-
-  // TODO: iOS를 `/api/auth/apple/login`의 공통 provider 경로로 전환한 뒤 이 Spring 호환 경로를 제거한다.
-  @Post('login')
-  @Throttle({ default: { limit: 20, ttl: 60_000 } })
-  @HttpCode(HttpStatus.OK)
-  async loginApple(@ZodBody(appleLoginRequestSchema) request: AppleLoginRequest) {
-    return successResponse<LoginResponse>(await this.authService.login('APPLE', request.id_token));
-  }
 
   @Post(':provider/login')
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
