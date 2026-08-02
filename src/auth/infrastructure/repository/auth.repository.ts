@@ -4,16 +4,16 @@ import { and, eq, gt } from 'drizzle-orm';
 import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
 import { authSessions, socialAccounts, users } from '../../../database/schema';
-import type { AuthPersistencePort } from '../../application/port/auth-persistence.port';
+import type { AuthPersistencePort } from '../../application/port/authPersistence.port';
 import type { SessionRotationCommand } from '../../application/type/auth.command';
 import type { AuthUser, SessionDraft } from '../../application/type/auth.result';
-import type { UserRole } from '../../application/type/authenticated-principal';
+import type { UserRole } from '../../application/type/authenticatedPrincipal';
 import type { VerifiedSocialIdentity } from '../../domain/entity/auth.entity';
 import {
   AuthPersistenceException,
   DuplicateEmailException,
   DuplicateSocialAccountException,
-} from '../../domain/exception/auth-persistence.exception';
+} from '../../domain/exception/authPersistence.exception';
 
 @Injectable()
 export class AuthRepository implements AuthPersistencePort {

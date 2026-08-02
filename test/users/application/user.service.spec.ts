@@ -1,9 +1,9 @@
 import { jest } from '@jest/globals';
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 
-import type { SessionTokenIssuerPort } from '../../../src/auth/application/port/session-token-issuer.port';
-import type { AuthenticatedPrincipal } from '../../../src/auth/application/type/authenticated-principal';
-import { AppErrorCode } from '../../../src/common/http/app-error-code';
+import type { SessionTokenIssuerPort } from '../../../src/auth/application/port/sessionTokenIssuer.port';
+import type { AuthenticatedPrincipal } from '../../../src/auth/application/type/authenticatedPrincipal';
+import { AppErrorCode } from '../../../src/common/http/appErrorCode';
 import { DomainException } from '../../../src/common/http/domain.exception';
 import type { StoragePort } from '../../../src/storage/application/storage.port';
 import type { ConsentRepositoryPort } from '../../../src/users/application/port/consent.repository.port';
@@ -11,7 +11,7 @@ import type { MetadataRepositoryPort } from '../../../src/users/application/port
 import type { UserRepositoryPort } from '../../../src/users/application/port/user.repository.port';
 import { ConsentService } from '../../../src/users/application/service/consent.service';
 import { UserService } from '../../../src/users/application/service/user.service';
-import { DuplicateNicknameException } from '../../../src/users/domain/exception/user-persistence.exception';
+import { DuplicateNicknameException } from '../../../src/users/domain/exception/userPersistence.exception';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 const now = new Date('2026-07-25T00:00:00.000Z');

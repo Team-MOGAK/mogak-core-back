@@ -1,18 +1,18 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { generateId } from '../../../common/util/id-generator';
+import { generateId } from '../../../common/util/idGenerator';
 
-import type { AuthenticatedPrincipal } from '../../../auth/application/type/authenticated-principal';
+import type { AuthenticatedPrincipal } from '../../../auth/application/type/authenticatedPrincipal';
 import {
   SESSION_TOKEN_ISSUER,
   type SessionTokenIssuerPort,
-} from '../../../auth/application/port/session-token-issuer.port';
-import { AppErrorCode } from '../../../common/http/app-error-code';
+} from '../../../auth/application/port/sessionTokenIssuer.port';
+import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
-import { requiredTrimmed } from '../../../common/validation/required-text';
+import { requiredTrimmed } from '../../../common/validation/requiredText';
 import { STORAGE_PORT, type StoragePort } from '../../../storage/application/storage.port';
 import { canCompleteRegistration, normalizeNickname } from '../../domain/entity/user.entity';
-import { DuplicateNicknameException } from '../../domain/exception/user-persistence.exception';
+import { DuplicateNicknameException } from '../../domain/exception/userPersistence.exception';
 import { METADATA_REPOSITORY, type MetadataRepositoryPort } from '../port/metadata.repository.port';
 import { USER_REPOSITORY, type UserRepositoryPort } from '../port/user.repository.port';
 import type { JoinUserCommand } from '../type/user.command';

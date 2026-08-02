@@ -17,7 +17,7 @@ import {
 } from '../../../database/schema';
 import type { PostsRepositoryPort } from '../../application/port/posts.repository.port';
 import type { CreatePostCommand } from '../../application/type/post.command';
-import { PostsPersistenceException } from '../../domain/exception/posts-persistence.exception';
+import { PostsPersistenceException } from '../../domain/exception/postsPersistence.exception';
 import type {
   PostCommentResult,
   PostDetailResult,

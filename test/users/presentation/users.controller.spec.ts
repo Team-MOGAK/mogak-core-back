@@ -1,15 +1,15 @@
 import { jest } from '@jest/globals';
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 import type { INestApplication } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
 
-import { BoundedThrottlerStorage } from '../../../src/common/http/bounded-throttler.storage';
+import { BoundedThrottlerStorage } from '../../../src/common/http/boundedThrottler.storage';
 import { configureApp } from '../../../src/app.setup';
-import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
-import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
+import { AccessTokenGuard } from '../../../src/auth/presentation/controller/accessToken.guard';
+import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registeredUser.guard';
 import { ConsentService } from '../../../src/users/application/service/consent.service';
 import { MetadataService } from '../../../src/users/application/service/metadata.service';
 import { UserService } from '../../../src/users/application/service/user.service';

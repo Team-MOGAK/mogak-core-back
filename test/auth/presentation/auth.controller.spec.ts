@@ -1,15 +1,15 @@
 import { jest } from '@jest/globals';
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 import type { INestApplication } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
 
-import { BoundedThrottlerStorage } from '../../../src/common/http/bounded-throttler.storage';
+import { BoundedThrottlerStorage } from '../../../src/common/http/boundedThrottler.storage';
 import { configureApp } from '../../../src/app.setup';
 import { AuthService } from '../../../src/auth/application/service/auth.service';
-import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
+import { AccessTokenGuard } from '../../../src/auth/presentation/controller/accessToken.guard';
 import { AuthController } from '../../../src/auth/presentation/controller/auth.controller';
 
 describe('인증 HTTP 계약', () => {

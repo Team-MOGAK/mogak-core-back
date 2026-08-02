@@ -1,5 +1,5 @@
 import type { SocialProvider } from '../../domain/entity/auth.entity';
-import type { UserRole } from './authenticated-principal';
+import type { UserRole } from './authenticatedPrincipal';
 
 export type LoginCommand = Readonly<{ provider: SocialProvider; token: string }>;
 export type RefreshCommand = Readonly<{ refreshToken: string }>;

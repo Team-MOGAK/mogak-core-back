@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from './app.module';
-import type { AppEnv } from './config/app-env';
+import type { AppEnv } from './config/appEnv';
 import { configureApp } from './app.setup';
 
 async function bootstrap(): Promise<void> {

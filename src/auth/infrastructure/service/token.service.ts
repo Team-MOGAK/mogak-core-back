@@ -4,21 +4,21 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { jwtVerify, SignJWT, type JWTPayload } from 'jose';
 
-import { AppErrorCode } from '../../../common/http/app-error-code';
+import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
-import type { AppEnv } from '../../../config/app-env';
+import type { AppEnv } from '../../../config/appEnv';
 import type {
   AuthTokenVerifierPort,
   VerifiedRefreshToken,
-} from '../../application/port/auth-token-verifier.port';
+} from '../../application/port/authTokenVerifier.port';
 import type {
   IssuedSessionTokens,
   SessionTokenIssuerPort,
-} from '../../application/port/session-token-issuer.port';
+} from '../../application/port/sessionTokenIssuer.port';
 import type {
   AuthenticatedPrincipal,
   UserRole,
-} from '../../application/type/authenticated-principal';
+} from '../../application/type/authenticatedPrincipal';
 
 const ACCESS_TOKEN_TYPE = 'access';
 const REFRESH_TOKEN_TYPE = 'refresh';

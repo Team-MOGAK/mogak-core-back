@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { positiveIdSchema, requiredTextSchema } from '../../../common/validation/request-schema';
+import { positiveIdSchema, requiredTextSchema } from '../../../common/validation/requestSchema';
 
 export const moderatRequestSchema = z
   .object({ title: requiredTextSchema(1, 100), color: requiredTextSchema(1, 100) })

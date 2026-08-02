@@ -8,7 +8,7 @@ import type {
 } from '../../application/type/consent.command';
 import type { MarketingConsentResult } from '../../application/type/consent.result';
 import type { ConsentItem } from '../../domain/entity/consent.entity';
-import { UserPersistenceException } from '../../domain/exception/user-persistence.exception';
+import { UserPersistenceException } from '../../domain/exception/userPersistence.exception';
 import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
 import { consentItems, userConsents } from '../../../database/schema';

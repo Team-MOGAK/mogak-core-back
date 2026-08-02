@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { generateId } from '../../../common/util/id-generator';
+import { generateId } from '../../../common/util/idGenerator';
 
-import { AppErrorCode } from '../../../common/http/app-error-code';
+import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
 import {
   validateNewSocialIdentity,
@@ -12,22 +12,22 @@ import {
 import {
   DuplicateEmailException,
   DuplicateSocialAccountException,
-} from '../../domain/exception/auth-persistence.exception';
-import { AUTH_PERSISTENCE, type AuthPersistencePort } from '../port/auth-persistence.port';
+} from '../../domain/exception/authPersistence.exception';
+import { AUTH_PERSISTENCE, type AuthPersistencePort } from '../port/authPersistence.port';
 import {
   AUTH_TOKEN_VERIFIER,
   type AuthTokenVerifierPort,
-} from '../port/auth-token-verifier.port';
+} from '../port/authTokenVerifier.port';
 import {
   SESSION_TOKEN_ISSUER,
   type SessionTokenIssuerPort,
-} from '../port/session-token-issuer.port';
+} from '../port/sessionTokenIssuer.port';
 import {
   SOCIAL_IDENTITY_VERIFIER,
   type SocialIdentityVerifierPort,
-} from '../port/social-identity-verifier.port';
+} from '../port/socialIdentityVerifier.port';
 import type { TokenResult, SocialLoginResult, AuthUser } from '../type/auth.result';
-import type { AuthenticatedPrincipal } from '../type/authenticated-principal';
+import type { AuthenticatedPrincipal } from '../type/authenticatedPrincipal';
 
 @Injectable()
 export class AuthService {

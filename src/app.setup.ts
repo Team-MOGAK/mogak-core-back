@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 
-import { GlobalExceptionFilter } from './common/http/global-exception.filter';
+import { GlobalExceptionFilter } from './common/http/globalException.filter';
 
 type ExpressApplication = {
   set(setting: 'trust proxy', value: number): void;

@@ -1,12 +1,12 @@
 import { jest } from '@jest/globals';
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { configureApp } from '../../../src/app.setup';
-import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
-import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
+import { AccessTokenGuard } from '../../../src/auth/presentation/controller/accessToken.guard';
+import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registeredUser.guard';
 import { JogaksService } from '../../../src/mogaks/application/service/jogaks.service';
 import { JogaksController } from '../../../src/mogaks/presentation/controller/jogaks.controller';
 

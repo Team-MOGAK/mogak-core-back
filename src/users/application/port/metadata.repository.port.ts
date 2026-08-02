@@ -1,4 +1,4 @@
-import type { Address, Job } from '../../domain/entity/user-metadata.entity';
+import type { Address, Job } from '../../domain/entity/userMetadata.entity';
 
 export const METADATA_REPOSITORY = Symbol('METADATA_REPOSITORY');
 

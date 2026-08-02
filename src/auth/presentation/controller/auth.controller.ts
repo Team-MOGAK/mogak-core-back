@@ -1,12 +1,12 @@
 import { Controller, Headers, HttpCode, HttpStatus, Inject, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 
-import { successResponse } from '../../../common/http/api-response';
-import { AppErrorCode } from '../../../common/http/app-error-code';
+import { successResponse } from '../../../common/http/apiResponse';
+import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
-import { ZodBody, ZodParams } from '../../../common/validation/zod-parameter.decorator';
+import { ZodBody, ZodParams } from '../../../common/validation/zodParameter.decorator';
 import { AuthService } from '../../application/service/auth.service';
-import type { AuthenticatedPrincipal } from '../../application/type/authenticated-principal';
+import type { AuthenticatedPrincipal } from '../../application/type/authenticatedPrincipal';
 import { SocialProvider } from '../../domain/entity/auth.entity';
 import {
   providerParamsSchema,
@@ -20,8 +20,8 @@ import type {
   RefreshResponse,
   WithdrawResponse,
 } from '../type/auth.response';
-import { AccessTokenGuard } from './access-token.guard';
-import { CurrentUser } from './current-user.decorator';
+import { AccessTokenGuard } from './accessToken.guard';
+import { CurrentUser } from './currentUser.decorator';
 
 @Controller('api/auth')
 export class AuthController {

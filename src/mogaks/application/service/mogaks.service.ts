@@ -1,13 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { AppErrorCode } from '../../../common/http/app-error-code';
+import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
-import { requiredTrimmed } from '../../../common/validation/required-text';
+import { requiredTrimmed } from '../../../common/validation/requiredText';
 import { selectMogakCategory, validateMogakCapacity } from '../../domain/entity/mogak.entity';
 import { MOGAKS_REPOSITORY, type MogaksRepositoryPort } from '../port/mogaks.repository.port';
 import type { CreateMogakCommand, ModaratCommand, UpdateMogakCommand } from '../type/mogak.command';
 import type { MogakResult, ModaratResult } from '../type/mogak.result';
-import type { OwnedMogakPort } from '../port/owned-mogak.port';
+import type { OwnedMogakPort } from '../port/ownedMogak.port';
 
 @Injectable()
 export class MogaksService implements OwnedMogakPort {

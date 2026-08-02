@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 
-import { AppErrorCode } from '../../../src/common/http/app-error-code';
+import { AppErrorCode } from '../../../src/common/http/appErrorCode';
 import { DomainException } from '../../../src/common/http/domain.exception';
 import type { SocialRepositoryPort } from '../../../src/social/application/port/social.repository.port';
 import { SocialService } from '../../../src/social/application/service/social.service';

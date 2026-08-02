@@ -12,7 +12,7 @@ import type { User } from '../../domain/entity/user.entity';
 import {
   DuplicateNicknameException,
   UserPersistenceException,
-} from '../../domain/exception/user-persistence.exception';
+} from '../../domain/exception/userPersistence.exception';
 import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
 import { authSessions, jobs, userConsents, users } from '../../../database/schema';

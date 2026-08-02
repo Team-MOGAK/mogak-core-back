@@ -12,14 +12,14 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 
-import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../../auth/application/type/authenticated-principal';
-import { AccessTokenGuard } from '../../../auth/presentation/controller/access-token.guard';
-import { CurrentUser } from '../../../auth/presentation/controller/current-user.decorator';
-import { RegisteredUserGuard } from '../../../auth/presentation/controller/registered-user.guard';
-import { successResponse } from '../../../common/http/api-response';
-import { AppErrorCode } from '../../../common/http/app-error-code';
+import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../../auth/application/type/authenticatedPrincipal';
+import { AccessTokenGuard } from '../../../auth/presentation/controller/accessToken.guard';
+import { CurrentUser } from '../../../auth/presentation/controller/currentUser.decorator';
+import { RegisteredUserGuard } from '../../../auth/presentation/controller/registeredUser.guard';
+import { successResponse } from '../../../common/http/apiResponse';
+import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
-import { ZodBody, ZodParams, ZodQuery } from '../../../common/validation/zod-parameter.decorator';
+import { ZodBody, ZodParams, ZodQuery } from '../../../common/validation/zodParameter.decorator';
 import { JogaksService } from '../../application/service/jogaks.service';
 import type { JogakExecutionStatus } from '../../domain/entity/jogak.entity';
 import {

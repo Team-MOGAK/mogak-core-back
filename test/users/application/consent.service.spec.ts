@@ -1,6 +1,6 @@
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 
-import { AppErrorCode } from '../../../src/common/http/app-error-code';
+import { AppErrorCode } from '../../../src/common/http/appErrorCode';
 import { DomainException } from '../../../src/common/http/domain.exception';
 import type { ConsentRepositoryPort } from '../../../src/users/application/port/consent.repository.port';
 import { ConsentService } from '../../../src/users/application/service/consent.service';

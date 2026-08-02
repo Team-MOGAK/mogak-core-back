@@ -3,14 +3,14 @@ import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
 import { AuthModule } from '../auth/auth.module';
 import { MOGAKS_REPOSITORY } from './application/port/mogaks.repository.port';
-import { OWNED_MOGAK_PORT } from './application/port/owned-mogak.port';
-import { OWNED_OCCURRENCE_PORT } from './application/port/owned-occurrence.port';
+import { OWNED_MOGAK_PORT } from './application/port/ownedMogak.port';
+import { OWNED_OCCURRENCE_PORT } from './application/port/ownedOccurrence.port';
 import { MogaksService } from './application/service/mogaks.service';
 import { JogaksService, KST_DATE_PROVIDER, kstToday } from './application/service/jogaks.service';
 import { MogaksRepository } from './infrastructure/repository/mogaks.repository';
 import { JogaksController } from './presentation/controller/jogaks.controller';
-import { ModaratsMogaksController } from './presentation/controller/modarats-mogaks.controller';
-import { MogaksMetadataController } from './presentation/controller/mogaks-metadata.controller';
+import { ModaratsMogaksController } from './presentation/controller/modaratsMogaks.controller';
+import { MogaksMetadataController } from './presentation/controller/mogaksMetadata.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule],

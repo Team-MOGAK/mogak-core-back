@@ -1,10 +1,10 @@
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 import type { Database } from '../../../src/database/database.provider';
 import {
   AuthPersistenceException,
   DuplicateEmailException,
   DuplicateSocialAccountException,
-} from '../../../src/auth/domain/exception/auth-persistence.exception';
+} from '../../../src/auth/domain/exception/authPersistence.exception';
 import { AuthRepository } from '../../../src/auth/infrastructure/repository/auth.repository';
 
 const identity = {

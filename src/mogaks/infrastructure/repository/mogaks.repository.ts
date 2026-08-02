@@ -13,7 +13,7 @@ import {
   mogaks,
 } from '../../../database/schema';
 import type { MogaksRepositoryPort } from '../../application/port/mogaks.repository.port';
-import { MogaksPersistenceException } from '../../domain/exception/mogaks-persistence.exception';
+import { MogaksPersistenceException } from '../../domain/exception/mogaksPersistence.exception';
 import type {
   JogakExecutionStatus as StoredExecutionStatus,
   JogakScheduleType as ScheduleType,

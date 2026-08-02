@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
-import { testMock } from '../../test-mock';
-import { AppErrorCode } from '../../../src/common/http/app-error-code';
+import { testMock } from '../../testMock';
+import { AppErrorCode } from '../../../src/common/http/appErrorCode';
 import { DomainException } from '../../../src/common/http/domain.exception';
 import type { MogaksRepositoryPort } from '../../../src/mogaks/application/port/mogaks.repository.port';
 import { MogaksService } from '../../../src/mogaks/application/service/mogaks.service';

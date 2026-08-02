@@ -1,3 +1,3 @@
-import type { Address, Job } from '../../domain/entity/user-metadata.entity';
+import type { Address, Job } from '../../domain/entity/userMetadata.entity';
 
 export type MetadataRecord = Job | Address;

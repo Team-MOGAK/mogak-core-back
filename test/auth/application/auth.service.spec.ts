@@ -1,24 +1,24 @@
 import { jest } from '@jest/globals';
-import { testMock } from '../../test-mock';
-import { AppErrorCode } from '../../../src/common/http/app-error-code';
+import { testMock } from '../../testMock';
+import { AppErrorCode } from '../../../src/common/http/appErrorCode';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import type { AuthPersistencePort } from '../../../src/auth/application/port/auth-persistence.port';
-import type { AuthTokenVerifierPort } from '../../../src/auth/application/port/auth-token-verifier.port';
-import type { SessionTokenIssuerPort } from '../../../src/auth/application/port/session-token-issuer.port';
-import type { SocialIdentityVerifierPort } from '../../../src/auth/application/port/social-identity-verifier.port';
+import type { AuthPersistencePort } from '../../../src/auth/application/port/authPersistence.port';
+import type { AuthTokenVerifierPort } from '../../../src/auth/application/port/authTokenVerifier.port';
+import type { SessionTokenIssuerPort } from '../../../src/auth/application/port/sessionTokenIssuer.port';
+import type { SocialIdentityVerifierPort } from '../../../src/auth/application/port/socialIdentityVerifier.port';
 import { AuthService } from '../../../src/auth/application/service/auth.service';
-import type { AuthenticatedPrincipal } from '../../../src/auth/application/type/authenticated-principal';
+import type { AuthenticatedPrincipal } from '../../../src/auth/application/type/authenticatedPrincipal';
 import {
   DuplicateEmailException,
   DuplicateSocialAccountException,
-} from '../../../src/auth/domain/exception/auth-persistence.exception';
+} from '../../../src/auth/domain/exception/authPersistence.exception';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
 function createTokenPorts(): SessionTokenIssuerPort & AuthTokenVerifierPort {
   return {
     issue: testMock().mockResolvedValue({
-      accessToken: 'access-token',
+      accessToken: 'accessToken',
       refreshToken: 'refresh-token',
       refreshTokenHash: 'refresh-token-hash',
       refreshTokenExpiresAt: new Date('2026-08-25T00:00:00.000Z'),
@@ -58,7 +58,7 @@ describe('인증 서비스', () => {
     jest.mocked(persistence.isSessionActive).mockResolvedValue(true);
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
-    await expect(service.authenticateAccessToken('access-token')).resolves.toEqual(principal);
+    await expect(service.authenticateAccessToken('accessToken')).resolves.toEqual(principal);
     expect(persistence.isSessionActive).toHaveBeenCalledWith(SESSION_ID, 3);
   });
 
@@ -75,7 +75,7 @@ describe('인증 서비스', () => {
       jest.mocked(persistence.isSessionActive).mockResolvedValue(false);
       const service = new AuthService(verifiers, persistence, tokens, tokens);
 
-      await expect(service.authenticateAccessToken('access-token')).rejects.toEqual(
+      await expect(service.authenticateAccessToken('accessToken')).rejects.toEqual(
         new DomainException(AppErrorCode.LOGOUT_TOKEN),
       );
     },
@@ -88,7 +88,7 @@ describe('인증 서비스', () => {
     jest.mocked(tokens.verifyAccess).mockRejectedValue(failure);
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
-    await expect(service.authenticateAccessToken('invalid-access-token')).rejects.toBe(failure);
+    await expect(service.authenticateAccessToken('invalid-accessToken')).rejects.toBe(failure);
     expect(persistence.isSessionActive).not.toHaveBeenCalled();
   });
 
@@ -110,7 +110,7 @@ describe('인증 서비스', () => {
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.refresh('current-refresh-token')).resolves.toEqual({
-      accessToken: 'access-token',
+      accessToken: 'accessToken',
       refreshToken: 'refresh-token',
     });
     expect(persistence.rotateSession).toHaveBeenCalledWith({
@@ -282,7 +282,7 @@ describe('인증 서비스', () => {
     const tokens = createTokenPorts();
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
-    await expect(service.login('KAKAO', 'access-token')).rejects.toEqual(
+    await expect(service.login('KAKAO', 'accessToken')).rejects.toEqual(
       new DomainException(AppErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED),
     );
     expect(persistence.createAccount).not.toHaveBeenCalled();
@@ -316,7 +316,7 @@ describe('인증 서비스', () => {
     const tokens = createTokenPorts();
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
-    await expect(service.login('KAKAO', 'access-token')).resolves.toMatchObject({ userId: 7 });
+    await expect(service.login('KAKAO', 'accessToken')).resolves.toMatchObject({ userId: 7 });
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
       new DomainException(AppErrorCode.SOCIAL_EMAIL_NOT_VERIFIED),
     );

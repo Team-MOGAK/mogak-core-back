@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
-import { parseAppEnv } from './app-env';
+import { parseAppEnv } from './appEnv';
 
 @Module({
   imports: [

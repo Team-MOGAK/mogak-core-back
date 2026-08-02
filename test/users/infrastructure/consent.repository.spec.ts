@@ -1,7 +1,7 @@
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 
 import type { Database } from '../../../src/database/database.provider';
-import { UserPersistenceException } from '../../../src/users/domain/exception/user-persistence.exception';
+import { UserPersistenceException } from '../../../src/users/domain/exception/userPersistence.exception';
 import { ConsentRepository } from '../../../src/users/infrastructure/repository/consent.repository';
 
 describe('동의 저장소', () => {

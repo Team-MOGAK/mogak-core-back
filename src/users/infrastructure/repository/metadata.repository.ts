@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 
 import type { MetadataRepositoryPort } from '../../application/port/metadata.repository.port';
-import type { Address, Job } from '../../domain/entity/user-metadata.entity';
+import type { Address, Job } from '../../domain/entity/userMetadata.entity';
 import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
 import { addresses, jobs } from '../../../database/schema';

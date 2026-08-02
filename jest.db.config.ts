@@ -20,7 +20,7 @@ const config: Config = {
   testEnvironment: 'node',
   testMatch: ['<rootDir>/test/database/**/*.integration.spec.ts'],
   modulePathIgnorePatterns: ['<rootDir>/.worktrees/'],
-  globalSetup: '<rootDir>/test/database/global-setup.ts',
+  globalSetup: '<rootDir>/test/database/globalSetup.ts',
   setupFiles: ['<rootDir>/test/database/setup.ts'],
   restoreMocks: true,
 };

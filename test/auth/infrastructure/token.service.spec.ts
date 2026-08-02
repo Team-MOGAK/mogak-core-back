@@ -1,9 +1,9 @@
 import type { ConfigService } from '@nestjs/config';
 
-import { testMock } from '../../test-mock';
-import { AppErrorCode } from '../../../src/common/http/app-error-code';
+import { testMock } from '../../testMock';
+import { AppErrorCode } from '../../../src/common/http/appErrorCode';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import type { AppEnv } from '../../../src/config/app-env';
+import type { AppEnv } from '../../../src/config/appEnv';
 import { JwtTokenService } from '../../../src/auth/infrastructure/service/token.service';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';

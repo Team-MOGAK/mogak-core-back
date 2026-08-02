@@ -1,7 +1,7 @@
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 
 import type { Database } from '../../../src/database/database.provider';
-import { PostsPersistenceException } from '../../../src/posts/domain/exception/posts-persistence.exception';
+import { PostsPersistenceException } from '../../../src/posts/domain/exception/postsPersistence.exception';
 import { PostsRepository } from '../../../src/posts/infrastructure/repository/posts.repository';
 
 describe('게시글 저장소', () => {

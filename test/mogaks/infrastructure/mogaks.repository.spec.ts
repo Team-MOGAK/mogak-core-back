@@ -1,7 +1,7 @@
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 
 import type { Database } from '../../../src/database/database.provider';
-import { MogaksPersistenceException } from '../../../src/mogaks/domain/exception/mogaks-persistence.exception';
+import { MogaksPersistenceException } from '../../../src/mogaks/domain/exception/mogaksPersistence.exception';
 import { MogaksRepository } from '../../../src/mogaks/infrastructure/repository/mogaks.repository';
 
 describe('모각 저장소', () => {

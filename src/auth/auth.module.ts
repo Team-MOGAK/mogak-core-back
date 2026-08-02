@@ -1,20 +1,20 @@
 import { Module } from '@nestjs/common';
 
 import { DatabaseModule } from '../database/database.module';
-import { AUTH_PERSISTENCE } from './application/port/auth-persistence.port';
-import { AUTH_TOKEN_VERIFIER } from './application/port/auth-token-verifier.port';
-import { SESSION_TOKEN_ISSUER } from './application/port/session-token-issuer.port';
-import { SOCIAL_IDENTITY_VERIFIER } from './application/port/social-identity-verifier.port';
+import { AUTH_PERSISTENCE } from './application/port/authPersistence.port';
+import { AUTH_TOKEN_VERIFIER } from './application/port/authTokenVerifier.port';
+import { SESSION_TOKEN_ISSUER } from './application/port/sessionTokenIssuer.port';
+import { SOCIAL_IDENTITY_VERIFIER } from './application/port/socialIdentityVerifier.port';
 import { AuthService } from './application/service/auth.service';
 import { AuthRepository } from './infrastructure/repository/auth.repository';
 import { JwtTokenService } from './infrastructure/service/token.service';
-import { AppleIdentityVerifier } from './infrastructure/verifier/apple-identity-verifier';
-import { GoogleIdentityVerifier } from './infrastructure/verifier/google-identity-verifier';
-import { KakaoIdentityVerifier } from './infrastructure/verifier/kakao-identity-verifier';
-import { SocialIdentityVerifierRegistry } from './infrastructure/verifier/social-identity-verifier.registry';
-import { AccessTokenGuard } from './presentation/controller/access-token.guard';
+import { AppleIdentityVerifier } from './infrastructure/verifier/appleIdentityVerifier';
+import { GoogleIdentityVerifier } from './infrastructure/verifier/googleIdentityVerifier';
+import { KakaoIdentityVerifier } from './infrastructure/verifier/kakaoIdentityVerifier';
+import { SocialIdentityVerifierRegistry } from './infrastructure/verifier/socialIdentityVerifier.registry';
+import { AccessTokenGuard } from './presentation/controller/accessToken.guard';
 import { AuthController } from './presentation/controller/auth.controller';
-import { RegisteredUserGuard } from './presentation/controller/registered-user.guard';
+import { RegisteredUserGuard } from './presentation/controller/registeredUser.guard';
 
 @Module({
   imports: [DatabaseModule],

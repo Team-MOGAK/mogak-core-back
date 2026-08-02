@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { requiredTextSchema } from '../../../common/validation/request-schema';
+import { requiredTextSchema } from '../../../common/validation/requestSchema';
 
 export const consentAgreementRequestSchema = z
   .object({ consentItemId: z.number().int().positive(), agreed: z.boolean() })

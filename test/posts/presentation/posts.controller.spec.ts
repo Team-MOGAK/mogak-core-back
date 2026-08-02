@@ -1,16 +1,16 @@
 import { jest } from '@jest/globals';
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 import type { INestApplication } from '@nestjs/common';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { configureApp } from '../../../src/app.setup';
-import { AppErrorCode } from '../../../src/common/http/app-error-code';
+import { AppErrorCode } from '../../../src/common/http/appErrorCode';
 import { DomainException } from '../../../src/common/http/domain.exception';
 import { STORAGE_PORT, type StoragePort } from '../../../src/storage/application/storage.port';
-import { AccessTokenGuard } from '../../../src/auth/presentation/controller/access-token.guard';
-import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registered-user.guard';
+import { AccessTokenGuard } from '../../../src/auth/presentation/controller/accessToken.guard';
+import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registeredUser.guard';
 import { PostsService } from '../../../src/posts/application/service/posts.service';
 import { PostsController } from '../../../src/posts/presentation/controller/posts.controller';
 

@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { AppErrorCode } from '../../../common/http/app-error-code';
+import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
-import { requiredTrimmed } from '../../../common/validation/required-text';
+import { requiredTrimmed } from '../../../common/validation/requiredText';
 import {
   JogakExecution,
   JogakSchedule,
@@ -13,7 +13,7 @@ import {
   type ValidatedJogakSchedule,
 } from '../../domain/entity/jogak.entity';
 import { MOGAKS_REPOSITORY, type MogaksRepositoryPort } from '../port/mogaks.repository.port';
-import type { OwnedOccurrencePort } from '../port/owned-occurrence.port';
+import type { OwnedOccurrencePort } from '../port/ownedOccurrence.port';
 import type {
   CreateJogakCommand,
   ScheduleCommand,

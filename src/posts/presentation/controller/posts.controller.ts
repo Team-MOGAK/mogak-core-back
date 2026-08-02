@@ -13,18 +13,18 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 
-import { successResponse } from '../../../common/http/api-response';
+import { successResponse } from '../../../common/http/apiResponse';
 import {
   MAX_POST_IMAGE_COUNT,
   postImageUploadOptions,
-} from '../../../common/http/image-upload.options';
-import { parseMultipartJson } from '../../../common/validation/multipart-json';
-import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../../auth/application/type/authenticated-principal';
-import { AccessTokenGuard } from '../../../auth/presentation/controller/access-token.guard';
-import { CurrentUser } from '../../../auth/presentation/controller/current-user.decorator';
-import { RegisteredUserGuard } from '../../../auth/presentation/controller/registered-user.guard';
+} from '../../../common/http/imageUpload.options';
+import { parseMultipartJson } from '../../../common/validation/multipartJson';
+import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../../auth/application/type/authenticatedPrincipal';
+import { AccessTokenGuard } from '../../../auth/presentation/controller/accessToken.guard';
+import { CurrentUser } from '../../../auth/presentation/controller/currentUser.decorator';
+import { RegisteredUserGuard } from '../../../auth/presentation/controller/registeredUser.guard';
 import { STORAGE_PORT, type StoragePort } from '../../../storage/application/storage.port';
-import { ZodBody, ZodParams, ZodQuery } from '../../../common/validation/zod-parameter.decorator';
+import { ZodBody, ZodParams, ZodQuery } from '../../../common/validation/zodParameter.decorator';
 import { PostsService } from '../../application/service/posts.service';
 import {
   commentRequestSchema,

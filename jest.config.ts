@@ -7,7 +7,7 @@ const config: Config = {
   testMatch: ['<rootDir>/test/**/*.spec.ts'],
   testPathIgnorePatterns: ['<rootDir>/test/database/.*\\.integration\\.spec\\.ts'],
   modulePathIgnorePatterns: ['<rootDir>/.worktrees/'],
-  setupFiles: ['<rootDir>/test/fixtures/test-env.fixture.ts'],
+  setupFiles: ['<rootDir>/test/fixtures/testEnv.fixture.ts'],
   restoreMocks: true,
 };
 

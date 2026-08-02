@@ -1,4 +1,4 @@
-import type { UserRole } from './authenticated-principal';
+import type { UserRole } from './authenticatedPrincipal';
 
 export type TokenResult = Readonly<{ accessToken: string; refreshToken: string }>;
 

@@ -9,12 +9,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import type { AuthenticatedPrincipal } from '../../../auth/application/type/authenticated-principal';
-import { AccessTokenGuard } from '../../../auth/presentation/controller/access-token.guard';
-import { CurrentUser } from '../../../auth/presentation/controller/current-user.decorator';
-import { RegisteredUserGuard } from '../../../auth/presentation/controller/registered-user.guard';
-import { successResponse } from '../../../common/http/api-response';
-import { ZodBody } from '../../../common/validation/zod-parameter.decorator';
+import type { AuthenticatedPrincipal } from '../../../auth/application/type/authenticatedPrincipal';
+import { AccessTokenGuard } from '../../../auth/presentation/controller/accessToken.guard';
+import { CurrentUser } from '../../../auth/presentation/controller/currentUser.decorator';
+import { RegisteredUserGuard } from '../../../auth/presentation/controller/registeredUser.guard';
+import { successResponse } from '../../../common/http/apiResponse';
+import { ZodBody } from '../../../common/validation/zodParameter.decorator';
 import { ConsentService } from '../../application/service/consent.service';
 import {
   updateMarketingConsentRequestSchema,

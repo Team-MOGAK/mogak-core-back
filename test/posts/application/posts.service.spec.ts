@@ -1,10 +1,10 @@
 import { jest } from '@jest/globals';
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 
-import { AppErrorCode } from '../../../src/common/http/app-error-code';
+import { AppErrorCode } from '../../../src/common/http/appErrorCode';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import type { OwnedMogakPort } from '../../../src/mogaks/application/port/owned-mogak.port';
-import type { OwnedOccurrencePort } from '../../../src/mogaks/application/port/owned-occurrence.port';
+import type { OwnedMogakPort } from '../../../src/mogaks/application/port/ownedMogak.port';
+import type { OwnedOccurrencePort } from '../../../src/mogaks/application/port/ownedOccurrence.port';
 import type { StoragePort } from '../../../src/storage/application/storage.port';
 import type { PostsRepositoryPort } from '../../../src/posts/application/port/posts.repository.port';
 import { PostsService } from '../../../src/posts/application/service/posts.service';

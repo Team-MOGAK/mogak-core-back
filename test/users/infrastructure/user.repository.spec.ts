@@ -1,10 +1,10 @@
-import { testMock } from '../../test-mock';
+import { testMock } from '../../testMock';
 
 import type { Database } from '../../../src/database/database.provider';
 import {
   DuplicateNicknameException,
   UserPersistenceException,
-} from '../../../src/users/domain/exception/user-persistence.exception';
+} from '../../../src/users/domain/exception/userPersistence.exception';
 import { UserRepository } from '../../../src/users/infrastructure/repository/user.repository';
 
 const command = {

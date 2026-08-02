@@ -1,15 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
 
-import { AppErrorCode } from '../../../common/http/app-error-code';
+import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
 import {
   OWNED_MOGAK_PORT,
   type OwnedMogakPort,
-} from '../../../mogaks/application/port/owned-mogak.port';
+} from '../../../mogaks/application/port/ownedMogak.port';
 import {
   OWNED_OCCURRENCE_PORT,
   type OwnedOccurrencePort,
-} from '../../../mogaks/application/port/owned-occurrence.port';
+} from '../../../mogaks/application/port/ownedOccurrence.port';
 import { STORAGE_PORT, type StoragePort } from '../../../storage/application/storage.port';
 import {
   isCommentAuthor,

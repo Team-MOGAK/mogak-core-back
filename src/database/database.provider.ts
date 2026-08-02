@@ -2,7 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
-import type { AppEnv } from '../config/app-env';
+import type { AppEnv } from '../config/appEnv';
 import * as schema from './schema';
 import { DATABASE, PG_POOL } from './database.tokens';
 
