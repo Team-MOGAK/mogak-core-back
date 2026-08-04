@@ -4,7 +4,7 @@ import { users } from './user.table';
 
 /** Provider account linked to one user. */
 export const socialAccounts = pgTable(
-  'social_accounts',
+  'social_account',
   {
     id: bigint('social_account_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
     userId: bigint('user_id', { mode: 'number' })
