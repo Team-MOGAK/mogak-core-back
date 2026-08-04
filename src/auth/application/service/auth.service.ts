@@ -6,22 +6,16 @@ import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
 import {
   validateNewSocialIdentity,
-  type SocialProvider,
   type SocialIdentityValidation,
-} from '../../domain/entity/auth.entity';
+} from '../../domain/policy/socialIdentity.policy';
+import type { SocialProvider } from '../../domain/vo/socialProvider.vo';
 import {
   DuplicateEmailException,
   DuplicateSocialAccountException,
 } from '../../domain/exception/authPersistence.exception';
 import { AUTH_PERSISTENCE, type AuthPersistencePort } from '../port/authPersistence.port';
-import {
-  AUTH_TOKEN_VERIFIER,
-  type AuthTokenVerifierPort,
-} from '../port/authTokenVerifier.port';
-import {
-  SESSION_TOKEN_ISSUER,
-  type SessionTokenIssuerPort,
-} from '../port/sessionTokenIssuer.port';
+import { AUTH_TOKEN_VERIFIER, type AuthTokenVerifierPort } from '../port/authTokenVerifier.port';
+import { SESSION_TOKEN_ISSUER, type SessionTokenIssuerPort } from '../port/sessionTokenIssuer.port';
 import {
   SOCIAL_IDENTITY_VERIFIER,
   type SocialIdentityVerifierPort,

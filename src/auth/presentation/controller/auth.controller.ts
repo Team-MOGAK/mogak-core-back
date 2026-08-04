@@ -7,7 +7,7 @@ import { DomainException } from '../../../common/http/domain.exception';
 import { ZodBody, ZodParams } from '../../../common/validation/zodParameter.decorator';
 import { AuthService } from '../../application/service/auth.service';
 import type { AuthenticatedPrincipal } from '../../application/type/authenticatedPrincipal';
-import { SocialProvider } from '../../domain/entity/auth.entity';
+import { SocialProvider } from '../../domain/vo/socialProvider.vo';
 import {
   providerParamsSchema,
   socialLoginRequestSchema,

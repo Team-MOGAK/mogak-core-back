@@ -3,7 +3,8 @@ import { Injectable } from '@nestjs/common';
 import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
 import type { SocialIdentityVerifier } from '../../application/port/socialIdentityVerifier.port';
-import type { SocialProvider, VerifiedSocialIdentity } from '../../domain/entity/auth.entity';
+import type { SocialProvider } from '../../domain/vo/socialProvider.vo';
+import type { VerifiedSocialIdentity } from '../../domain/vo/verifiedSocialIdentity.vo';
 
 const kakaoUserInfoUrl = 'https://kapi.kakao.com/v2/user/me';
 

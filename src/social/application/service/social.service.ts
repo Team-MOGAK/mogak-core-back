@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
 import { STORAGE_PORT, type StoragePort } from '../../../storage/application/storage.port';
-import { isSelfFollow } from '../../domain/entity/follow.entity';
+import { isSelfFollow } from '../../domain/policy/follow.policy';
 import { SOCIAL_REPOSITORY, type SocialRepositoryPort } from '../port/social.repository.port';
 import type {
   FeedAuthorResult,
@@ -24,7 +24,9 @@ export class SocialService {
   async follow(userId: number, nickname: string): Promise<void> {
     const target = await this.requireTarget(nickname);
     const follow = { followerId: userId, followingId: target.id };
-    if (isSelfFollow(follow)) throw new DomainException(AppErrorCode.INVALID_PARAMETER);
+    if (isSelfFollow(follow.followerId, follow.followingId)) {
+      throw new DomainException(AppErrorCode.INVALID_PARAMETER);
+    }
     if (!(await this.repository.createFollow(follow))) {
       throw new DomainException(AppErrorCode.FOLLOW_ALREADY_EXISTS);
     }
@@ -33,7 +35,9 @@ export class SocialService {
   async unfollow(userId: number, nickname: string): Promise<void> {
     const target = await this.requireTarget(nickname);
     const follow = { followerId: userId, followingId: target.id };
-    if (isSelfFollow(follow)) throw new DomainException(AppErrorCode.INVALID_PARAMETER);
+    if (isSelfFollow(follow.followerId, follow.followingId)) {
+      throw new DomainException(AppErrorCode.INVALID_PARAMETER);
+    }
     if (!(await this.repository.deleteFollow(follow))) {
       throw new DomainException(AppErrorCode.FOLLOW_NOT_FOUND);
     }

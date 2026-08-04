@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>환경 설정 단순화 설계</title>
+    <style>
+      body { max-width: 880px; margin: 2rem auto; padding: 0 1rem; font: 16px/1.55 system-ui, sans-serif; color: #18212f; }
+      header, section, aside, figure { margin: 1.4rem 0; padding: 1rem; border: 1px solid #d8dee8; border-radius: 8px; }
+      nav a { margin-right: 1rem; } code { background: #f1f4f8; padding: .1rem .25rem; } .state { font-weight: 700; color: #9a3412; }
+      #result { display: none; margin-top: .8rem; padding: .8rem; background: #f1f5f9; } #result.show { display: block; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p>작업: 기존 Cloud Run 설정 호환 · 강도: Standard · 상태: <span class="state">구현 완료</span></p>
+      <p>생성·갱신: <time datetime="2026-08-04">2026-08-04</time></p>
+      <h1>기존 Cloud Run 설정 호환 및 Nest 배포 준비</h1>
+    </header>
+    <nav aria-label="문서 탐색"><a href="#goal">목표</a><a href="#model">변경 모델</a><a href="#risk">위험</a><a href="#verify">검증</a><a href="#control">확인</a></nav>
+    <main>
+      <article>
+        <section id="goal">
+          <h2>목표</h2>
+          <p>기존 Cloud Run 서비스, PostgreSQL 데이터, 환경변수 화면을 유지한 채 Nest가 기존 Spring 설정을 읽도록 한다. 컨테이너 이미지를 만들 수 있게 Dockerfile을 추가한다.</p>
+        </section>
+        <section id="model">
+          <h2>변경 모델</h2>
+          <figure>
+            <figcaption>변경 후 설정 소비 흐름</figcaption>
+            <p><code>Cloud Run 환경변수</code> → Nest DI. DB는 <code>DATABASE_URL</code> 우선, 없으면 <code>APP_DB_URL</code>에서 <code>jdbc:</code>만 제거하고 <code>APP_DB_USERNAME</code>/<code>APP_DB_PASSWORD</code>를 결합한다. JWT는 <code>JWT_SECRET</code> 우선 후 <code>JWT_SECRET_KEY</code>, OAuth는 복수형 키 우선 후 Spring의 단수형 키를 읽는다. Cloud Run이 문자열로 주입한 <code>PORT</code>는 숫자로 변환해 <code>0.0.0.0</code>에서 수신한다.</p>
+          </figure>
+          <ul>
+            <li>기존 DB와 데이터는 변경·이관하지 않는다.</li>
+            <li>현재 Nest 키도 계속 지원하므로 로컬 개발 환경은 그대로 동작한다.</li>
+            <li><code>Dockerfile</code>은 Node 24.18 기반으로 빌드 산출물과 운영 의존성만 포함한다.</li>
+          </ul>
+        </section>
+        <aside id="risk">
+          <h2>핵심 불변식과 위험</h2>
+          <p><strong>불변식:</strong> 기존 DB URL 자체는 변경하지 않는다. Nest는 JDBC 접두사만 Node PostgreSQL 드라이버가 이해하는 URL로 변환하며, 사용자명·비밀번호는 로그에 남기지 않는다.</p>
+          <p>이 작업은 DB 스키마, 운영 데이터, Cloud Run 트래픽을 바꾸지 않는다. 실제 트리거 변경과 배포는 사용자가 Cloud Build 화면에서 수행한다.</p>
+        </aside>
+        <section id="verify">
+          <h2>검증 계획</h2>
+          <ol><li>일반 PostgreSQL URL 우선과 Spring JDBC URL 변환 단위 테스트</li><li>JWT/OAuth 기존·신규 키 호환 테스트</li><li><code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>, <code>pnpm build</code>, <code>pnpm test --runInBand</code>, Docker 이미지 빌드</li></ol>
+        </section>
+        <section id="design-control-state"><h2>설계 통제 상태</h2><p>미실시 — 로컬 확인은 정보용이며, 사용자는 기존 DB·주소 유지와 환경변수 호환 범위를 명시했다.</p></section>
+        <section id="approval-state"><h2>승인 상태</h2><p>승인됨 — 2026-08-04 사용자 “빨리 고쳐. 배포하게”로 기존 DB·환경변수 호환 및 Dockerfile 추가를 승인했다.</p></section>
+        <section id="control">
+          <h2>동작 확인</h2>
+          <fieldset><legend>기존 Cloud Run에 <code>APP_DB_URL=jdbc:postgresql://...</code>만 있을 때, Nest가 실제로 DB에 넘겨야 하는 URL은 무엇인가?</legend>
+            <label><input type="radio" name="answer" value="a" /> A. JDBC URL을 그대로 넘긴다.</label><br />
+            <label><input type="radio" name="answer" value="b" /> B. <code>jdbc:</code>를 제거한 PostgreSQL URL을 넘기고, 분리된 계정 정보가 있으면 결합한다.</label><br />
+            <label><input type="radio" name="answer" value="c" /> C. 새 DB를 만든 뒤 새 URL을 사용한다.</label><br />
+            <button type="button" id="check">답 확인</button>
+          </fieldset>
+          <output id="result" aria-live="polite"><strong id="status"></strong><p id="explanation"></p><p id="next"></p></output>
+        </section>
+        <section id="as-built">
+          <h2>구현 결과</h2>
+          <p><code>DATABASE_URL</code>가 있으면 기존 Nest 동작을 유지한다. 없으면 <code>APP_DB_URL</code>에서 JDBC 접두사를 제거하고 <code>APP_DB_USERNAME</code>/<code>APP_DB_PASSWORD</code>를 결합한다. JWT는 <code>JWT_SECRET</code> 후 <code>JWT_SECRET_KEY</code>, Apple·Google은 복수형 키 후 단수형 키를 읽는다. <code>main.ts</code>는 Cloud Run의 문자열 <code>PORT</code>를 숫자로 변환해 <code>0.0.0.0</code>에 수신하며, Dockerfile과 .dockerignore를 추가했다.</p>
+        </section>
+        <section id="verification-evidence">
+          <h2>검증 근거</h2>
+          <ul><li><code>pnpm format:check</code> 통과</li><li><code>pnpm lint</code> 통과</li><li><code>pnpm typecheck</code> 통과</li><li><code>pnpm test --runInBand</code>: 53 suites, 199 tests 통과</li><li><code>pnpm build</code> 통과</li><li><code>docker build --tag mogak-core-back:local .</code> 통과</li><li>기존 형식의 <code>APP_DB_*</code>, <code>JWT_SECRET_KEY</code>, 단수형 OAuth 키만 주입한 컨테이너가 <code>0.0.0.0:8080</code>에서 부팅하고 <code>GET /health</code> → <code>{"status":"ok"}</code> 응답</li></ul>
+        </section>
+        <aside id="residual-risks"><h2>잔여 위험</h2><p>이미지 생성은 배포하지 않는다. Cloud Build 화면에서 이 저장소/브랜치와 기존 Cloud Run 서비스 이름을 연결하고, 기존 DB가 네트워크에서 도달 가능한지 확인해야 한다.</p></aside>
+        <section id="database-decision">
+          <h2>결정: 기존 DB와 키를 재사용</h2>
+          <p>기존 Spring 서비스의 <code>APP_DB_URL</code>은 그대로 둔다. Nest는 그 값을 PostgreSQL 드라이버 형식으로만 바꿔 사용한다. <code>APPLE_CLIENT_IDS</code> 지원은 유지하며, 화면에 있는 <code>APPLE_CLIENT_ID</code>도 대체 키로 지원한다.</p>
+        </section>
+      </article>
+    </main>
+    <script>
+      document.getElementById('check').addEventListener('click', () => {
+        const value = document.querySelector('input[name="answer"]:checked')?.value;
+        const result = document.getElementById('result'); result.classList.add('show');
+        document.getElementById('status').textContent = value === 'b' ? '확립' : '보류';
+        document.getElementById('explanation').textContent = value === 'b' ? 'Node PostgreSQL 드라이버는 JDBC 접두사를 이해하지 않으므로 제거하고, Spring에서 분리했던 계정 정보를 URL에 안전하게 결합한다.' : '기존 DB를 유지해도 JDBC 접두사를 그대로 Node PostgreSQL 드라이버에 넘길 수는 없다.';
+        document.getElementById('next').textContent = '다음 행동: Cloud Build에서 이 저장소의 Dockerfile을 빌드하고 기존 Cloud Run 서비스에 새 리비전으로 배포한다.';
+      });
+    </script>
+  </body>
+</html>

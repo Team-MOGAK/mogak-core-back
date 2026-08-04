@@ -13,7 +13,12 @@ const forbiddenDomainPackages = [
   /^(?:node:)?https?(?:\/|$)/,
   /^(?:express|fastify|axios)(?:\/|$)/,
 ];
-const forbiddenLayerNames = new Set(['application', 'infrastructure', 'presentation']);
+const forbiddenDomainLayerNames = new Set([
+  'application',
+  'infrastructure',
+  'presentation',
+  'database',
+]);
 
 describe('layer boundaries', () => {
   it('keeps source imports and request contracts within the agreed architecture', () => {
@@ -46,13 +51,28 @@ describe('layer boundaries', () => {
       );
       writeFixture(
         root,
+        'social/domain/vo/probeDatabase.vo.ts',
+        `import { users } from '../../../database/schema'; void users;`,
+      );
+      writeFixture(
+        root,
         'social/application/type/probe.query.ts',
         `void import('../../infrastructure/repository/social.repository');`,
       );
       writeFixture(
         root,
+        'social/application/type/probe.database.ts',
+        `import { users } from '../../../database/schema'; void users;`,
+      );
+      writeFixture(
+        root,
         'social/application/type/probe.presentation.ts',
         `void import('../../presentation/controller/social.controller');`,
+      );
+      writeFixture(
+        root,
+        'social/infrastructure/mapper/probe.presentation.mapper.ts',
+        `import { SocialController } from '../../presentation/controller/social.controller'; void SocialController;`,
       );
       writeFixture(
         root,
@@ -87,19 +107,31 @@ describe('layer boundaries', () => {
             "domain must not import another application layer '../../infrastructure/repository/social.repository'",
           ),
           expect.stringContaining(
+            "domain must not import another application layer '../../../database/schema'",
+          ),
+          expect.stringContaining(
             "application must not import infrastructure '../../infrastructure/repository/social.repository'",
           ),
           expect.stringContaining(
             "application must not import presentation '../../presentation/controller/social.controller'",
           ),
           expect.stringContaining(
+            "application must not import database '../../../database/schema'",
+          ),
+          expect.stringContaining(
             "presentation must not import infrastructure '../../infrastructure/repository/social.repository'",
+          ),
+          expect.stringContaining(
+            "infrastructure must not import presentation '../../presentation/controller/social.controller'",
           ),
           expect.stringContaining('type-contract modules must not declare classes'),
           expect.stringContaining(
             "presentation schema 'probeSchema' must have an exported z.infer type alias",
           ),
           expect.stringContaining('DTO contract paths are not permitted'),
+          expect.stringContaining(
+            'domain/entity modules are not permitted; use Drizzle records or domain policy/vo instead',
+          ),
           expect.stringContaining(
             "domain entities must not export 'Entity'-suffixed identifier 'ProbeEntity'",
           ),
@@ -130,7 +162,7 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
             message: `domain must not import framework, persistence, or HTTP package '${moduleSpecifier}'`,
           });
         }
-        if (targetsLayer(root, file, moduleSpecifier, forbiddenLayerNames)) {
+        if (targetsLayer(root, file, moduleSpecifier, forbiddenDomainLayerNames)) {
           violations.push({
             file: projectPath,
             message: `domain must not import another application layer '${moduleSpecifier}'`,
@@ -159,6 +191,12 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
             message: `application must not import presentation '${moduleSpecifier}'`,
           });
         }
+        if (targetsLayer(root, file, moduleSpecifier, new Set(['database']))) {
+          violations.push({
+            file: projectPath,
+            message: `application must not import database '${moduleSpecifier}'`,
+          });
+        }
       }
     }
 
@@ -170,10 +208,32 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
             message: `presentation must not import infrastructure '${moduleSpecifier}'`,
           });
         }
+        if (targetsLayer(root, file, moduleSpecifier, new Set(['database']))) {
+          violations.push({
+            file: projectPath,
+            message: `presentation must not import database '${moduleSpecifier}'`,
+          });
+        }
+      }
+    }
+
+    if (segments.includes('infrastructure')) {
+      for (const moduleSpecifier of imports) {
+        if (targetsLayer(root, file, moduleSpecifier, new Set(['presentation']))) {
+          violations.push({
+            file: projectPath,
+            message: `infrastructure must not import presentation '${moduleSpecifier}'`,
+          });
+        }
       }
     }
 
     if (isDomainEntity(segments)) {
+      violations.push({
+        file: projectPath,
+        message:
+          'domain/entity modules are not permitted; use Drizzle records or domain policy/vo instead',
+      });
       for (const identifier of exportedIdentifiers(sourceFile)) {
         if (identifier.endsWith('Entity')) {
           violations.push({

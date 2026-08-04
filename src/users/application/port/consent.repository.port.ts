@@ -2,14 +2,13 @@ import type {
   ConsentAgreementCommand,
   UpdateMarketingConsentCommand,
 } from '../type/consent.command';
-import type { MarketingConsentResult } from '../type/consent.result';
-import type { ConsentItem } from '../../domain/entity/consent.entity';
+import type { ConsentItemState, MarketingConsentResult } from '../type/consent.result';
 
 export const CONSENT_REPOSITORY = Symbol('CONSENT_REPOSITORY');
 
 export interface ConsentRepositoryPort {
-  listActiveItems(): Promise<ConsentItem[]>;
-  findItemsByIds(ids: readonly number[]): Promise<ConsentItem[]>;
+  listActiveItems(): Promise<ConsentItemState[]>;
+  findItemsByIds(ids: readonly number[]): Promise<ConsentItemState[]>;
   upsertUserConsents(
     userId: number,
     commands: readonly ConsentAgreementCommand[],

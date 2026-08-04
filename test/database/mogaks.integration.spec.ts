@@ -15,7 +15,7 @@ import {
   users,
 } from '../../src/database/schema';
 import { JogaksService } from '../../src/mogaks/application/service/jogaks.service';
-import { MogaksRepository } from '../../src/mogaks/infrastructure/repository/mogaks.repository';
+import { MogakRepository } from '../../src/mogaks/infrastructure/repository/mogak.repository';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {
@@ -125,7 +125,7 @@ describe('모각 PostgreSQL 통합', () => {
     );
 
     const service = new JogaksService(
-      new MogaksRepository(db as unknown as Database),
+      new MogakRepository(db as unknown as Database),
       () => '2026-07-23',
     );
 
@@ -165,7 +165,7 @@ describe('모각 PostgreSQL 통합', () => {
       .values({ scheduleId: successor.id, weekday: 'THURSDAY' });
 
     const service = new JogaksService(
-      new MogaksRepository(db as unknown as Database),
+      new MogakRepository(db as unknown as Database),
       () => '2026-07-23',
     );
 
@@ -210,7 +210,7 @@ describe('모각 PostgreSQL 통합', () => {
       effectiveFrom: '2026-08-01',
     });
     const service = new JogaksService(
-      new MogaksRepository(db as unknown as Database),
+      new MogakRepository(db as unknown as Database),
       () => '2026-07-23',
     );
 

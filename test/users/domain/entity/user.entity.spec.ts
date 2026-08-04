@@ -1,7 +1,7 @@
 import {
   canCompleteRegistration,
   normalizeNickname,
-} from '../../../../src/users/domain/entity/user.entity';
+} from '../../../../src/users/domain/policy/userRegistration.policy';
 
 describe('User domain rules', () => {
   it('allows only a pending principal to complete a pending user registration', () => {

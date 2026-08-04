@@ -1,4 +1,5 @@
-import type { ConsentItem, UserConsent } from '../../domain/entity/consent.entity';
+import type { consentItems, userConsents } from '../../../database/schema';
 
-export type ConsentItemRecord = ConsentItem;
-export type UserConsentRecord = UserConsent;
+/** Drizzle가 동의 테이블에서 읽는 원본 행 타입. */
+export type ConsentItemRecord = typeof consentItems.$inferSelect;
+export type UserConsentRecord = typeof userConsents.$inferSelect;

@@ -14,8 +14,6 @@ import { UserService } from '../../../src/users/application/service/user.service
 import { DuplicateNicknameException } from '../../../src/users/domain/exception/userPersistence.exception';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
-const now = new Date('2026-07-25T00:00:00.000Z');
-
 function currentPendingUser(): AuthenticatedPrincipal {
   return { userId: 7, role: 'PENDING', sessionId: SESSION_ID };
 }
@@ -147,16 +145,8 @@ describe('사용자 서비스', () => {
     const consents = consentRepository();
     jest.mocked(users.findById).mockResolvedValue({
       id: 7,
-      jobId: null,
-      addressId: null,
       email: 'mogak@example.test',
-      nickname: null,
-      gender: null,
-      age: null,
       role: 'PENDING',
-      profileImageKey: null,
-      createdAt: now,
-      updatedAt: now,
     });
     jest.mocked(users.existsByNickname).mockResolvedValue(false);
     jest.mocked(metadata.findJobByName).mockResolvedValue({ id: 2, name: '개발/데이터' });
@@ -188,16 +178,8 @@ describe('사용자 서비스', () => {
     const consents = consentRepository();
     jest.mocked(users.findById).mockResolvedValue({
       id: 7,
-      jobId: null,
-      addressId: null,
       email: 'mogak@example.test',
-      nickname: null,
-      gender: null,
-      age: null,
       role: 'PENDING',
-      profileImageKey: null,
-      createdAt: now,
-      updatedAt: now,
     });
     jest.mocked(metadata.findJobByName).mockResolvedValue({ id: 2, name: '개발/데이터' });
     jest.mocked(metadata.findAddressByName).mockResolvedValue({ id: 3, name: '서울특별시' });
@@ -209,8 +191,6 @@ describe('사용자 서비스', () => {
         description: null,
         required: false,
         active: true,
-        createdAt: now,
-        updatedAt: now,
       },
     ]);
     jest.mocked(consents.findItemsByIds).mockResolvedValue([
@@ -221,8 +201,6 @@ describe('사용자 서비스', () => {
         description: null,
         required: false,
         active: true,
-        createdAt: now,
-        updatedAt: now,
       },
     ]);
     jest.mocked(users.completeRegistration).mockResolvedValue({ id: 7, nickname: '모각러' });

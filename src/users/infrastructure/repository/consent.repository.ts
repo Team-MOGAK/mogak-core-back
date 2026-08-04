@@ -6,8 +6,10 @@ import type {
   ConsentAgreementCommand,
   UpdateMarketingConsentCommand,
 } from '../../application/type/consent.command';
-import type { MarketingConsentResult } from '../../application/type/consent.result';
-import type { ConsentItem } from '../../domain/entity/consent.entity';
+import type {
+  ConsentItemState,
+  MarketingConsentResult,
+} from '../../application/type/consent.result';
 import { UserPersistenceException } from '../../domain/exception/userPersistence.exception';
 import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
@@ -17,7 +19,7 @@ import { consentItems, userConsents } from '../../../database/schema';
 export class ConsentRepository implements ConsentRepositoryPort {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  async listActiveItems(): Promise<ConsentItem[]> {
+  async listActiveItems(): Promise<ConsentItemState[]> {
     return this.db
       .select({
         id: consentItems.id,
@@ -33,7 +35,7 @@ export class ConsentRepository implements ConsentRepositoryPort {
       .where(eq(consentItems.active, true));
   }
 
-  async findItemsByIds(ids: readonly number[]): Promise<ConsentItem[]> {
+  async findItemsByIds(ids: readonly number[]): Promise<ConsentItemState[]> {
     if (ids.length === 0) return [];
     return this.db
       .select({

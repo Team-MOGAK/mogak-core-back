@@ -4,15 +4,21 @@ import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
 import { requiredTrimmed } from '../../../common/validation/requiredText';
 import {
-  JogakExecution,
-  JogakSchedule,
+  decideJogakExecutionTransition,
+  snapshotJogakTitle,
+} from '../../domain/policy/jogakExecution.policy';
+import { validateJogakCapacity } from '../../domain/policy/jogak.policy';
+import {
+  assertDateRange as assertScheduleDateRange,
+  datesInclusive as scheduleDatesInclusive,
+  deriveOccurrenceStatus,
   isDateOnly,
-  validateJogakCapacity,
-  type JogakExecutionStatus,
-  type JogakScheduleType,
-  type ValidatedJogakSchedule,
-} from '../../domain/entity/jogak.entity';
-import { MOGAKS_REPOSITORY, type MogaksRepositoryPort } from '../port/mogaks.repository.port';
+  occursOn,
+  validateJogakSchedule,
+} from '../../domain/policy/jogakSchedule.policy';
+import type { JogakExecutionStatus } from '../../domain/vo/jogakExecution.vo';
+import type { JogakScheduleType, ValidatedJogakSchedule } from '../../domain/vo/jogakSchedule.vo';
+import { MOGAK_REPOSITORY, type MogakRepositoryPort } from '../port/mogak.repository.port';
 import type { OwnedOccurrencePort } from '../port/ownedOccurrence.port';
 import type {
   CreateJogakCommand,
@@ -45,7 +51,7 @@ type ExecutionResponse = ReturnType<typeof toExecutionResponse>;
 @Injectable()
 export class JogaksService implements OwnedOccurrencePort {
   constructor(
-    @Inject(MOGAKS_REPOSITORY) private readonly repository: MogaksRepositoryPort,
+    @Inject(MOGAK_REPOSITORY) private readonly repository: MogakRepositoryPort,
     @Inject(KST_DATE_PROVIDER) private readonly today: () => string = kstToday,
   ) {}
 
@@ -183,9 +189,7 @@ export class JogaksService implements OwnedOccurrencePort {
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
     if (jogak === null) throw new DomainException(AppErrorCode.JOGAK_NOT_FOUND);
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
-    const occurrenceSchedule = schedules.find((schedule) =>
-      JogakSchedule.occursOn(schedule, scheduledDate),
-    );
+    const occurrenceSchedule = schedules.find((schedule) => occursOn(schedule, scheduledDate));
     if (occurrenceSchedule === undefined) {
       throw new DomainException(AppErrorCode.INVALID_TARGET_DATE);
     }
@@ -195,7 +199,7 @@ export class JogaksService implements OwnedOccurrencePort {
       jogakId,
       scheduledDate,
       status: desiredStatus,
-      jogakTitleSnapshot: JogakExecution.snapshot(jogak.title),
+      jogakTitleSnapshot: snapshotJogakTitle(jogak.title),
     });
     if (inserted !== null) {
       return { created: true, execution: toExecutionResponse(inserted, jogak, isRoutine) };
@@ -214,7 +218,7 @@ export class JogaksService implements OwnedOccurrencePort {
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
     if (jogak === null) throw new DomainException(AppErrorCode.JOGAK_NOT_FOUND);
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
-    if (!schedules.some((schedule) => JogakSchedule.occursOn(schedule, scheduledDate))) {
+    if (!schedules.some((schedule) => occursOn(schedule, scheduledDate))) {
       throw new DomainException(AppErrorCode.INVALID_TARGET_DATE);
     }
     return { jogakId: jogak.id, mogakId: jogak.mogakId, title: jogak.title };
@@ -255,7 +259,7 @@ export class JogaksService implements OwnedOccurrencePort {
 
     for (const schedule of schedules) {
       for (const scheduledDate of datesInclusive(startDate, endDate)) {
-        if (!JogakSchedule.occursOn(schedule, scheduledDate)) continue;
+        if (!occursOn(schedule, scheduledDate)) continue;
         const execution =
           executionByNaturalKey.get(executionKey(schedule.jogakId, scheduledDate)) ?? null;
         occurrences.push({
@@ -266,11 +270,7 @@ export class JogaksService implements OwnedOccurrencePort {
           title: execution?.jogakTitleSnapshot ?? schedule.jogakTitle,
           color: schedule.color,
           isRoutine: schedule.scheduleType === 'WEEKLY',
-          status: JogakSchedule.deriveOccurrenceStatus(
-            execution?.status ?? null,
-            scheduledDate,
-            today,
-          ),
+          status: deriveOccurrenceStatus(execution?.status ?? null, scheduledDate, today),
           achievements: successCounts.get(schedule.jogakId) ?? 0,
         });
       }
@@ -310,7 +310,7 @@ export class JogaksService implements OwnedOccurrencePort {
     isRoutine: boolean,
     retryOnce: boolean,
   ): Promise<ExecutionResponse> {
-    const transition = JogakExecution.decideTransition(existing.status, desiredStatus);
+    const transition = decideJogakExecutionTransition(existing.status, desiredStatus);
     if (transition.type === 'NOOP') return toExecutionResponse(existing, jogak, isRoutine);
     if (transition.type === 'REJECT') {
       throw new DomainException(AppErrorCode.INVALID_EXECUTION_TRANSITION);
@@ -336,7 +336,7 @@ export class JogaksService implements OwnedOccurrencePort {
     jogak: OwnedJogakResult,
     isRoutine: boolean,
   ): ExecutionResponse {
-    const transition = JogakExecution.decideTransition(current.status, desiredStatus);
+    const transition = decideJogakExecutionTransition(current.status, desiredStatus);
     if (transition.type === 'NOOP') return toExecutionResponse(current, jogak, isRoutine);
     if (transition.type === 'REJECT') {
       throw new DomainException(AppErrorCode.INVALID_EXECUTION_TRANSITION);
@@ -347,7 +347,7 @@ export class JogaksService implements OwnedOccurrencePort {
 
 function validateSchedule(input: ScheduleCommand): ValidatedJogakSchedule {
   try {
-    return JogakSchedule.validate(input);
+    return validateJogakSchedule(input);
   } catch (error) {
     if (error instanceof RangeError && error.message === 'weekdays are required') {
       throw new DomainException(AppErrorCode.ROUTINE_WEEKDAYS_REQUIRED);
@@ -421,14 +421,14 @@ function categoryOf(
 
 function assertDateRange(startDate: string, endDate: string): void {
   try {
-    JogakSchedule.assertDateRange(startDate, endDate);
+    assertScheduleDateRange(startDate, endDate);
   } catch {
     throw new DomainException(AppErrorCode.INVALID_TARGET_DATE);
   }
 }
 
 function datesInclusive(startDate: string, endDate: string): string[] {
-  return JogakSchedule.datesInclusive(startDate, endDate);
+  return scheduleDatesInclusive(startDate, endDate);
 }
 
 function executionKey(jogakId: number, scheduledDate: string): string {

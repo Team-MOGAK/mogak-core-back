@@ -1,10 +1,10 @@
-import type { Address, Job } from '../../domain/entity/userMetadata.entity';
+import type { MetadataResult } from '../type/metadata.result';
 
 export const METADATA_REPOSITORY = Symbol('METADATA_REPOSITORY');
 
 export interface MetadataRepositoryPort {
-  listJobs(): Promise<Job[]>;
-  listAddresses(): Promise<Address[]>;
-  findJobByName(name: string): Promise<Job | null>;
-  findAddressByName(name: string): Promise<Address | null>;
+  listJobs(): Promise<MetadataResult[]>;
+  listAddresses(): Promise<MetadataResult[]>;
+  findJobByName(name: string): Promise<MetadataResult | null>;
+  findAddressByName(name: string): Promise<MetadataResult | null>;
 }

@@ -1,20 +1,13 @@
 import {
   validateConsentSelections,
-  type ConsentItem,
-} from '../../../../src/users/domain/entity/consent.entity';
+  type ConsentItemForValidation,
+} from '../../../../src/users/domain/policy/consent.policy';
 
-const now = new Date('2026-07-25T00:00:00.000Z');
-
-function consentItem(overrides: Partial<ConsentItem> = {}): ConsentItem {
+function consentItem(overrides: Partial<ConsentItemForValidation> = {}): ConsentItemForValidation {
   return {
     id: 1,
-    code: 'TERMS',
-    name: '서비스 이용약관',
-    description: null,
     required: false,
     active: true,
-    createdAt: now,
-    updatedAt: now,
     ...overrides,
   };
 }

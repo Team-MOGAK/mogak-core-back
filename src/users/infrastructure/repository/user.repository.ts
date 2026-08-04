@@ -8,7 +8,6 @@ import type {
   UpdateNicknameCommand,
   UpdateProfileImageCommand,
 } from '../../application/type/user.command';
-import type { User } from '../../domain/entity/user.entity';
 import {
   DuplicateNicknameException,
   UserPersistenceException,
@@ -16,7 +15,11 @@ import {
 import type { Database } from '../../../database/database.provider';
 import { DATABASE } from '../../../database/database.tokens';
 import { authSessions, jobs, userConsents, users } from '../../../database/schema';
-import type { UserProjection } from '../type/user.projection';
+import type { UserRecord } from '../type/user.record';
+import type {
+  RegistrationCandidate,
+  UserProfileProjection,
+} from '../../application/type/user.result';
 
 @Injectable()
 export class UserRepository implements UserRepositoryPort {
@@ -30,12 +33,12 @@ export class UserRepository implements UserRepositoryPort {
     return row !== undefined;
   }
 
-  async findById(userId: number): Promise<User | null> {
+  async findById(userId: number): Promise<RegistrationCandidate | null> {
     const user = await this.db.query.users.findFirst({ where: eq(users.id, userId) });
-    return user === undefined ? null : asUserRecord(user);
+    return user === undefined ? null : asRegistrationCandidate(user);
   }
 
-  async findProfile(userId: number): Promise<UserProjection | null> {
+  async findProfile(userId: number): Promise<UserProfileProjection | null> {
     const [profile] = await this.db
       .select({
         nickname: users.nickname,
@@ -145,35 +148,11 @@ export class UserRepository implements UserRepositoryPort {
   }
 }
 
-function asUserRecord(user: {
-  id: number;
-  jobId: number | null;
-  addressId: number | null;
-  nickname: string | null;
-  email: string | null;
-  gender: string | null;
-  age: number | null;
-  role: string;
-  profileImageKey: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}): User {
+function asRegistrationCandidate(user: UserRecord): RegistrationCandidate {
   if (user.role !== 'PENDING' && user.role !== 'USER') {
     throw new UserPersistenceException(`Unsupported persisted user role: ${user.role}`);
   }
-  return {
-    id: user.id,
-    jobId: user.jobId,
-    addressId: user.addressId,
-    nickname: user.nickname,
-    email: user.email,
-    gender: user.gender,
-    age: user.age,
-    role: user.role,
-    profileImageKey: user.profileImageKey,
-    createdAt: user.createdAt,
-    updatedAt: user.updatedAt,
-  };
+  return { id: user.id, email: user.email, role: user.role };
 }
 
 function asUserPersistenceException(error: unknown, message: string): UserPersistenceException {

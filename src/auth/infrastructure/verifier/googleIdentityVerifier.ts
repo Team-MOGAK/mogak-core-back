@@ -4,9 +4,8 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
-import type { AppEnv } from '../../../config/appEnv';
 import type { SocialIdentityVerifier } from '../../application/port/socialIdentityVerifier.port';
-import type { SocialProvider } from '../../domain/entity/auth.entity';
+import type { SocialProvider } from '../../domain/vo/socialProvider.vo';
 import { identityFromJwtClaims } from './identityClaims';
 
 const googleKeys = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
@@ -16,8 +15,10 @@ export const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.c
 export class GoogleIdentityVerifier implements SocialIdentityVerifier {
   private readonly clientIds: string[];
 
-  constructor(@Inject(ConfigService) config: ConfigService<AppEnv, true>) {
-    this.clientIds = splitClientIds(config.getOrThrow('GOOGLE_CLIENT_IDS', { infer: true }));
+  constructor(@Inject(ConfigService) config: ConfigService) {
+    this.clientIds = splitClientIds(
+      config.get<string>('GOOGLE_CLIENT_IDS') ?? config.getOrThrow<string>('GOOGLE_CLIENT_ID'),
+    );
   }
 
   supports(provider: SocialProvider): boolean {

@@ -6,7 +6,6 @@ import { jwtVerify, SignJWT, type JWTPayload } from 'jose';
 
 import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
-import type { AppEnv } from '../../../config/appEnv';
 import type {
   AuthTokenVerifierPort,
   VerifiedRefreshToken,
@@ -30,8 +29,10 @@ const CLOCK_TOLERANCE_SECONDS = 30;
 export class JwtTokenService implements SessionTokenIssuerPort, AuthTokenVerifierPort {
   private readonly secret: Uint8Array;
 
-  constructor(@Inject(ConfigService) config: ConfigService<AppEnv, true>) {
-    this.secret = new TextEncoder().encode(config.getOrThrow('JWT_SECRET', { infer: true }));
+  constructor(@Inject(ConfigService) config: ConfigService) {
+    this.secret = new TextEncoder().encode(
+      config.get<string>('JWT_SECRET') ?? config.getOrThrow<string>('JWT_SECRET_KEY'),
+    );
   }
 
   async issue(input: AuthenticatedPrincipal): Promise<IssuedSessionTokens> {

@@ -32,11 +32,10 @@
 
 ### 3.1 로그인 전환표
 
-`POST /api/users/login`은 제거됐다. 이메일을 보내 JWT를 발급받는 흐름을 삭제하고, 각 네이티브 SDK가 발급한 공급자 토큰을 아래 API로 전달한다.
+`POST /api/users/login`은 제거됐다. 이메일을 보내 JWT를 발급받는 흐름을 삭제하고, 현재 모바일 앱이 사용하는 Google·Kakao 네이티브 SDK의 공급자 토큰을 아래 API로 전달한다. Apple 로그인은 현재 모바일 앱 범위에 없다.
 
 | 공급자 | 앱이 얻어야 하는 값 | 요청 |
 | --- | --- | --- |
-| Apple | Apple native `identityToken` | `POST /api/auth/login` body: `{ "id_token": "..." }` |
 | Google | Google native **ID token** | `POST /api/auth/google/login` body: `{ "token": "..." }` |
 | Kakao | Kakao native **access token** | `POST /api/auth/kakao/login` body: `{ "token": "..." }` |
 

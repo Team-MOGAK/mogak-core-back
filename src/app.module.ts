@@ -8,8 +8,8 @@ import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { StorageModule } from './storage/storage.module';
-import { MogaksModule } from './mogaks/mogaks.module';
-import { PostsModule } from './posts/posts.module';
+import { MogakModule } from './mogaks/mogak.module';
+import { PostModule } from './posts/post.module';
 import { SocialModule } from './social/social.module';
 import { UsersModule } from './users/users.module';
 
@@ -25,8 +25,8 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     StorageModule,
     UsersModule,
-    MogaksModule,
-    PostsModule,
+    MogakModule,
+    PostModule,
     SocialModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

@@ -3,15 +3,15 @@ import type { ConfigService } from '@nestjs/config';
 import { testMock } from '../../testMock';
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
 import { DomainException } from '../../../src/common/http/domain.exception';
-import type { AppEnv } from '../../../src/config/appEnv';
 import { JwtTokenService } from '../../../src/auth/infrastructure/service/token.service';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
 function createService(): JwtTokenService {
   const config = {
+    get: testMock().mockReturnValue('test-jwt-secret-with-at-least-thirty-two-characters'),
     getOrThrow: testMock().mockReturnValue('test-jwt-secret-with-at-least-thirty-two-characters'),
-  } as unknown as ConfigService<AppEnv, true>;
+  } as unknown as ConfigService;
 
   return new JwtTokenService(config);
 }

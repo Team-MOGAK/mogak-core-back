@@ -1,4 +1,5 @@
-import type { JogakExecutionStatus, JogakScheduleInput } from '../../domain/entity/jogak.entity';
+import type { JogakExecutionStatus } from '../../domain/vo/jogakExecution.vo';
+import type { JogakScheduleInput } from '../../domain/vo/jogakSchedule.vo';
 
 export type ScheduleCommand = JogakScheduleInput;
 export type CreateJogakCommand = Readonly<{

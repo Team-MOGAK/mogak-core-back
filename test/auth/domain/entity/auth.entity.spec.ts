@@ -1,19 +1,12 @@
-import {
-  canRotateSession,
-  validateNewSocialIdentity,
-  type AuthSession,
-} from '../../../../src/auth/domain/entity/auth.entity';
+import { canRotateSession } from '../../../../src/auth/domain/policy/authSession.policy';
+import { validateNewSocialIdentity } from '../../../../src/auth/domain/policy/socialIdentity.policy';
 
 const now = new Date('2026-07-25T00:00:00.000Z');
 
-function session(refreshTokenHash: string): AuthSession {
+function session(refreshTokenHash: string) {
   return {
-    id: 'session-id',
-    userId: 7,
     refreshTokenHash,
     expiresAt: new Date('2026-08-25T00:00:00.000Z'),
-    createdAt: now,
-    updatedAt: now,
   };
 }
 

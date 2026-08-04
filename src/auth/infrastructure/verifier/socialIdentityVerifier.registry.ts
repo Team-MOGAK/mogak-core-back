@@ -6,7 +6,8 @@ import type {
   SocialIdentityVerifier,
   SocialIdentityVerifierPort,
 } from '../../application/port/socialIdentityVerifier.port';
-import type { SocialProvider, VerifiedSocialIdentity } from '../../domain/entity/auth.entity';
+import type { SocialProvider } from '../../domain/vo/socialProvider.vo';
+import type { VerifiedSocialIdentity } from '../../domain/vo/verifiedSocialIdentity.vo';
 
 @Injectable()
 export class SocialIdentityVerifierRegistry implements SocialIdentityVerifierPort {

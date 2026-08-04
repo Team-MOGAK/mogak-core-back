@@ -4,9 +4,8 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 import { AppErrorCode } from '../../../common/http/appErrorCode';
 import { DomainException } from '../../../common/http/domain.exception';
-import type { AppEnv } from '../../../config/appEnv';
 import type { SocialIdentityVerifier } from '../../application/port/socialIdentityVerifier.port';
-import type { SocialProvider } from '../../domain/entity/auth.entity';
+import type { SocialProvider } from '../../domain/vo/socialProvider.vo';
 import { identityFromJwtClaims } from './identityClaims';
 
 const appleKeys = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
@@ -15,8 +14,10 @@ const appleKeys = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/key
 export class AppleIdentityVerifier implements SocialIdentityVerifier {
   private readonly clientIds: string[];
 
-  constructor(@Inject(ConfigService) config: ConfigService<AppEnv, true>) {
-    this.clientIds = splitClientIds(config.getOrThrow('APPLE_CLIENT_IDS', { infer: true }));
+  constructor(@Inject(ConfigService) config: ConfigService) {
+    this.clientIds = splitClientIds(
+      config.get<string>('APPLE_CLIENT_IDS') ?? config.getOrThrow<string>('APPLE_CLIENT_ID'),
+    );
   }
 
   supports(provider: SocialProvider): boolean {

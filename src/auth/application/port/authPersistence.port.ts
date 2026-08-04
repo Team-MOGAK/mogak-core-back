@@ -1,4 +1,4 @@
-import type { VerifiedSocialIdentity } from '../../domain/entity/auth.entity';
+import type { VerifiedSocialIdentity } from '../../domain/vo/verifiedSocialIdentity.vo';
 import type { AuthUser, SessionDraft } from '../type/auth.result';
 import type { SessionRotationCommand } from '../type/auth.command';
 

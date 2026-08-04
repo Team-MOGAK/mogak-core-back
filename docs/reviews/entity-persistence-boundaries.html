@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>엔티티·영속성 경계 정리</title>
+    <style>
+      body { font-family: system-ui, sans-serif; line-height: 1.55; margin: 2rem auto; max-width: 60rem; padding: 0 1rem; }
+      code { background: #f3f4f6; padding: .1rem .25rem; } aside { border-left: 4px solid #b45309; padding-left: 1rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>엔티티·영속성 경계 정리</h1>
+      <dl>
+        <dt>작업</dt><dd>Drizzle 테이블을 정본으로 삼고 row형 도메인 entity·application과 중복된 projection을 제거</dd>
+        <dt>강도</dt><dd>Standard</dd>
+        <dt>범위</dt><dd><code>src/database/schema</code>와 기능별 domain/infrastructure 타입 경계</dd>
+        <dt>생성·갱신</dt><dd><time datetime="2026-08-02">2026-08-02</time></dd>
+        <dt>상태</dt><dd>구현 완료</dd>
+      </dl>
+    </header>
+    <nav aria-label="목차"><a href="#goal">목표</a> · <a href="#model">변경 모델</a> · <a href="#risk">핵심 위험</a> · <a href="#verification">검증</a> · <a href="#control">제어 상태</a></nav>
+    <main><article>
+      <section id="goal"><h2>목표</h2><p>테이블별 PK·컬럼·제약은 Drizzle table 파일 한 곳에서 확인하고, 동일 필드의 domain entity 재선언을 제거한다.</p></section>
+      <section id="model"><h2>변경 모델</h2><p><code>schema/&lt;feature&gt;/&lt;table&gt;.table.ts</code>는 DB 정의와 ORM 모델의 정본이다. 조회 형태가 application 결과와 같은 단순 필드 묶음이면 repository가 그대로 반환한다. 값의 의미가 바뀌는 지점만 domain VO 객체의 <code>parse()</code>가 검증한다. 별도 mapper와 기계적 <code>toXxx</code>는 만들지 않는다.</p></section>
+      <figure><figcaption>조회 결과가 레이어를 지나는 방식</figcaption><pre><code>Drizzle table → Repository(질의) → Application result
+                         │
+                         └→ VO.parse(저장 문자열 검증) → infrastructure 예외 변환</code></pre><p>단순 필드는 복사하지 않고 그대로 통과하며, 상태·일정처럼 의미가 있는 값만 VO가 해석한다.</p></figure>
+      <section id="risk"><h2>핵심 위험과 불변식</h2><aside>application은 Drizzle과 DB 조회 형태를 import하지 않는다. DB 문자열을 도메인 값으로 바꾸는 책임은 VO에만 둔다. Repository는 질의·저장·영속성 오류 변환만 담당하고, 단일 사용 <code>*Row</code>·mapper·identity 변환을 두지 않는다.</aside></section>
+      <section id="verification"><h2>검증 증거</h2><ul><li><code>pnpm typecheck</code> 통과</li><li><code>pnpm lint</code> 통과</li><li><code>pnpm test --runInBand test/mogaks</code> 8 suite, 40 test 통과 (VO의 저장값 검증 포함)</li><li>전체 <code>pnpm test --runInBand</code>는 52 suite 중 51 suite, 199 test 통과 후 게시글 multipart 계약 테스트 1건이 5초 timeout으로 실패했다. 해당 테스트 단독 재실행은 1 suite, 11 test 통과했다.</li><li><code>git diff --check</code> 통과, 모각 source에서 <code>*Row</code>·<code>PersistenceMapper</code>·repository <code>toXxxResult</code> 참조가 남지 않음을 확인했다.</li></ul></section>
+      <section id="as-built"><h2>구현 결과</h2><p><mark>전용 persistence mapper와 단일 사용 <code>*Row</code>를 제거했다.</mark> 조회 형태가 application 결과와 같은 모다랫·모각·소유 조각은 repository가 직접 반환한다. <code>JogakExecutionStatus</code>, <code>JogakScheduleType</code>, <code>JogakScheduleWeekdayName</code> VO 객체가 <code>parse()</code>로 실행 상태·일정 종류·요일을 검증하고, repository는 저장된 잘못된 값을 infrastructure <code>MogaksPersistenceException</code>으로 변환한다. 레이어 검사에는 domain/application/presentation의 database 역의존과 infrastructure의 presentation 역의존 차단도 추가했다.</p></section>
+      <section id="control"><h2>제어 상태</h2><p>단계: 구현 후 검증. 승인: 2026-08-02 사용자 “구현 ㄱ”. 확정된 사실: 단순 구조 변환은 별도 객체를 만들지 않고, 의미 있는 값 변환만 VO가 담당한다. 전체 회귀의 단일 timeout은 단독 재실행에서 재현되지 않았다. 상태: 해결.</p></section>
+    </article></main>
+  </body>
+</html>

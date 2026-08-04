@@ -5,7 +5,7 @@ import { DomainException } from '../../../common/http/domain.exception';
 import {
   validateConsentSelections,
   type ConsentValidationIssue,
-} from '../../domain/entity/consent.entity';
+} from '../../domain/policy/consent.policy';
 import { CONSENT_REPOSITORY, type ConsentRepositoryPort } from '../port/consent.repository.port';
 import type {
   ConsentAgreementCommand,

@@ -8,7 +8,7 @@ import type { AuthPersistencePort } from '../../application/port/authPersistence
 import type { SessionRotationCommand } from '../../application/type/auth.command';
 import type { AuthUser, SessionDraft } from '../../application/type/auth.result';
 import type { UserRole } from '../../application/type/authenticatedPrincipal';
-import type { VerifiedSocialIdentity } from '../../domain/entity/auth.entity';
+import type { VerifiedSocialIdentity } from '../../domain/vo/verifiedSocialIdentity.vo';
 import {
   AuthPersistenceException,
   DuplicateEmailException,

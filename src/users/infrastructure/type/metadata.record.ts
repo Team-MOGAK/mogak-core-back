@@ -1,3 +1,4 @@
-import type { Address, Job } from '../../domain/entity/userMetadata.entity';
+import type { addresses, jobs } from '../../../database/schema';
 
-export type MetadataRecord = Job | Address;
+/** Drizzle가 사용자 메타데이터 lookup 테이블에서 읽는 원본 행 타입. */
+export type MetadataRecord = typeof jobs.$inferSelect | typeof addresses.$inferSelect;

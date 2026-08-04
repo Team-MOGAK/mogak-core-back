@@ -1,9 +1,8 @@
 import type {
   JogakExecutionStatus,
   JogakOccurrenceStatus,
-  JogakScheduleType,
-  JogakScheduleWeekdayName,
-} from '../../domain/entity/jogak.entity';
+} from '../../domain/vo/jogakExecution.vo';
+import type { JogakScheduleType, JogakScheduleWeekdayName } from '../../domain/vo/jogakSchedule.vo';
 
 export type OwnedJogakResult = Readonly<{
   id: number;
@@ -36,6 +35,21 @@ export type ExecutionResult = Readonly<{
   scheduledDate: string;
   status: JogakExecutionStatus;
   jogakTitleSnapshot: string;
+}>;
+/** 조각과 첫 일정을 함께 생성한 application 결과. */
+export type CreatedJogakResult = Readonly<{
+  jogakId: number;
+  mogakId: number;
+  mogakTitle: string;
+  title: string;
+  color: string | null;
+  categoryCode: string | null;
+  categoryName: string | null;
+  customCategoryName: string | null;
+  scheduleType: JogakScheduleType;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  weekdays: readonly JogakScheduleWeekdayName[];
 }>;
 export type OccurrenceResult = Readonly<{
   jogakId: number;
