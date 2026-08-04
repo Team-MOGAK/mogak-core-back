@@ -4,16 +4,16 @@ import { users } from '../users/user.table';
 
 /** Directed follow relation between users. */
 export const follows = pgTable(
-  'follows',
+  'follow',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
-    followerId: bigint('follower_id', { mode: 'number' })
+    id: bigint('follow_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+    followerId: bigint('from_id', { mode: 'number' })
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    followingId: bigint('following_id', { mode: 'number' })
+    followingId: bigint('to_id', { mode: 'number' })
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [unique('follows_follower_following_unique').on(table.followerId, table.followingId)],
+  (table) => [unique('uq_follow_from_to').on(table.followerId, table.followingId)],
 );

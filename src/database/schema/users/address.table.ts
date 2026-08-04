@@ -1,7 +1,7 @@
-import { bigint, pgTable, varchar } from 'drizzle-orm/pg-core';
+import { integer, pgTable, varchar } from 'drizzle-orm/pg-core';
 
 /** Lookup table for a user's address. */
-export const addresses = pgTable('addresses', {
-  id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+export const addresses = pgTable('address', {
+  id: integer('address_id').primaryKey().generatedByDefaultAsIdentity(),
   name: varchar('name', { length: 255 }).notNull(),
 });

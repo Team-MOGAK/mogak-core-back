@@ -30,7 +30,7 @@ describe('인증 저장소', () => {
   it('소셜 식별자 고유성 위반을 DuplicateSocialAccountException으로 변환한다', async () => {
     const transaction = testMock().mockRejectedValue({
       code: '23505',
-      constraint: 'social_accounts_provider_user_unique',
+      constraint: 'uq_social_account_provider_user',
     });
     const repository = new AuthRepository({ transaction } as unknown as Database);
 

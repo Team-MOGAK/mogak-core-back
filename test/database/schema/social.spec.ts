@@ -29,6 +29,6 @@ describe('소셜 데이터베이스 스키마', () => {
       .uniqueConstraints.map((constraint) => constraint.getName())
       .filter((name): name is string => name !== undefined);
 
-    expect(names).toEqual(['follows_follower_following_unique']);
+    expect(names).toEqual(['uq_follow_from_to']);
   });
 });

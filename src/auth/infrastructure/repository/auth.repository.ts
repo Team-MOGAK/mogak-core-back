@@ -74,7 +74,7 @@ export class AuthRepository implements AuthPersistencePort {
       if (isUniqueConstraint(error, 'users_email_unique')) {
         throw new DuplicateEmailException();
       }
-      if (isUniqueConstraint(error, 'social_accounts_provider_user_unique')) {
+      if (isUniqueConstraint(error, 'uq_social_account_provider_user')) {
         throw new DuplicateSocialAccountException();
       }
       throw new AuthPersistenceException('Failed to create auth account', { cause: error });

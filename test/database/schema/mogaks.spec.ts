@@ -65,6 +65,6 @@ describe('모각 데이터베이스 스키마', () => {
       uniqueConstraintNames(
         mogaks.jogakExecutions as unknown as Parameters<typeof getTableConfig>[0],
       ),
-    ).toContain('jogak_executions_jogak_scheduled_date_unique');
+    ).toContain('uq_daily_jogak_jogak_target');
   });
 });

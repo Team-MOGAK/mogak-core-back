@@ -2,9 +2,9 @@ import { bigint, boolean, pgTable, text, timestamp, unique, varchar } from 'driz
 
 /** Public consent catalogue. */
 export const consentItems = pgTable(
-  'consent_items',
+  'consent_item',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+    id: bigint('consent_item_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
     code: varchar('code', { length: 100 }).notNull(),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
@@ -13,5 +13,5 @@ export const consentItems = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [unique('consent_items_code_unique').on(table.code)],
+  (table) => [unique('uq_consent_item_code').on(table.code)],
 );

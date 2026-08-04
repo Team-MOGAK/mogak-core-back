@@ -56,11 +56,11 @@ describe('게시글 데이터베이스 스키마', () => {
 
     expect(
       uniqueConstraintNames(postsSchema.posts as unknown as Parameters<typeof getTableConfig>[0]),
-    ).toContain('posts_jogak_execution_id_unique');
+    ).toContain('uq_post_daily_jogak');
     expect(
       uniqueConstraintNames(
         postsSchema.postLikes as unknown as Parameters<typeof getTableConfig>[0],
       ),
-    ).toContain('post_likes_post_user_unique');
+    ).toContain('uq_post_like_post_user');
   });
 });

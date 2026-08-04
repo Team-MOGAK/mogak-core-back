@@ -3,8 +3,8 @@ import { bigint, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { mogaks } from './mogak.table';
 
 /** A task inside a Mogak. */
-export const jogaks = pgTable('jogaks', {
-  id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+export const jogaks = pgTable('jogak', {
+  id: bigint('jogak_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
   mogakId: bigint('mogak_id', { mode: 'number' })
     .notNull()
     .references(() => mogaks.id, { onDelete: 'cascade' }),

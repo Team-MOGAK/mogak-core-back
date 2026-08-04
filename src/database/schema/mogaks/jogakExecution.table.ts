@@ -4,19 +4,17 @@ import { jogaks } from './jogak.table';
 
 /** Recorded state for one scheduled Jogak occurrence. */
 export const jogakExecutions = pgTable(
-  'jogak_executions',
+  'daily_jogak',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+    id: bigint('daily_jogak_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
     jogakId: bigint('jogak_id', { mode: 'number' })
       .notNull()
       .references(() => jogaks.id, { onDelete: 'cascade' }),
-    scheduledDate: date('scheduled_date').notNull(),
+    scheduledDate: date('target_date').notNull(),
     status: varchar('status', { length: 16 }).notNull(),
-    jogakTitleSnapshot: varchar('jogak_title_snapshot', { length: 100 }).notNull(),
+    jogakTitleSnapshot: varchar('title', { length: 100 }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
-    unique('jogak_executions_jogak_scheduled_date_unique').on(table.jogakId, table.scheduledDate),
-  ],
+  (table) => [unique('uq_daily_jogak_jogak_target').on(table.jogakId, table.scheduledDate)],
 );

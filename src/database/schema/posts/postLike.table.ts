@@ -5,9 +5,9 @@ import { posts } from './post.table';
 
 /** A user's single like for a post. */
 export const postLikes = pgTable(
-  'post_likes',
+  'post_like',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+    id: bigint('like_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
     postId: bigint('post_id', { mode: 'number' })
       .notNull()
       .references(() => posts.id, { onDelete: 'cascade' }),
@@ -16,5 +16,5 @@ export const postLikes = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [unique('post_likes_post_user_unique').on(table.postId, table.userId)],
+  (table) => [unique('uq_post_like_post_user').on(table.postId, table.userId)],
 );

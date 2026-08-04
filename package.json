@@ -26,7 +26,8 @@
     "test:verify-local": "node --test scripts/*.test.mjs",
     "verify:local": "node scripts/verify-local.mjs",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "db:migrate:legacy-compat": "node scripts/migrateLegacySchemaCompatibility.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

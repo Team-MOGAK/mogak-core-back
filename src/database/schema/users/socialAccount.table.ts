@@ -17,7 +17,7 @@ export const socialAccounts = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    unique('social_accounts_provider_user_unique').on(table.provider, table.providerUserId),
-    unique('social_accounts_user_provider_unique').on(table.userId, table.provider),
+    unique('uq_social_account_provider_user').on(table.provider, table.providerUserId),
+    unique('uq_social_account_user_provider').on(table.userId, table.provider),
   ],
 );
