@@ -1,0 +1,13 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --tag
+      - gcr.io/workvoys/github.com/team-mogak/mogak-core-back:$COMMIT_SHA
+      - .
+
+images:
+  - gcr.io/workvoys/github.com/team-mogak/mogak-core-back:$COMMIT_SHA
+
+options:
+  logging: CLOUD_LOGGING_ONLY
