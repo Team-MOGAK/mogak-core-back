@@ -6,7 +6,7 @@ import { users } from './user.table';
 export const socialAccounts = pgTable(
   'social_accounts',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+    id: bigint('social_account_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
     userId: bigint('user_id', { mode: 'number' })
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),

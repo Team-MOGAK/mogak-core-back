@@ -7,7 +7,7 @@ import { jobs } from './job.table';
 export const users = pgTable(
   'users',
   {
-    id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
+    id: bigint('user_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
     jobId: bigint('job_id', { mode: 'number' }).references(() => jobs.id),
     addressId: bigint('address_id', { mode: 'number' }).references(() => addresses.id),
     nickname: varchar('nickname', { length: 255 }),
