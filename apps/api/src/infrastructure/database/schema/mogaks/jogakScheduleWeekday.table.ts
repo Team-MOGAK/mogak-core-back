@@ -7,9 +7,9 @@ export const jogakScheduleWeekdays = pgTable(
   'jogak_schedule_weekdays',
   {
     id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
-    scheduleId: bigint('schedule_id', { mode: 'number' })
-      .notNull()
-      .references(() => jogakSchedules.id, { onDelete: 'cascade' }),
+  scheduleId: bigint('schedule_id', { mode: 'number' })
+    .notNull()
+    .references(() => jogakSchedules.id),
     weekday: varchar('weekday', { length: 16 }).notNull(),
   },
   (table) => [

@@ -15,7 +15,7 @@ function connectionStringFromEnvironment() {
 }
 
 const migrationSql = await readFile(
-  new URL('./migrations/2026-08-17-v1-legacy-delete-cascade-post-retention.sql', import.meta.url),
+  new URL('./migrations/2026-08-17-v2-application-delete-post-retention.sql', import.meta.url),
   'utf8',
 );
 

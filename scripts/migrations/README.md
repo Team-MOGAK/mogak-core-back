@@ -4,6 +4,7 @@
 
 | 순서 | 파일 | 적용 대상 | 내용 |
 | --- | --- | --- | --- |
-| 1 | `2026-08-17-v1-legacy-delete-cascade-post-retention.sql` | 기존 Spring 레거시 스키마를 사용하는 운영 DB | Modarat→Mogak→Jogak→DailyJogak 삭제 연쇄를 보정하고, `post.daily_jogak_id` FK를 제거해 게시글을 보존한다. |
+| 1 | `2026-08-17-v1-legacy-delete-cascade-post-retention.sql` | 실행하지 않음 | DB cascade를 사용한 초안으로, v2로 대체됐다. |
+| 2 | `2026-08-17-v2-application-delete-post-retention.sql` | 기존 Spring 레거시 스키마를 사용하는 운영 DB | 조각 계층 FK를 `ON DELETE NO ACTION`으로 보정하고, `post.daily_jogak_id` FK를 제거한다. 삭제는 애플리케이션 트랜잭션이 수행하며, 중복 방지용 UNIQUE CONSTRAINT만 추가한다. |
 
-각 SQL은 운영 DB에서 한 번 실행한다. 실행 전에는 대상 DB와 적용 이력을 확인하고, 실행 후에는 FK 카탈로그와 삭제 동작을 확인한다.
+운영 DB에는 v2만 한 번 실행한다. 실행 전에는 대상 DB와 적용 이력을 확인하고, 실행 후에는 FK 카탈로그와 애플리케이션 삭제 동작을 확인한다.
