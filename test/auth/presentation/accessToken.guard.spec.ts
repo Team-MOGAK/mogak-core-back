@@ -1,10 +1,10 @@
 import { testMock } from '../../testMock';
 import type { ExecutionContext } from '@nestjs/common';
 
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
-import type { AuthService } from '../../../src/auth/application/service/auth.service';
-import { AccessTokenGuard } from '../../../src/auth/presentation/controller/accessToken.guard';
+import { AppErrorCode } from '../../../apps/api/src/api/common/http/appErrorCode';
+import { DomainException } from '../../../apps/api/src/api/common/http/domain.exception';
+import type { AuthService } from '../../../apps/api/src/core/auth/application/service/auth.service';
+import { AccessTokenGuard } from '../../../apps/api/src/api/auth/presentation/controller/accessToken.guard';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 

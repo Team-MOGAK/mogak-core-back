@@ -1,5 +1,5 @@
 import { HttpStatus } from '@nestjs/common';
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
+import { AppErrorCode } from '../../../apps/api/src/api/common/http/appErrorCode';
 
 describe('애플리케이션 오류 코드', () => {
   it('기존 소셜 계정 연결 필요 오류 계약을 유지한다', () => {

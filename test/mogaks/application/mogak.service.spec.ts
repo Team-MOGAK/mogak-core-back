@@ -1,9 +1,8 @@
+import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
-import type { MogakRepositoryPort } from '../../../src/mogaks/application/port/mogak.repository.port';
-import { MogakService } from '../../../src/mogaks/application/service/mogak.service';
+import type { MogakRepositoryPort } from '../../../apps/api/src/core/mogaks/application/port/mogak.repository.port';
+import { MogakService } from '../../../apps/api/src/core/mogaks/application/service/mogak.service';
 
 function repository(): MogakRepositoryPort {
   return {
@@ -23,7 +22,7 @@ describe('모각 서비스', () => {
     const service = new MogakService(mogaks);
 
     await expect(service.createModarat(7, { title: '   ', color: 'blue' })).rejects.toEqual(
-      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      new CoreError('INVALID_PARAMETER'),
     );
     expect(mogaks.createModarat).not.toHaveBeenCalled();
   });
@@ -79,7 +78,7 @@ describe('모각 서비스', () => {
         categoryCode: 'CERTIFICATION',
         customCategoryName: '코테',
       }),
-    ).rejects.toEqual(new DomainException(AppErrorCode.INVALID_PARAMETER));
+    ).rejects.toEqual(new CoreError('INVALID_PARAMETER'));
   });
 
   it('예약 칸이나 잠금을 만들지 않고 아홉 번째 연속 모각을 거부한다', async () => {
@@ -98,7 +97,7 @@ describe('모각 서비스', () => {
         title: '준비',
         customCategoryName: '코테',
       }),
-    ).rejects.toEqual(new DomainException(AppErrorCode.MAX_MOGAKS));
+    ).rejects.toEqual(new CoreError('MAX_MOGAKS'));
     expect(mogaks.createMogak).not.toHaveBeenCalled();
   });
 
@@ -107,9 +106,7 @@ describe('모각 서비스', () => {
     jest.mocked(mogaks.deleteOwnedModarat).mockResolvedValue(false);
     const service = new MogakService(mogaks);
 
-    await expect(service.deleteModarat(7, 3)).rejects.toEqual(
-      new DomainException(AppErrorCode.MODARAT_NOT_FOUND),
-    );
+    await expect(service.deleteModarat(7, 3)).rejects.toEqual(new CoreError('MODARAT_NOT_FOUND'));
   });
 
   it('저장소 소유권 조인을 노출하지 않고 종속 조회용 소유 모각을 해석한다', async () => {

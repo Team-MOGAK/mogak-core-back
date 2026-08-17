@@ -2,7 +2,7 @@ import {
   calendarDateSchema,
   positiveIdSchema,
   requiredTextSchema,
-} from '../../../src/common/validation/requestSchema';
+} from '../../../apps/api/src/api/common/validation/requestSchema';
 
 describe('공통 요청 스키마', () => {
   it('경로 ID는 안전한 양의 정수로 변환한다', () => {

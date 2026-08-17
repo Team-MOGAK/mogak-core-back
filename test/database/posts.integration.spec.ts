@@ -14,7 +14,7 @@ import {
   postLikes,
   posts,
   users,
-} from '../../src/database/schema';
+} from '../../apps/api/src/infrastructure/database/schema';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {

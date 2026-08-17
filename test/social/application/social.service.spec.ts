@@ -1,10 +1,9 @@
+import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
-import type { SocialRepositoryPort } from '../../../src/social/application/port/social.repository.port';
-import { SocialService } from '../../../src/social/application/service/social.service';
+import type { SocialRepositoryPort } from '../../../apps/api/src/core/social/application/port/social.repository.port';
+import { SocialService } from '../../../apps/api/src/core/social/application/service/social.service';
 
 function repository(): SocialRepositoryPort {
   return {
@@ -41,7 +40,7 @@ describe('소셜 팔로우 서비스', () => {
     const service = new SocialService(social);
 
     await expect(service.follow(7, '모각러')).rejects.toEqual(
-      new DomainException(AppErrorCode.FOLLOW_ALREADY_EXISTS),
+      new CoreError('FOLLOW_ALREADY_EXISTS'),
     );
   });
 
@@ -50,9 +49,7 @@ describe('소셜 팔로우 서비스', () => {
     jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 7 });
     const service = new SocialService(social);
 
-    await expect(service.follow(7, '나')).rejects.toEqual(
-      new DomainException(AppErrorCode.INVALID_PARAMETER),
-    );
+    await expect(service.follow(7, '나')).rejects.toEqual(new CoreError('INVALID_PARAMETER'));
     expect(social.createFollow).not.toHaveBeenCalled();
   });
 
@@ -62,9 +59,7 @@ describe('소셜 팔로우 서비스', () => {
     jest.mocked(social.deleteFollow).mockResolvedValue(false);
     const service = new SocialService(social);
 
-    await expect(service.unfollow(7, '모각러')).rejects.toEqual(
-      new DomainException(AppErrorCode.FOLLOW_NOT_FOUND),
-    );
+    await expect(service.unfollow(7, '모각러')).rejects.toEqual(new CoreError('FOLLOW_NOT_FOUND'));
   });
 
   it('원본 행에서 멘토와 모토 수를 계산해 반환한다', async () => {
@@ -134,7 +129,7 @@ describe('소셜 팔로우 서비스', () => {
     const service = new SocialService(social);
 
     await expect(service.listNetworkPosts(7, 0, 10, 'viewCnt')).rejects.toEqual(
-      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      new CoreError('INVALID_PARAMETER'),
     );
     expect(social.listNetworkPosts).not.toHaveBeenCalled();
   });

@@ -1,6 +1,6 @@
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
-import { requiredTrimmed } from '../../../src/common/validation/requiredText';
+import { AppErrorCode } from '../../../apps/api/src/api/common/http/appErrorCode';
+import { DomainException } from '../../../apps/api/src/api/common/http/domain.exception';
+import { requiredTrimmed } from '../../../apps/api/src/api/common/validation/requiredText';
 
 describe('필수 문자열 정규화', () => {
   it('공백만 있는 필수 문자열을 잘못된 파라미터로 거부한다', () => {

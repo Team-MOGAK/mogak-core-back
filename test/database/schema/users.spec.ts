@@ -6,7 +6,7 @@ import {
   socialAccounts,
   userConsents,
   users,
-} from '../../../src/database/schema/users';
+} from '../../../apps/api/src/infrastructure/database/schema/users';
 
 function uniqueConstraintNames(table: Parameters<typeof getTableConfig>[0]): string[] {
   return getTableConfig(table)

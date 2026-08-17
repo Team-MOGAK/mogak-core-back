@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
-import type { Database } from '../../src/database/database.provider';
+import type { Database } from '../../apps/api/src/infrastructure/database/database.provider';
 import {
   jogakExecutions,
   jogakSchedules,
@@ -13,9 +13,9 @@ import {
   modarats,
   mogaks,
   users,
-} from '../../src/database/schema';
-import { JogaksService } from '../../src/mogaks/application/service/jogaks.service';
-import { MogakRepository } from '../../src/mogaks/infrastructure/repository/mogak.repository';
+} from '../../apps/api/src/infrastructure/database/schema';
+import { JogaksService } from '../../apps/api/src/core/mogaks/application/service/jogaks.service';
+import { MogakRepository } from '../../apps/api/src/infrastructure/mogaks/repository/mogak.repository';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {

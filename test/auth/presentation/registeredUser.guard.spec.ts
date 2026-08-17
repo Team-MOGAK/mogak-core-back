@@ -1,8 +1,8 @@
 import type { ExecutionContext } from '@nestjs/common';
 
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
-import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registeredUser.guard';
+import { AppErrorCode } from '../../../apps/api/src/api/common/http/appErrorCode';
+import { DomainException } from '../../../apps/api/src/api/common/http/domain.exception';
+import { RegisteredUserGuard } from '../../../apps/api/src/api/auth/presentation/controller/registeredUser.guard';
 
 function executionContext(request: Record<string, unknown>): ExecutionContext {
   return {

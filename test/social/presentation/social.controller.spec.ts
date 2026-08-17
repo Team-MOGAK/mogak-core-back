@@ -4,11 +4,11 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
-import { configureApp } from '../../../src/app.setup';
-import { AccessTokenGuard } from '../../../src/auth/presentation/controller/accessToken.guard';
-import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registeredUser.guard';
-import { SocialService } from '../../../src/social/application/service/social.service';
-import { SocialController } from '../../../src/social/presentation/controller/social.controller';
+import { configureApp } from '../../../apps/api/src/api/app.setup';
+import { AccessTokenGuard } from '../../../apps/api/src/api/auth/presentation/controller/accessToken.guard';
+import { RegisteredUserGuard } from '../../../apps/api/src/api/auth/presentation/controller/registeredUser.guard';
+import { SocialService } from '../../../apps/api/src/core/social/application/service/social.service';
+import { SocialController } from '../../../apps/api/src/api/social/presentation/controller/social.controller';
 
 describe('소셜 HTTP 계약', () => {
   let app: INestApplication;

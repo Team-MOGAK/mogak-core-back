@@ -1,0 +1,48 @@
+import { CoreError } from '../../../core/common/error/coreError';
+import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
+
+import type { SocialIdentityVerifier } from '../../../core/auth/application/port/socialIdentityVerifier.port';
+import type { SocialProvider } from '../../../core/auth/domain/vo/socialProvider.vo';
+import { identityFromJwtClaims } from './identityClaims';
+
+const googleKeys = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
+export const GOOGLE_ISSUERS = ['https://accounts.google.com', 'accounts.google.com'] as const;
+
+@Injectable()
+export class GoogleIdentityVerifier implements SocialIdentityVerifier {
+  private readonly clientIds: string[];
+
+  constructor(@Inject(ConfigService) config: ConfigService) {
+    this.clientIds = splitClientIds(
+      config.get<string>('GOOGLE_CLIENT_IDS') ?? config.getOrThrow<string>('GOOGLE_CLIENT_ID'),
+    );
+  }
+
+  supports(provider: SocialProvider): boolean {
+    return provider === 'GOOGLE';
+  }
+
+  async verify(token: string) {
+    try {
+      const { payload } = await jwtVerify(token, googleKeys, {
+        algorithms: ['RS256'],
+        issuer: [...GOOGLE_ISSUERS],
+        audience: this.clientIds,
+        clockTolerance: 30,
+      });
+      return identityFromJwtClaims('GOOGLE', payload);
+    } catch (error: unknown) {
+      if (error instanceof CoreError) throw error;
+      throw new CoreError('INVALID_SOCIAL_TOKEN');
+    }
+  }
+}
+
+function splitClientIds(value: string): string[] {
+  return value
+    .split(',')
+    .map((clientId) => clientId.trim())
+    .filter((clientId) => clientId.length > 0);
+}

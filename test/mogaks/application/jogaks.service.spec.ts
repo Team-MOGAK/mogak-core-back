@@ -1,9 +1,8 @@
+import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
-import type { MogakRepositoryPort } from '../../../src/mogaks/application/port/mogak.repository.port';
-import { JogaksService } from '../../../src/mogaks/application/service/jogaks.service';
+import type { MogakRepositoryPort } from '../../../apps/api/src/core/mogaks/application/port/mogak.repository.port';
+import { JogaksService } from '../../../apps/api/src/core/mogaks/application/service/jogaks.service';
 
 function repository(): MogakRepositoryPort {
   return {
@@ -98,7 +97,7 @@ describe('조각 서비스', () => {
         title: '루틴',
         schedule: { scheduleType: 'WEEKLY', effectiveFrom: '2026-07-23', weekdays: [] },
       }),
-    ).rejects.toEqual(new DomainException(AppErrorCode.ROUTINE_WEEKDAYS_REQUIRED));
+    ).rejects.toEqual(new CoreError('ROUTINE_WEEKDAYS_REQUIRED'));
   });
 
   it('실행 행을 만들지 않고 대기 발생을 조회 결과로 구성한다', async () => {
@@ -271,7 +270,7 @@ describe('조각 서비스', () => {
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
     await expect(service.commandExecution(7, 11, '2026-07-23', 'IN_PROGRESS')).rejects.toEqual(
-      new DomainException(AppErrorCode.INVALID_EXECUTION_TRANSITION),
+      new CoreError('INVALID_EXECUTION_TRANSITION'),
     );
   });
 
@@ -341,9 +340,7 @@ describe('조각 서비스', () => {
     jest.mocked(mogaks.deleteOwnedJogak).mockResolvedValue(false);
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
-    await expect(service.delete(7, 11)).rejects.toEqual(
-      new DomainException(AppErrorCode.JOGAK_NOT_FOUND),
-    );
+    await expect(service.delete(7, 11)).rejects.toEqual(new CoreError('JOGAK_NOT_FOUND'));
   });
 
   it('기존 실행 스냅샷을 덮어쓰지 않고 미래 일정을 교체한다', async () => {

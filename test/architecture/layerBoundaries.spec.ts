@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 type Violation = Readonly<{ file: string; message: string }>;
 
-const sourceRoot = resolve(process.cwd(), 'src');
+const sourceRoot = resolve(process.cwd(), 'apps/api/src');
 const forbiddenDomainPackages = [
   /^@nestjs(?:\/|$)/,
   /^zod(?:\/|$)/,
@@ -28,12 +28,12 @@ describe('layer boundaries', () => {
   });
 
   it('keeps PostgreSQL unique-violation details out of auth and user application services', () => {
-    expect(readFileSync('src/auth/application/service/auth.service.ts', 'utf8')).not.toMatch(
-      /23505|users_email_unique|social_accounts_provider_user_unique/,
-    );
-    expect(readFileSync('src/users/application/service/user.service.ts', 'utf8')).not.toMatch(
-      /23505|users_nickname_unique/,
-    );
+    expect(
+      readFileSync('apps/api/src/core/auth/application/service/auth.service.ts', 'utf8'),
+    ).not.toMatch(/23505|users_email_unique|social_accounts_provider_user_unique/);
+    expect(
+      readFileSync('apps/api/src/core/users/application/service/user.service.ts', 'utf8'),
+    ).not.toMatch(/23505|users_nickname_unique/);
   });
 
   it('rejects dynamic module references and generic type-contract bypasses', () => {
@@ -153,6 +153,30 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
     const projectPath = relative(root, file);
     const segments = projectPath.split(sep);
     const imports = collectModuleSpecifiers(sourceFile);
+
+    if (segments.includes('core')) {
+      for (const moduleSpecifier of imports) {
+        if (forbiddenDomainPackages.some((pattern) => pattern.test(moduleSpecifier))) {
+          violations.push({
+            file: projectPath,
+            message: `core must not import framework, persistence, or HTTP package '${moduleSpecifier}'`,
+          });
+        }
+        if (
+          targetsLayer(
+            root,
+            file,
+            moduleSpecifier,
+            new Set(['api', 'infrastructure', 'composition', 'database']),
+          )
+        ) {
+          violations.push({
+            file: projectPath,
+            message: `core must not import an adapter layer '${moduleSpecifier}'`,
+          });
+        }
+      }
+    }
 
     if (segments.includes('domain')) {
       for (const moduleSpecifier of imports) {

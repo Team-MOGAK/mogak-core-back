@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 
-import { BoundedThrottlerStorage } from '../../../src/common/http/boundedThrottler.storage';
+import { BoundedThrottlerStorage } from '../../../apps/api/src/api/common/http/boundedThrottler.storage';
 
 describe('BoundedThrottlerStorage', () => {
   beforeEach(() => {

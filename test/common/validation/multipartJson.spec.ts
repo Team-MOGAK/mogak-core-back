@@ -1,8 +1,8 @@
 import { z } from 'zod';
 
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
-import { parseMultipartJson } from '../../../src/common/validation/multipartJson';
+import { AppErrorCode } from '../../../apps/api/src/api/common/http/appErrorCode';
+import { DomainException } from '../../../apps/api/src/api/common/http/domain.exception';
+import { parseMultipartJson } from '../../../apps/api/src/api/common/validation/multipartJson';
 
 const postSchema = z
   .object({

@@ -2,9 +2,10 @@ import { HttpStatus, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { jest } from '@jest/globals';
 import { ThrottlerException } from '@nestjs/throttler';
 
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
-import { GlobalExceptionFilter } from '../../../src/common/http/globalException.filter';
+import { AppErrorCode } from '../../../apps/api/src/api/common/http/appErrorCode';
+import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
+import { DomainException } from '../../../apps/api/src/api/common/http/domain.exception';
+import { GlobalExceptionFilter } from '../../../apps/api/src/api/common/http/globalException.filter';
 
 describe('GlobalExceptionFilter의 rate limit 처리', () => {
   afterEach(() => jest.restoreAllMocks());
@@ -117,6 +118,58 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       status: 'FORBIDDEN',
       message: '권한이 부여되지 않았습니다',
     });
+  });
+});
+
+describe('GlobalExceptionFilter의 core 예외 처리', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('CoreError를 기존 AppErrorCode HTTP 계약으로 변환한다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const host = {
+      switchToHttp: () => ({
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter().catch(new CoreError('USER_NOT_FOUND'), host as never);
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'NOT_FOUND',
+        code: 'U001',
+        message: '존재하지 않는 사용자입니다',
+      }),
+    );
+    expect(warn).toHaveBeenCalledWith({
+      type: 'core_error',
+      code: 'U001',
+      status: 'NOT_FOUND',
+    });
+  });
+
+  it('등록되지 않은 CoreError code는 내부 서버 오류로 변환한다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const host = {
+      switchToHttp: () => ({
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter().catch(new CoreError('UNMAPPED_CORE_ERROR'), host as never);
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'INTERNAL_SERVER_ERROR',
+        code: 'Z500',
+      }),
+    );
   });
 });
 

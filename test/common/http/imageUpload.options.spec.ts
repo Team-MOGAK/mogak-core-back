@@ -1,12 +1,12 @@
 import { jest } from '@jest/globals';
 
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../apps/api/src/api/common/http/domain.exception';
 import {
   MAX_IMAGE_FILE_SIZE_BYTES,
   MAX_POST_IMAGE_COUNT,
   postImageUploadOptions,
   profileImageUploadOptions,
-} from '../../../src/common/http/imageUpload.options';
+} from '../../../apps/api/src/api/common/http/imageUpload.options';
 
 describe('이미지 업로드 정책', () => {
   it('5 MiB와 게시글 다섯 장을 제한하며 허용된 이미지 MIME만 받는다', () => {
