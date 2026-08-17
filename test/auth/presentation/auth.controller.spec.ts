@@ -51,9 +51,12 @@ describe('인증 HTTP 계약', () => {
 
   it('공통 애플 로그인 경로와 응답 포맷을 유지한다', async () => {
     authService.login.mockResolvedValue({
-      isRegistered: false,
-      userId: 7,
-      tokens: { accessToken: 'access', refreshToken: 'refresh' },
+      flow: 'NEW',
+      result: {
+        isRegistered: false,
+        userId: 7,
+        tokens: { accessToken: 'access', refreshToken: 'refresh' },
+      },
     });
 
     await request(app.getHttpServer())
@@ -80,6 +83,33 @@ describe('인증 HTTP 계약', () => {
     expect(authService.login).not.toHaveBeenCalled();
   });
 
+  it('가입 재개 로그인은 결과를 바꾸지 않고 구분된 성공 코드를 반환한다', async () => {
+    authService.login.mockResolvedValue({
+      flow: 'RESUME',
+      result: {
+        isRegistered: false,
+        userId: 7,
+        tokens: { accessToken: 'access', refreshToken: 'refresh' },
+      },
+    });
+
+    await request(app.getHttpServer())
+      .post('/api/auth/google/login')
+      .send({ token: 'google-id-token' })
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          status: 'OK',
+          code: 'AUTH_SIGNUP_RESUME_REQUIRED',
+          result: {
+            isRegistered: false,
+            userId: 7,
+            tokens: { accessToken: 'access', refreshToken: 'refresh' },
+          },
+        });
+      });
+  });
+
   it('리프레시 토큰 헤더와 기존 201 성공 응답 조합을 유지한다', async () => {
     authService.refresh.mockResolvedValue({
       accessToken: 'next-access',
@@ -103,9 +133,12 @@ describe('인증 HTTP 계약', () => {
 
   it('같은 IP의 로그인은 분당 스무 번째, 토큰 갱신은 예순 번째까지만 서비스에 전달한다', async () => {
     authService.login.mockResolvedValue({
-      isRegistered: false,
-      userId: 7,
-      tokens: { accessToken: 'access', refreshToken: 'refresh' },
+      flow: 'NEW',
+      result: {
+        isRegistered: false,
+        userId: 7,
+        tokens: { accessToken: 'access', refreshToken: 'refresh' },
+      },
     });
     authService.refresh.mockResolvedValue({
       accessToken: 'next-access',

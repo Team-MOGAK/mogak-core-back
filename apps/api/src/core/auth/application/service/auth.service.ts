@@ -1,5 +1,9 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { generateId } from '@core/common/util/idGenerator';
+import {
+  registrationRoleFor,
+  type RegistrationRole,
+} from '@core/users/domain/policy/userRegistration.policy';
 
 import {
   validateNewSocialIdentity,
@@ -14,7 +18,12 @@ import type { AuthPersistencePort } from '../port/authPersistence.port';
 import type { AuthTokenVerifierPort } from '../port/authTokenVerifier.port';
 import type { SessionTokenIssuerPort } from '../port/sessionTokenIssuer.port';
 import type { SocialIdentityVerifierPort } from '../port/socialIdentityVerifier.port';
-import type { TokenResult, SocialLoginResult, AuthUser } from '../type/auth.result';
+import type {
+  TokenResult,
+  SocialLoginFlow,
+  SocialLoginOutcome,
+  AuthUser,
+} from '../type/auth.result';
 import type { AuthenticatedPrincipal } from '../type/authenticatedPrincipal';
 
 export class AuthService {
@@ -25,7 +34,7 @@ export class AuthService {
     private readonly authTokenVerifier: AuthTokenVerifierPort,
   ) {}
 
-  async login(provider: SocialProvider, token: string): Promise<SocialLoginResult> {
+  async login(provider: SocialProvider, token: string): Promise<SocialLoginOutcome> {
     const identity = await this.socialIdentityVerifier.verify(provider, token);
     if (identity.provider !== provider) {
       throw new DomainException(DomainErrorCode.INVALID_SOCIAL_TOKEN);
@@ -36,7 +45,7 @@ export class AuthService {
       identity.providerUserId,
     );
     if (existingUser !== null) {
-      return this.issueSession(existingUser);
+      return this.issueSession(existingUser, 'RESUME');
     }
 
     this.throwForInvalidIdentity(validateNewSocialIdentity(identity));
@@ -49,18 +58,21 @@ export class AuthService {
 
     try {
       const newUser = await this.authPersistence.createAccount(identity);
-      return this.issueSession(newUser);
+      return this.issueSession(newUser, 'NEW');
     } catch (error: unknown) {
-      if (error instanceof DuplicateEmailException) {
-        throw new DomainException(DomainErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
-      }
-      if (error instanceof DuplicateSocialAccountException) {
+      if (
+        error instanceof DuplicateEmailException ||
+        error instanceof DuplicateSocialAccountException
+      ) {
         const winner = await this.authPersistence.findUserBySocialIdentity(
           identity.provider,
           identity.providerUserId,
         );
         if (winner !== null) {
-          return this.issueSession(winner);
+          return this.issueSession(winner, 'RESUME');
+        }
+        if (error instanceof DuplicateEmailException) {
+          throw new DomainException(DomainErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
         }
       }
       throw error;
@@ -117,22 +129,41 @@ export class AuthService {
     throw new DomainException(errorCode);
   }
 
-  private async issueSession(user: AuthUser): Promise<SocialLoginResult> {
+  private async issueSession(
+    user: AuthUser,
+    requestedFlow: Extract<SocialLoginFlow, 'NEW' | 'RESUME'>,
+  ): Promise<SocialLoginOutcome> {
+    const sessionUser =
+      user.role === null ? await this.normalizeNullRole(user.id) : user;
     const sessionId = generateId();
-    const issuedTokens = await this.sessionTokenIssuer.issue(this.principal(user, sessionId));
-    await this.authPersistence.createSession(user.id, {
+    const issuedTokens = await this.sessionTokenIssuer.issue(
+      this.principal(sessionUser, sessionId),
+    );
+    await this.authPersistence.createSession(sessionUser.id, {
       id: sessionId,
       refreshTokenHash: issuedTokens.refreshTokenHash,
       expiresAt: issuedTokens.refreshTokenExpiresAt,
     });
     return {
-      isRegistered: user.nickname !== null && user.nickname.length > 0,
-      userId: user.id,
-      tokens: this.tokens(issuedTokens),
+      flow: sessionUser.role === 'USER' ? 'REGISTERED' : requestedFlow,
+      result: {
+        isRegistered: sessionUser.role === 'USER',
+        userId: sessionUser.id,
+        tokens: this.tokens(issuedTokens),
+      },
     };
   }
 
+  private async normalizeNullRole(userId: number): Promise<AuthUser> {
+    const snapshot = await this.authPersistence.findRegistrationSnapshot(userId);
+    const role: RegistrationRole = registrationRoleFor(snapshot);
+    return this.authPersistence.normalizeNullRole(userId, role);
+  }
+
   private principal(user: AuthUser, sessionId: string): AuthenticatedPrincipal {
+    if (user.role === null) {
+      throw new DomainException(DomainErrorCode.WRONG_TOKEN);
+    }
     return {
       userId: user.id,
       role: user.role,
