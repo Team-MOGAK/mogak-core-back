@@ -1,8 +1,7 @@
 import { z } from 'zod';
 
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/domain.exception';
-import { parseMultipartJson } from '../../../src/common/validation/multipartJson';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
+import { parseMultipartJson } from '@api/common/validation/multipartJson';
 
 const postSchema = z
   .object({
@@ -27,7 +26,7 @@ describe('multipart JSON 어댑터', () => {
 
   it('손상 JSON과 정의되지 않은 필드를 Z005로 거부한다', () => {
     expect(() => parseMultipartJson({ request: '{' }, postSchema)).toThrow(
-      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
     );
     expect(() =>
       parseMultipartJson(
@@ -40,6 +39,6 @@ describe('multipart JSON 어댑터', () => {
         },
         postSchema,
       ),
-    ).toThrow(new DomainException(AppErrorCode.INVALID_PARAMETER));
+    ).toThrow(new DomainException(DomainErrorCode.INVALID_PARAMETER));
   });
 });

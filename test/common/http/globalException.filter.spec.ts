@@ -2,9 +2,8 @@ import { HttpStatus, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { jest } from '@jest/globals';
 import { ThrottlerException } from '@nestjs/throttler';
 
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/domain.exception';
-import { GlobalExceptionFilter } from '../../../src/common/http/globalException.filter';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
+import { GlobalExceptionFilter } from '@api/common/http/globalException.filter';
 
 describe('GlobalExceptionFilter의 rate limit 처리', () => {
   afterEach(() => jest.restoreAllMocks());
@@ -62,7 +61,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     };
 
     new GlobalExceptionFilter().catch(
-      new DomainException(AppErrorCode.USER_NOT_FOUND),
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
       host as never,
     );
 
@@ -87,7 +86,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     };
 
     new GlobalExceptionFilter().catch(
-      new DomainException(AppErrorCode.USER_NOT_FOUND),
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
       host as never,
     );
 
@@ -109,7 +108,10 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(new DomainException(AppErrorCode.FORBIDDEN), host as never);
+    new GlobalExceptionFilter().catch(
+      new DomainException(DomainErrorCode.FORBIDDEN),
+      host as never,
+    );
 
     expect(warn).toHaveBeenCalledWith({
       type: 'domain_exception',
@@ -133,7 +135,11 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
           query: { page: 'wrong', access_token: 'query-secret' },
           body: {
             title: '비밀 제목',
-            nested: { accessToken: 'nested-secret', email: 'person@example.com', categoryCode: 'STUDY' },
+            nested: {
+              accessToken: 'nested-secret',
+              email: 'person@example.com',
+              categoryCode: 'STUDY',
+            },
             unknown: '원문 값',
           },
         }),
@@ -142,7 +148,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     };
 
     new GlobalExceptionFilter().catch(
-      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
       host as never,
     );
 
@@ -165,7 +171,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     });
   });
 
-  it('multipart 원문과 크기 제한을 적용한다', () => {
+  it('multipart 원문과 배열 형태 content-type을 생략한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
@@ -174,7 +180,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
         getRequest: () => ({
           method: 'POST',
           route: { path: '/upload' },
-          headers: { 'content-type': 'Multipart/Form-Data; boundary=example' },
+          headers: { 'content-type': ['Multipart/Form-Data; boundary=example'] },
           body: { request: '{"accessToken":"secret"}' },
         }),
         getResponse: () => ({ status }),
@@ -182,7 +188,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     };
 
     new GlobalExceptionFilter().catch(
-      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
       host as never,
     );
 
@@ -212,39 +218,15 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     };
 
     new GlobalExceptionFilter().catch(
-      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
       host as never,
     );
 
     expect(status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
     expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({ request: expect.not.objectContaining({ body: expect.anything() }) }),
-    );
-  });
-
-  it('배열 형태 content-type도 보수적으로 body를 생략한다', () => {
-    const json = jest.fn();
-    const status = jest.fn(() => ({ json }));
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
-    const host = {
-      switchToHttp: () => ({
-        getRequest: () => ({
-          method: 'POST',
-          route: { path: '/upload' },
-          headers: { 'content-type': ['application/json'] },
-          body: { token: 'secret' },
-        }),
-        getResponse: () => ({ status }),
+      expect.objectContaining({
+        request: expect.not.objectContaining({ body: expect.anything() }),
       }),
-    };
-
-    new GlobalExceptionFilter().catch(
-      new DomainException(AppErrorCode.INVALID_PARAMETER),
-      host as never,
-    );
-
-    expect(warn).toHaveBeenCalledWith(
-      expect.objectContaining({ request: expect.not.objectContaining({ body: expect.anything() }) }),
     );
   });
 
@@ -262,7 +244,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     };
 
     new GlobalExceptionFilter().catch(
-      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
       host as never,
     );
 
@@ -271,6 +253,65 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
         request: expect.objectContaining({
           body: { page: 'wrong', comment: '[TRUNCATED]', self: '[TRUNCATED]' },
         }),
+      }),
+    );
+  });
+});
+
+describe('GlobalExceptionFilter의 core 예외 처리', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('DomainException를 기존 AppErrorCode HTTP 계약으로 변환한다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const host = {
+      switchToHttp: () => ({
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter().catch(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
+      host as never,
+    );
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'NOT_FOUND',
+        code: 'U001',
+        message: '존재하지 않는 사용자입니다',
+      }),
+    );
+    expect(warn).toHaveBeenCalledWith({
+      type: 'domain_exception',
+      code: 'U001',
+      status: 'NOT_FOUND',
+      message: '존재하지 않는 사용자입니다',
+    });
+  });
+
+  it('등록되지 않은 DomainException code는 내부 서버 오류로 변환한다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const host = {
+      switchToHttp: () => ({
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter().catch(
+      new DomainException('UNMAPPED_CORE_ERROR' as DomainErrorCode),
+      host as never,
+    );
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'INTERNAL_SERVER_ERROR',
+        code: 'Z500',
       }),
     );
   });

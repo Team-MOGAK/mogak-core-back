@@ -1,5 +1,12 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@api/*": ["apps/api/src/api/*"],
+      "@core/*": ["apps/api/src/core/*"],
+      "@infra/*": ["apps/api/src/infrastructure/*"],
+      "@composition/*": ["apps/api/src/composition/*"]
+    },
     "module": "commonjs",
     "target": "ES2023",
     "declaration": true,
