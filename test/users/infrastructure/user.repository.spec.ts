@@ -1,11 +1,11 @@
 import { testMock } from '../../testMock';
 
-import type { Database } from '../../../src/database/database.provider';
+import type { Database } from '@infra/database/database.provider';
 import {
   DuplicateNicknameException,
   UserPersistenceException,
-} from '../../../src/users/domain/exception/userPersistence.exception';
-import { UserRepository } from '../../../src/users/infrastructure/repository/user.repository';
+} from '@core/users/domain/exception/userPersistence.exception';
+import { UserRepository } from '@infra/users/repository/user.repository';
 
 const command = {
   userId: 7,

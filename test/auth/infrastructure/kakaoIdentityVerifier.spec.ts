@@ -1,7 +1,6 @@
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { jest } from '@jest/globals';
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
-import { KakaoIdentityVerifier } from '../../../src/auth/infrastructure/verifier/kakaoIdentityVerifier';
+import { KakaoIdentityVerifier } from '@infra/auth/verifier/kakaoIdentityVerifier';
 
 describe('카카오 식별자 검증기', () => {
   afterEach(() => {
@@ -38,7 +37,7 @@ describe('카카오 식별자 검증기', () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(new Response('invalid token', { status: 401 }));
 
     await expect(new KakaoIdentityVerifier().verify('kakao-accessToken')).rejects.toEqual(
-      new DomainException(AppErrorCode.INVALID_SOCIAL_TOKEN),
+      new DomainException(DomainErrorCode.INVALID_SOCIAL_TOKEN),
     );
   });
 });

@@ -6,16 +6,16 @@ import { Test } from '@nestjs/testing';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
 
-import { BoundedThrottlerStorage } from '../../../src/common/http/boundedThrottler.storage';
-import { configureApp } from '../../../src/app.setup';
-import { AccessTokenGuard } from '../../../src/auth/presentation/controller/accessToken.guard';
-import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registeredUser.guard';
-import { ConsentService } from '../../../src/users/application/service/consent.service';
-import { MetadataService } from '../../../src/users/application/service/metadata.service';
-import { UserService } from '../../../src/users/application/service/user.service';
-import { ConsentController } from '../../../src/users/presentation/controller/consent.controller';
-import { MetadataController } from '../../../src/users/presentation/controller/metadata.controller';
-import { UsersController } from '../../../src/users/presentation/controller/users.controller';
+import { BoundedThrottlerStorage } from '@api/common/http/boundedThrottler.storage';
+import { configureApp } from '@api/app.setup';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
+import { ConsentService } from '@core/users/application/service/consent.service';
+import { MetadataService } from '@core/users/application/service/metadata.service';
+import { UserService } from '@core/users/application/service/user.service';
+import { ConsentController } from '@api/users/presentation/controller/consent.controller';
+import { MetadataController } from '@api/users/presentation/controller/metadata.controller';
+import { UsersController } from '@api/users/presentation/controller/users.controller';
 
 describe('사용자 HTTP 계약', () => {
   let app: INestApplication;

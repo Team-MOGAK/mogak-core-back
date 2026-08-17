@@ -1,6 +1,6 @@
 import { HttpStatus } from '@nestjs/common';
-import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { errorResponse, successResponse } from '../../../src/common/http/apiResponse';
+import { AppErrorCode } from '@api/common/http/appErrorCode';
+import { errorResponse, successResponse } from '@api/common/http/apiResponse';
 
 describe('응답 생성기', () => {
   it('스프링 성공 응답 포맷을 유지한다', () => {

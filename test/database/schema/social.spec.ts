@@ -1,6 +1,6 @@
 import { getTableConfig } from 'drizzle-orm/pg-core';
 
-import * as schema from '../../../src/database/schema/index';
+import * as schema from '@infra/database/schema/index';
 
 type Column = Readonly<{ dataType: string; notNull: boolean }>;
 type SocialSchema = Readonly<{
