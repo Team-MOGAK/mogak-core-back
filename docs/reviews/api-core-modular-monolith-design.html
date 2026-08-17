@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ko">
+  <head><meta charset="utf-8" /><title>API-Core 모듈러 모놀리스 분리 설계</title></head>
+  <body>
+    <header>
+      <h1>API-Core 모듈러 모놀리스 분리 설계</h1>
+      <dl>
+        <dt>목적</dt><dd>단일 Nest API 서버에서 HTTP 어댑터와 비즈니스 core를 분리한다.</dd>
+        <dt>사용자</dt><dd>Mogak 백엔드 개발·운영 담당자</dd>
+        <dt>문제</dt><dd>현재 application 서비스가 Nest DI, HTTP 오류, Express 업로드 타입에 직접 결합돼 있다.</dd>
+        <dt>핵심 흐름</dt><dd>HTTP 요청 → API adapter → core use case/port → infrastructure adapter → 기존 HTTP 응답</dd>
+        <dt>강도</dt><dd>Standard</dd>
+        <dt>범위</dt><dd><code>apps/api/src</code> 단일 실행체 안에서 <code>api</code>, <code>core</code>, <code>infrastructure</code>, <code>composition</code>을 분리한다.</dd>
+        <dt>상태</dt><dd>설계 승인됨 — 2026-08-17 사용자 “구현 ㄱㄱ”</dd>
+      </dl>
+    </header>
+    <main>
+      <article>
+        <section id="model">
+          <h2>승인된 모델</h2>
+          <pre><code>apps/api/src/
+  api/             # Nest, controller, guard, request/response, HTTP filter
+  core/            # domain, use case, port, command/query/result
+  infrastructure/  # Drizzle, repository, JWT, storage
+  composition/     # Nest DI/module assembly
+  main.ts</code></pre>
+          <p>허용 방향은 <code>api → core ← infrastructure</code>이며 <code>composition</code>만 전체를 조립한다. core는 Nest, Express, HTTP, Drizzle을 import하지 않는다.</p>
+        </section>
+        <section id="decisions">
+          <h2>결정과 불변식</h2>
+          <ul>
+            <li>별도 core 프로세스·DB 분리·마이크로서비스화는 하지 않는다.</li>
+            <li>기존 route, HTTP status, error code/message, JSON envelope, DB schema와 transaction 의미를 유지한다.</li>
+            <li>core 오류는 API mapper가 기존 <code>AppErrorCode</code>로 변환한다.</li>
+            <li>컨텍스트 간 협력은 좁은 public contract/gateway만 통과한다.</li>
+          </ul>
+        </section>
+        <section id="migration">
+          <h2>구현 순서</h2>
+          <ol><li>앱 셸을 <code>apps/api/src</code>로 이동하고 빌드·테스트 설정을 갱신한다.</li><li>presentation을 API, DB·repository·verifier·storage를 infrastructure, domain/application을 core로 이동한다.</li><li>core service에서 Nest DI, HTTP 오류, Express 타입을 제거하고 composition에서 주입한다.</li><li>core 오류 API 매핑과 cross-context gateway를 도입한다.</li><li>architecture test 및 전체 회귀 검증으로 마감한다.</li></ol>
+        </section>
+        <section id="verification"><h2>검증</h2><p><code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>, <code>pnpm build</code>, unit, e2e, DB test를 단계별로 실행한다.</p></section>
+        <section id="design-control-state"><h2>설계 통제 상태</h2><p>미실시 — HTML 점검은 정보용이며 결과가 Codex에 자동 전달되지 않는다. 승인 근거는 사용자의 명시적 구현 지시다.</p><ol><li>Core의 저장 요청은 port를 통해 infrastructure adapter로 간다.</li><li>HTTP status/error JSON 변환은 API가 담당한다.</li><li><code>apps/api</code>만 실행하고 core는 내부 코드다.</li><li>업로드는 API가 프레임워크 독립 입력으로 변환한다.</li></ol></section>
+        <section id="approval"><h2>승인 상태</h2><p>설계 승인됨. 승인 범위: 단일 실행체의 API/Core/Infrastructure/Composition 분리와 HTTP·DB 계약 보존. 제외 범위: 별도 core 서버, DB migration, 공개 API 변경.</p></section>
+      </article>
+    </main>
+  </body>
+</html>
