@@ -1,10 +1,10 @@
-import { CoreError } from '../../../core/common/error/coreError';
+import { DomainException } from '@core/common/error/domainException';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
-import type { SocialIdentityVerifier } from '../../../core/auth/application/port/socialIdentityVerifier.port';
-import type { SocialProvider } from '../../../core/auth/domain/vo/socialProvider.vo';
+import type { SocialIdentityVerifier } from '@core/auth/application/port/socialIdentityVerifier.port';
+import type { SocialProvider } from '@core/auth/domain/vo/socialProvider.vo';
 import { identityFromJwtClaims } from './identityClaims';
 
 const googleKeys = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
@@ -34,8 +34,8 @@ export class GoogleIdentityVerifier implements SocialIdentityVerifier {
       });
       return identityFromJwtClaims('GOOGLE', payload);
     } catch (error: unknown) {
-      if (error instanceof CoreError) throw error;
-      throw new CoreError('INVALID_SOCIAL_TOKEN');
+      if (error instanceof DomainException) throw error;
+      throw new DomainException('INVALID_SOCIAL_TOKEN');
     }
   }
 }

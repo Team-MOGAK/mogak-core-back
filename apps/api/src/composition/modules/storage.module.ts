@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 
-import { STORAGE_PORT } from '../../core/storage/application/storage.port';
-import { DisabledStorageAdapter } from '../../infrastructure/storage/disabledStorage.adapter';
+import { STORAGE_PORT } from '@core/storage/application/storage.port';
+import { DisabledStorageAdapter } from '@infra/storage/disabledStorage.adapter';
 
 @Module({
   providers: [

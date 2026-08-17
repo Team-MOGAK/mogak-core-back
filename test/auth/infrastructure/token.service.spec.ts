@@ -1,8 +1,8 @@
-import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
+import { DomainException } from '@core/common/error/domainException';
 import type { ConfigService } from '@nestjs/config';
 
 import { testMock } from '../../testMock';
-import { JwtTokenService } from '../../../apps/api/src/infrastructure/auth/service/token.service';
+import { JwtTokenService } from '@infra/auth/service/token.service';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
@@ -39,7 +39,7 @@ describe('토큰 서비스', () => {
     const tokens = await service.issue({ userId: 7, role: 'USER', sessionId: SESSION_ID });
 
     await expect(service.verifyRefresh(tokens.accessToken)).rejects.toEqual(
-      new CoreError('WRONG_TOKEN'),
+      new DomainException('WRONG_TOKEN'),
     );
   });
 

@@ -1,16 +1,16 @@
-import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
+import { DomainException } from '@core/common/error/domainException';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 
-import type { SessionTokenIssuerPort } from '../../../apps/api/src/core/auth/application/port/sessionTokenIssuer.port';
-import type { AuthenticatedPrincipal } from '../../../apps/api/src/core/auth/application/type/authenticatedPrincipal';
-import type { StoragePort } from '../../../apps/api/src/core/storage/application/storage.port';
-import type { ConsentRepositoryPort } from '../../../apps/api/src/core/users/application/port/consent.repository.port';
-import type { MetadataRepositoryPort } from '../../../apps/api/src/core/users/application/port/metadata.repository.port';
-import type { UserRepositoryPort } from '../../../apps/api/src/core/users/application/port/user.repository.port';
-import { ConsentService } from '../../../apps/api/src/core/users/application/service/consent.service';
-import { UserService } from '../../../apps/api/src/core/users/application/service/user.service';
-import { DuplicateNicknameException } from '../../../apps/api/src/core/users/domain/exception/userPersistence.exception';
+import type { SessionTokenIssuerPort } from '@core/auth/application/port/sessionTokenIssuer.port';
+import type { AuthenticatedPrincipal } from '@core/auth/application/type/authenticatedPrincipal';
+import type { StoragePort } from '@core/storage/application/storage.port';
+import type { ConsentRepositoryPort } from '@core/users/application/port/consent.repository.port';
+import type { MetadataRepositoryPort } from '@core/users/application/port/metadata.repository.port';
+import type { UserRepositoryPort } from '@core/users/application/port/user.repository.port';
+import { ConsentService } from '@core/users/application/service/consent.service';
+import { UserService } from '@core/users/application/service/user.service';
+import { DuplicateNicknameException } from '@core/users/domain/exception/userPersistence.exception';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 function currentPendingUser(): AuthenticatedPrincipal {
@@ -80,7 +80,9 @@ describe('사용자 서비스', () => {
       storage(),
     );
 
-    await expect(service.verifyNickname('   ')).rejects.toEqual(new CoreError('INVALID_PARAMETER'));
+    await expect(service.verifyNickname('   ')).rejects.toEqual(
+      new DomainException('INVALID_PARAMETER'),
+    );
     expect(users.existsByNickname).not.toHaveBeenCalled();
   });
 
@@ -96,7 +98,7 @@ describe('사용자 서비스', () => {
     );
 
     await expect(service.verifyNickname('모각러')).rejects.toEqual(
-      new CoreError('INVALID_NICKNAME'),
+      new DomainException('INVALID_NICKNAME'),
     );
   });
 
@@ -113,7 +115,7 @@ describe('사용자 서비스', () => {
     );
 
     await expect(service.updateNickname(7, '모각러')).rejects.toEqual(
-      new CoreError('INVALID_NICKNAME'),
+      new DomainException('INVALID_NICKNAME'),
     );
   });
 
@@ -166,7 +168,7 @@ describe('사용자 서비스', () => {
         address: '서울특별시',
         consents: [],
       }),
-    ).rejects.toEqual(new CoreError('INVALID_NICKNAME'));
+    ).rejects.toEqual(new DomainException('INVALID_NICKNAME'));
   });
 
   it('대기 사용자를 완료하고 동의 상태를 저장한 뒤 세션을 사용자 토큰으로 교체한다', async () => {

@@ -19,6 +19,12 @@ const forbiddenDomainLayerNames = new Set([
   'presentation',
   'database',
 ]);
+const sourceAliases = {
+  '@api/': 'api',
+  '@core/': 'core',
+  '@infra/': 'infrastructure',
+  '@composition/': 'composition',
+} as const;
 
 describe('layer boundaries', () => {
   it('keeps source imports and request contracts within the agreed architecture', () => {
@@ -71,6 +77,11 @@ describe('layer boundaries', () => {
       );
       writeFixture(
         root,
+        'core/social/application/type/probe.api.ts',
+        `import { SocialController } from '@api/social/presentation/controller/social.controller'; void SocialController;`,
+      );
+      writeFixture(
+        root,
         'social/infrastructure/mapper/probe.presentation.mapper.ts',
         `import { SocialController } from '../../presentation/controller/social.controller'; void SocialController;`,
       );
@@ -114,6 +125,9 @@ describe('layer boundaries', () => {
           ),
           expect.stringContaining(
             "application must not import presentation '../../presentation/controller/social.controller'",
+          ),
+          expect.stringContaining(
+            "core must not import an adapter layer '@api/social/presentation/controller/social.controller'",
           ),
           expect.stringContaining(
             "application must not import database '../../../database/schema'",
@@ -348,9 +362,21 @@ function targetsLayer(
   moduleSpecifier: string,
   layers: ReadonlySet<string>,
 ): boolean {
-  if (!moduleSpecifier.startsWith('.')) return false;
-  const target = relative(root, resolve(dirname(importingFile), moduleSpecifier));
+  const target = targetPath(root, importingFile, moduleSpecifier);
+  if (target === null) return false;
   return target.split(sep).some((segment) => layers.has(segment));
+}
+
+function targetPath(root: string, importingFile: string, moduleSpecifier: string): string | null {
+  if (moduleSpecifier.startsWith('.')) {
+    return relative(root, resolve(dirname(importingFile), moduleSpecifier));
+  }
+  for (const [alias, layer] of Object.entries(sourceAliases)) {
+    if (moduleSpecifier.startsWith(alias)) {
+      return relative(root, resolve(root, layer, moduleSpecifier.slice(alias.length)));
+    }
+  }
+  return null;
 }
 
 function hasDtoResidual(source: string): boolean {

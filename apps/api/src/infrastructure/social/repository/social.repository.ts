@@ -13,19 +13,19 @@ import {
   posts,
   users,
 } from '../../database/schema';
-import type { SocialRepositoryPort } from '../../../core/social/application/port/social.repository.port';
-import type { FollowCommand } from '../../../core/social/application/type/social.command';
+import type { SocialRepositoryPort } from '@core/social/application/port/social.repository.port';
+import type { FollowCommand } from '@core/social/application/type/social.command';
 import type {
   NetworkPostsQuery,
   PacemakerPostsQuery,
-} from '../../../core/social/application/type/social.query';
+} from '@core/social/application/type/social.query';
 import type {
   FeedCommentResult,
   FeedImageResult,
   FeedPostResult,
   SocialUserResult,
   SocialUserSummaryResult,
-} from '../../../core/social/application/type/social.result';
+} from '@core/social/application/type/social.result';
 import type {
   FeedCommentProjection,
   FeedImageProjection,

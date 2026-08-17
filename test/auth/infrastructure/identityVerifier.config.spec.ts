@@ -1,7 +1,7 @@
 import type { ConfigService } from '@nestjs/config';
 
-import { AppleIdentityVerifier } from '../../../apps/api/src/infrastructure/auth/verifier/appleIdentityVerifier';
-import { GoogleIdentityVerifier } from '../../../apps/api/src/infrastructure/auth/verifier/googleIdentityVerifier';
+import { AppleIdentityVerifier } from '@infra/auth/verifier/appleIdentityVerifier';
+import { GoogleIdentityVerifier } from '@infra/auth/verifier/googleIdentityVerifier';
 import { testMock } from '../../testMock';
 
 function clientIdsOf(verifier: object): string[] {

@@ -1,12 +1,12 @@
-import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
-import { DisabledStorageAdapter } from '../../../apps/api/src/infrastructure/storage/disabledStorage.adapter';
+import { DomainException } from '@core/common/error/domainException';
+import { DisabledStorageAdapter } from '@infra/storage/disabledStorage.adapter';
 
 describe('비활성화된 저장소 어댑터', () => {
   it('업로드 시도에 기존 저장소 비활성화 오류를 반환한다', async () => {
     const storage = new DisabledStorageAdapter();
 
     await expect(storage.uploadProfile({} as Express.Multer.File)).rejects.toEqual(
-      new CoreError('STORAGE_DISABLED'),
+      new DomainException('STORAGE_DISABLED'),
     );
   });
 
@@ -18,7 +18,7 @@ describe('비활성화된 저장소 어댑터', () => {
     const storage = new DisabledStorageAdapter();
 
     await expect(storage.uploadPostImages([{} as Express.Multer.File])).rejects.toEqual(
-      new CoreError('STORAGE_DISABLED'),
+      new DomainException('STORAGE_DISABLED'),
     );
   });
 });

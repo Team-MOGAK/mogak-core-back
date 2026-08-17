@@ -1,20 +1,20 @@
 import { Module } from '@nestjs/common';
 
-import { DatabaseModule } from '../../infrastructure/database/database.module';
+import { DatabaseModule } from '@infra/database/database.module';
 import { AuthModule } from './auth.module';
-import { MOGAK_REPOSITORY } from '../../core/mogaks/application/port/mogak.repository.port';
-import { OWNED_MOGAK_PORT } from '../../core/mogaks/application/port/ownedMogak.port';
-import { OWNED_OCCURRENCE_PORT } from '../../core/mogaks/application/port/ownedOccurrence.port';
-import { MogakService } from '../../core/mogaks/application/service/mogak.service';
+import { MOGAK_REPOSITORY } from '@core/mogaks/application/port/mogak.repository.port';
+import { OWNED_MOGAK_PORT } from '@core/mogaks/application/port/ownedMogak.port';
+import { OWNED_OCCURRENCE_PORT } from '@core/mogaks/application/port/ownedOccurrence.port';
+import { MogakService } from '@core/mogaks/application/service/mogak.service';
 import {
   JogaksService,
   KST_DATE_PROVIDER,
   kstToday,
-} from '../../core/mogaks/application/service/jogaks.service';
-import { MogakRepository } from '../../infrastructure/mogaks/repository/mogak.repository';
-import { JogaksController } from '../../api/mogaks/presentation/controller/jogaks.controller';
-import { ModaratMogakController } from '../../api/mogaks/presentation/controller/modaratMogak.controller';
-import { MogakMetadataController } from '../../api/mogaks/presentation/controller/mogakMetadata.controller';
+} from '@core/mogaks/application/service/jogaks.service';
+import { MogakRepository } from '@infra/mogaks/repository/mogak.repository';
+import { JogaksController } from '@api/mogaks/presentation/controller/jogaks.controller';
+import { ModaratMogakController } from '@api/mogaks/presentation/controller/modaratMogak.controller';
+import { MogakMetadataController } from '@api/mogaks/presentation/controller/mogakMetadata.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule],

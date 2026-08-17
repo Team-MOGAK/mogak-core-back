@@ -13,14 +13,14 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 
-import type { AuthenticatedPrincipal } from '../../../../core/auth/application/type/authenticatedPrincipal';
-import { AccessTokenGuard } from '../../../auth/presentation/controller/accessToken.guard';
-import { CurrentUser } from '../../../auth/presentation/controller/currentUser.decorator';
-import { RegisteredUserGuard } from '../../../auth/presentation/controller/registeredUser.guard';
-import { successResponse } from '../../../common/http/apiResponse';
-import { profileImageUploadOptions } from '../../../common/http/imageUpload.options';
-import { ZodBody } from '../../../common/validation/zodParameter.decorator';
-import { UserService } from '../../../../core/users/application/service/user.service';
+import type { AuthenticatedPrincipal } from '@core/auth/application/type/authenticatedPrincipal';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decorator';
+import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
+import { successResponse } from '@api/common/http/apiResponse';
+import { profileImageUploadOptions } from '@api/common/http/imageUpload.options';
+import { ZodBody } from '@api/common/validation/zodParameter.decorator';
+import { UserService } from '@core/users/application/service/user.service';
 import {
   jobRequestSchema,
   joinUserRequestSchema,

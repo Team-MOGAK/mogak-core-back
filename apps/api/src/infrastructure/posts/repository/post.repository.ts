@@ -15,15 +15,15 @@ import {
   posts,
   users,
 } from '../../database/schema';
-import type { PostRepositoryPort } from '../../../core/posts/application/port/post.repository.port';
-import type { CreatePostCommand } from '../../../core/posts/application/type/post.command';
-import { PostPersistenceException } from '../../../core/posts/domain/exception/postPersistence.exception';
+import type { PostRepositoryPort } from '@core/posts/application/port/post.repository.port';
+import type { CreatePostCommand } from '@core/posts/application/type/post.command';
+import { PostPersistenceException } from '@core/posts/domain/exception/postPersistence.exception';
 import type {
   PostCommentResult,
   PostDetailResult,
   PostImageResult,
   ToggleLikeResult,
-} from '../../../core/posts/application/type/post.result';
+} from '@core/posts/application/type/post.result';
 import type {
   CreatedPostRow,
   PostCommentRow,

@@ -1,7 +1,7 @@
 import type { HasRuntimeDefault, IsPrimaryKey } from 'drizzle-orm/column-builder';
 import { type PgUUIDBuilderInitial, uuid } from 'drizzle-orm/pg-core';
 
-import { generateId } from '../../../core/common/util/idGenerator';
+import { generateId } from '@core/common/util/idGenerator';
 
 type UuidPrimaryKey<TName extends string> = HasRuntimeDefault<
   IsPrimaryKey<PgUUIDBuilderInitial<TName>>

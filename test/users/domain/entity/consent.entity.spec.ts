@@ -1,7 +1,7 @@
 import {
   validateConsentSelections,
   type ConsentItemForValidation,
-} from '../../../../apps/api/src/core/users/domain/policy/consent.policy';
+} from '@core/users/domain/policy/consent.policy';
 
 function consentItem(overrides: Partial<ConsentItemForValidation> = {}): ConsentItemForValidation {
   return {

@@ -4,12 +4,12 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
-import { configureApp } from '../../../apps/api/src/api/app.setup';
-import { AccessTokenGuard } from '../../../apps/api/src/api/auth/presentation/controller/accessToken.guard';
-import { RegisteredUserGuard } from '../../../apps/api/src/api/auth/presentation/controller/registeredUser.guard';
-import { MogakService } from '../../../apps/api/src/core/mogaks/application/service/mogak.service';
-import { MogakMetadataController } from '../../../apps/api/src/api/mogaks/presentation/controller/mogakMetadata.controller';
-import { ModaratMogakController } from '../../../apps/api/src/api/mogaks/presentation/controller/modaratMogak.controller';
+import { configureApp } from '@api/app.setup';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
+import { MogakService } from '@core/mogaks/application/service/mogak.service';
+import { MogakMetadataController } from '@api/mogaks/presentation/controller/mogakMetadata.controller';
+import { ModaratMogakController } from '@api/mogaks/presentation/controller/modaratMogak.controller';
 
 describe('모다랏과 모각 HTTP 계약', () => {
   let app: INestApplication;

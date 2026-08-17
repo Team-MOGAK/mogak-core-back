@@ -2,10 +2,8 @@ import { HttpStatus, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { jest } from '@jest/globals';
 import { ThrottlerException } from '@nestjs/throttler';
 
-import { AppErrorCode } from '../../../apps/api/src/api/common/http/appErrorCode';
-import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
-import { DomainException } from '../../../apps/api/src/api/common/http/domain.exception';
-import { GlobalExceptionFilter } from '../../../apps/api/src/api/common/http/globalException.filter';
+import { DomainException } from '@core/common/error/domainException';
+import { GlobalExceptionFilter } from '@api/common/http/globalException.filter';
 
 describe('GlobalExceptionFilter의 rate limit 처리', () => {
   afterEach(() => jest.restoreAllMocks());
@@ -62,10 +60,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
-      new DomainException(AppErrorCode.USER_NOT_FOUND),
-      host as never,
-    );
+    new GlobalExceptionFilter().catch(new DomainException('USER_NOT_FOUND'), host as never);
 
     expect(status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
     expect(json).toHaveBeenCalledWith(
@@ -87,10 +82,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
-      new DomainException(AppErrorCode.USER_NOT_FOUND),
-      host as never,
-    );
+    new GlobalExceptionFilter().catch(new DomainException('USER_NOT_FOUND'), host as never);
 
     expect(warn).toHaveBeenCalledWith({
       type: 'domain_exception',
@@ -110,7 +102,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(new DomainException(AppErrorCode.FORBIDDEN), host as never);
+    new GlobalExceptionFilter().catch(new DomainException('FORBIDDEN'), host as never);
 
     expect(warn).toHaveBeenCalledWith({
       type: 'domain_exception',
@@ -124,7 +116,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
 describe('GlobalExceptionFilter의 core 예외 처리', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it('CoreError를 기존 AppErrorCode HTTP 계약으로 변환한다', () => {
+  it('DomainException를 기존 AppErrorCode HTTP 계약으로 변환한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
@@ -134,7 +126,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(new CoreError('USER_NOT_FOUND'), host as never);
+    new GlobalExceptionFilter().catch(new DomainException('USER_NOT_FOUND'), host as never);
 
     expect(status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
     expect(json).toHaveBeenCalledWith(
@@ -145,13 +137,14 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
       }),
     );
     expect(warn).toHaveBeenCalledWith({
-      type: 'core_error',
+      type: 'domain_exception',
       code: 'U001',
       status: 'NOT_FOUND',
+      message: '존재하지 않는 사용자입니다',
     });
   });
 
-  it('등록되지 않은 CoreError code는 내부 서버 오류로 변환한다', () => {
+  it('등록되지 않은 DomainException code는 내부 서버 오류로 변환한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
@@ -161,7 +154,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(new CoreError('UNMAPPED_CORE_ERROR'), host as never);
+    new GlobalExceptionFilter().catch(new DomainException('UNMAPPED_CORE_ERROR'), host as never);
 
     expect(status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(json).toHaveBeenCalledWith(

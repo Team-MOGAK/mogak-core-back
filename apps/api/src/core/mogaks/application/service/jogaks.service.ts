@@ -1,5 +1,5 @@
-import { CoreError } from '../../../common/error/coreError';
-import { requiredTrimmed } from '../../../common/validation/requiredText';
+import { DomainException } from '@core/common/error/domainException';
+import { requiredTrimmed } from '@core/common/validation/requiredText';
 import {
   decideJogakExecutionTransition,
   snapshotJogakTitle,
@@ -54,13 +54,13 @@ export class JogaksService implements OwnedOccurrencePort {
   async create(userId: number, input: CreateJogakCommand) {
     const schedule = validateSchedule(input.schedule);
     const mogak = await this.repository.findOwnedMogak(userId, input.mogakId);
-    if (mogak === null) throw new CoreError('MOGAK_NOT_FOUND');
+    if (mogak === null) throw new DomainException('MOGAK_NOT_FOUND');
     if (
       !validateJogakCapacity(
         await this.repository.countJogaksWithCurrentOrFutureSchedule(input.mogakId, this.today()),
       )
     ) {
-      throw new CoreError('MAX_MOGAKS');
+      throw new DomainException('MAX_MOGAKS');
     }
 
     const created = await this.repository.createJogakWithSchedule({
@@ -100,14 +100,14 @@ export class JogaksService implements OwnedOccurrencePort {
 
   async listMogakDay(userId: number, mogakId: number, date: string) {
     if ((await this.repository.findOwnedMogak(userId, mogakId)) === null) {
-      throw new CoreError('MOGAK_NOT_FOUND');
+      throw new DomainException('MOGAK_NOT_FOUND');
     }
     return this.projectOccurrences(userId, date, date, { mogakId });
   }
 
   async getDetail(userId: number, jogakId: number) {
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
-    if (jogak === null) throw new CoreError('JOGAK_NOT_FOUND');
+    if (jogak === null) throw new DomainException('JOGAK_NOT_FOUND');
     const schedules = groupScheduleRows(
       await this.repository.listScheduleRowsForOwnedJogak(userId, jogakId),
     );
@@ -156,9 +156,9 @@ export class JogaksService implements OwnedOccurrencePort {
             now: new Date(),
           });
     if (updated === 'INVALID_EFFECTIVE_FROM') {
-      throw new CoreError('INVALID_SCHEDULE');
+      throw new DomainException('INVALID_SCHEDULE');
     }
-    if (updated === null) throw new CoreError('JOGAK_NOT_FOUND');
+    if (updated === null) throw new DomainException('JOGAK_NOT_FOUND');
     return {
       jogakId: updated.id,
       mogakId: updated.mogakId,
@@ -171,7 +171,7 @@ export class JogaksService implements OwnedOccurrencePort {
 
   async delete(userId: number, jogakId: number): Promise<void> {
     if (!(await this.repository.deleteOwnedJogak(userId, jogakId))) {
-      throw new CoreError('JOGAK_NOT_FOUND');
+      throw new DomainException('JOGAK_NOT_FOUND');
     }
   }
 
@@ -181,13 +181,13 @@ export class JogaksService implements OwnedOccurrencePort {
     scheduledDate: string,
     desiredStatus: JogakExecutionStatus,
   ) {
-    if (!isDateOnly(scheduledDate)) throw new CoreError('INVALID_TARGET_DATE');
+    if (!isDateOnly(scheduledDate)) throw new DomainException('INVALID_TARGET_DATE');
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
-    if (jogak === null) throw new CoreError('JOGAK_NOT_FOUND');
+    if (jogak === null) throw new DomainException('JOGAK_NOT_FOUND');
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
     const occurrenceSchedule = schedules.find((schedule) => occursOn(schedule, scheduledDate));
     if (occurrenceSchedule === undefined) {
-      throw new CoreError('INVALID_TARGET_DATE');
+      throw new DomainException('INVALID_TARGET_DATE');
     }
     const isRoutine = occurrenceSchedule.scheduleType === 'WEEKLY';
 
@@ -202,7 +202,7 @@ export class JogaksService implements OwnedOccurrencePort {
     }
 
     const existing = await this.repository.findExecution(jogakId, scheduledDate);
-    if (existing === null) throw new CoreError('JOGAK_NOT_FOUND');
+    if (existing === null) throw new DomainException('JOGAK_NOT_FOUND');
     return {
       created: false,
       execution: await this.transitionExisting(existing, desiredStatus, jogak, isRoutine, true),
@@ -210,12 +210,12 @@ export class JogaksService implements OwnedOccurrencePort {
   }
 
   async resolveOwnedOccurrence(userId: number, jogakId: number, scheduledDate: string) {
-    if (!isDateOnly(scheduledDate)) throw new CoreError('INVALID_TARGET_DATE');
+    if (!isDateOnly(scheduledDate)) throw new DomainException('INVALID_TARGET_DATE');
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
-    if (jogak === null) throw new CoreError('JOGAK_NOT_FOUND');
+    if (jogak === null) throw new DomainException('JOGAK_NOT_FOUND');
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
     if (!schedules.some((schedule) => occursOn(schedule, scheduledDate))) {
-      throw new CoreError('INVALID_TARGET_DATE');
+      throw new DomainException('INVALID_TARGET_DATE');
     }
     return { jogakId: jogak.id, mogakId: jogak.mogakId, title: jogak.title };
   }
@@ -309,7 +309,7 @@ export class JogaksService implements OwnedOccurrencePort {
     const transition = decideJogakExecutionTransition(existing.status, desiredStatus);
     if (transition.type === 'NOOP') return toExecutionResponse(existing, jogak, isRoutine);
     if (transition.type === 'REJECT') {
-      throw new CoreError('INVALID_EXECUTION_TRANSITION');
+      throw new DomainException('INVALID_EXECUTION_TRANSITION');
     }
 
     const updated = await this.repository.updateExecutionStatus({
@@ -320,7 +320,7 @@ export class JogaksService implements OwnedOccurrencePort {
     });
     if (updated !== null) return toExecutionResponse(updated, jogak, isRoutine);
     const current = await this.repository.findExecution(existing.jogakId, existing.scheduledDate);
-    if (current === null) throw new CoreError('JOGAK_NOT_FOUND');
+    if (current === null) throw new DomainException('JOGAK_NOT_FOUND');
     if (!retryOnce)
       return this.resolveAfterLostTransition(current, desiredStatus, jogak, isRoutine);
     return this.transitionExisting(current, desiredStatus, jogak, isRoutine, false);
@@ -335,9 +335,9 @@ export class JogaksService implements OwnedOccurrencePort {
     const transition = decideJogakExecutionTransition(current.status, desiredStatus);
     if (transition.type === 'NOOP') return toExecutionResponse(current, jogak, isRoutine);
     if (transition.type === 'REJECT') {
-      throw new CoreError('INVALID_EXECUTION_TRANSITION');
+      throw new DomainException('INVALID_EXECUTION_TRANSITION');
     }
-    throw new CoreError('CONFLICT');
+    throw new DomainException('CONFLICT');
   }
 }
 
@@ -346,9 +346,9 @@ function validateSchedule(input: ScheduleCommand): ValidatedJogakSchedule {
     return validateJogakSchedule(input);
   } catch (error) {
     if (error instanceof RangeError && error.message === 'weekdays are required') {
-      throw new CoreError('ROUTINE_WEEKDAYS_REQUIRED');
+      throw new DomainException('ROUTINE_WEEKDAYS_REQUIRED');
     }
-    throw new CoreError('INVALID_SCHEDULE');
+    throw new DomainException('INVALID_SCHEDULE');
   }
 }
 
@@ -419,7 +419,7 @@ function assertDateRange(startDate: string, endDate: string): void {
   try {
     assertScheduleDateRange(startDate, endDate);
   } catch {
-    throw new CoreError('INVALID_TARGET_DATE');
+    throw new DomainException('INVALID_TARGET_DATE');
   }
 }
 

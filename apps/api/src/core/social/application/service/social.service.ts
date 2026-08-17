@@ -1,5 +1,5 @@
-import { CoreError } from '../../../common/error/coreError';
-import type { StoragePort } from '../../../storage/application/storage.port';
+import { DomainException } from '@core/common/error/domainException';
+import type { StoragePort } from '@core/storage/application/storage.port';
 import { isSelfFollow } from '../../domain/policy/follow.policy';
 import type { SocialRepositoryPort } from '../port/social.repository.port';
 import type {
@@ -21,10 +21,10 @@ export class SocialService {
     const target = await this.requireTarget(nickname);
     const follow = { followerId: userId, followingId: target.id };
     if (isSelfFollow(follow.followerId, follow.followingId)) {
-      throw new CoreError('INVALID_PARAMETER');
+      throw new DomainException('INVALID_PARAMETER');
     }
     if (!(await this.repository.createFollow(follow))) {
-      throw new CoreError('FOLLOW_ALREADY_EXISTS');
+      throw new DomainException('FOLLOW_ALREADY_EXISTS');
     }
   }
 
@@ -32,10 +32,10 @@ export class SocialService {
     const target = await this.requireTarget(nickname);
     const follow = { followerId: userId, followingId: target.id };
     if (isSelfFollow(follow.followerId, follow.followingId)) {
-      throw new CoreError('INVALID_PARAMETER');
+      throw new DomainException('INVALID_PARAMETER');
     }
     if (!(await this.repository.deleteFollow(follow))) {
-      throw new CoreError('FOLLOW_NOT_FOUND');
+      throw new DomainException('FOLLOW_NOT_FOUND');
     }
   }
 
@@ -71,11 +71,11 @@ export class SocialService {
     address?: string,
   ) {
     if (sort !== 'createdAt' && sort !== 'likeCnt') {
-      throw new CoreError('INVALID_PARAMETER');
+      throw new DomainException('INVALID_PARAMETER');
     }
     const selectedAddress = address?.trim() || (await this.repository.findAddressName(userId));
     if (selectedAddress === null || selectedAddress === '') {
-      throw new CoreError('ADDRESS_NOT_FOUND');
+      throw new DomainException('ADDRESS_NOT_FOUND');
     }
     const rows = await this.repository.listNetworkPosts({
       address: selectedAddress,
@@ -97,9 +97,9 @@ export class SocialService {
 
   private async requireTarget(nickname: string) {
     const normalized = nickname.trim();
-    if (normalized.length === 0) throw new CoreError('INVALID_PARAMETER');
+    if (normalized.length === 0) throw new DomainException('INVALID_PARAMETER');
     const target = await this.repository.findUserByNickname(normalized);
-    if (target === null) throw new CoreError('USER_NOT_FOUND');
+    if (target === null) throw new DomainException('USER_NOT_FOUND');
     return target;
   }
 

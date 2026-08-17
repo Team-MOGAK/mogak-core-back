@@ -4,11 +4,11 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
-import { configureApp } from '../../../apps/api/src/api/app.setup';
-import { AccessTokenGuard } from '../../../apps/api/src/api/auth/presentation/controller/accessToken.guard';
-import { RegisteredUserGuard } from '../../../apps/api/src/api/auth/presentation/controller/registeredUser.guard';
-import { JogaksService } from '../../../apps/api/src/core/mogaks/application/service/jogaks.service';
-import { JogaksController } from '../../../apps/api/src/api/mogaks/presentation/controller/jogaks.controller';
+import { configureApp } from '@api/app.setup';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
+import { JogaksService } from '@core/mogaks/application/service/jogaks.service';
+import { JogaksController } from '@api/mogaks/presentation/controller/jogaks.controller';
 
 describe('조각 HTTP 계약', () => {
   let app: INestApplication;

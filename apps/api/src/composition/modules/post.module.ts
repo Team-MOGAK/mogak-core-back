@@ -1,16 +1,16 @@
 import { Module } from '@nestjs/common';
 
-import { DatabaseModule } from '../../infrastructure/database/database.module';
+import { DatabaseModule } from '@infra/database/database.module';
 import { AuthModule } from './auth.module';
 import { MogakModule } from './mogak.module';
 import { StorageModule } from './storage.module';
-import { POST_REPOSITORY } from '../../core/posts/application/port/post.repository.port';
-import { OWNED_MOGAK_PORT } from '../../core/mogaks/application/port/ownedMogak.port';
-import { OWNED_OCCURRENCE_PORT } from '../../core/mogaks/application/port/ownedOccurrence.port';
-import { STORAGE_PORT } from '../../core/storage/application/storage.port';
-import { PostService } from '../../core/posts/application/service/post.service';
-import { PostRepository } from '../../infrastructure/posts/repository/post.repository';
-import { PostController } from '../../api/posts/presentation/controller/post.controller';
+import { POST_REPOSITORY } from '@core/posts/application/port/post.repository.port';
+import { OWNED_MOGAK_PORT } from '@core/mogaks/application/port/ownedMogak.port';
+import { OWNED_OCCURRENCE_PORT } from '@core/mogaks/application/port/ownedOccurrence.port';
+import { STORAGE_PORT } from '@core/storage/application/storage.port';
+import { PostService } from '@core/posts/application/service/post.service';
+import { PostRepository } from '@infra/posts/repository/post.repository';
+import { PostController } from '@api/posts/presentation/controller/post.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule, MogakModule, StorageModule],

@@ -1,9 +1,9 @@
 import { testMock } from '../../testMock';
-import type { Database } from '../../../apps/api/src/infrastructure/database/database.provider';
-import { authSessions } from '../../../apps/api/src/infrastructure/database/schema';
+import type { Database } from '@infra/database/database.provider';
+import { authSessions } from '@infra/database/schema';
 
-import { AuthSessionsRepository } from '../../../apps/api/src/infrastructure/auth/repository/authSessions.repository';
-import { AuthPersistenceException } from '../../../apps/api/src/core/auth/domain/exception/authPersistence.exception';
+import { AuthSessionsRepository } from '@infra/auth/repository/authSessions.repository';
+import { AuthPersistenceException } from '@core/auth/domain/exception/authPersistence.exception';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 

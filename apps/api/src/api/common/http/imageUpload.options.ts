@@ -1,7 +1,6 @@
 import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
 
-import { AppErrorCode } from './appErrorCode';
-import { DomainException } from './domain.exception';
+import { DomainException } from '@core/common/error/domainException';
 
 export const MAX_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 export const MAX_POST_IMAGE_COUNT = 5;
@@ -10,7 +9,7 @@ const imageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 const allowImage: NonNullable<MulterOptions['fileFilter']> = (_request, file, callback) => {
   if (!imageMimeTypes.has(file.mimetype)) {
-    callback(new DomainException(AppErrorCode.INVALID_PARAMETER), false);
+    callback(new DomainException('INVALID_PARAMETER'), false);
     return;
   }
   callback(null, true);

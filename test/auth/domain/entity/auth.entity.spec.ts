@@ -1,5 +1,5 @@
-import { canRotateSession } from '../../../../apps/api/src/core/auth/domain/policy/authSession.policy';
-import { validateNewSocialIdentity } from '../../../../apps/api/src/core/auth/domain/policy/socialIdentity.policy';
+import { canRotateSession } from '@core/auth/domain/policy/authSession.policy';
+import { validateNewSocialIdentity } from '@core/auth/domain/policy/socialIdentity.policy';
 
 const now = new Date('2026-07-25T00:00:00.000Z');
 

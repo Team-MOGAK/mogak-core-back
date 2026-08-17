@@ -1,4 +1,4 @@
-import { CoreError } from '../../../common/error/coreError';
+import { DomainException } from '@core/common/error/domainException';
 import {
   validateConsentSelections,
   type ConsentValidationIssue,
@@ -33,7 +33,7 @@ export class ConsentService {
       this.repository.listActiveItems(),
     ]);
     if (selected.length !== ids.length) {
-      throw new CoreError('CONSENT_ITEM_NOT_FOUND');
+      throw new DomainException('CONSENT_ITEM_NOT_FOUND');
     }
     const issue = validateConsentSelections(commands, [...selected, ...active]);
     if (issue !== null) this.throwForValidationIssue(issue);
@@ -53,7 +53,7 @@ export class ConsentService {
     command: UpdateMarketingConsentCommand,
   ): Promise<MarketingConsentResult> {
     if (command.marketingAgreed === undefined && command.advertisementAgreed === undefined) {
-      throw new CoreError('INVALID_PARAMETER');
+      throw new DomainException('INVALID_PARAMETER');
     }
     return this.repository.updateMarketingConsents(userId, command, new Date());
   }
@@ -64,6 +64,6 @@ export class ConsentService {
       CONSENT_ITEM_INACTIVE: 'CONSENT_ITEM_INACTIVE',
       REQUIRED_CONSENT_NOT_AGREED: 'INVALID_PARAMETER',
     }[issue];
-    throw new CoreError(errorCode);
+    throw new DomainException(errorCode);
   }
 }

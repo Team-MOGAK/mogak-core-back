@@ -1,4 +1,4 @@
-import type { TokenResult } from '../../../auth/application/type/auth.result';
+import type { TokenResult } from '@core/auth/application/type/auth.result';
 import type { RegistrationRole } from '../../domain/policy/userRegistration.policy';
 
 export type JoinUserResult = Readonly<{ userId: number; nickname: string; tokens: TokenResult }>;

@@ -1,8 +1,8 @@
 import { testMock } from '../../testMock';
 
-import type { Database } from '../../../apps/api/src/infrastructure/database/database.provider';
-import { PostPersistenceException } from '../../../apps/api/src/core/posts/domain/exception/postPersistence.exception';
-import { PostRepository } from '../../../apps/api/src/infrastructure/posts/repository/post.repository';
+import type { Database } from '@infra/database/database.provider';
+import { PostPersistenceException } from '@core/posts/domain/exception/postPersistence.exception';
+import { PostRepository } from '@infra/posts/repository/post.repository';
 
 describe('게시글 저장소', () => {
   it('댓글 삽입 결과가 없으면 PostPersistenceException을 던진다', async () => {

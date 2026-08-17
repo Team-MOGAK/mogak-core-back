@@ -1,4 +1,4 @@
-import { CoreError } from '../../../core/common/error/coreError';
+import { DomainException } from '@core/common/error/domainException';
 import { createHash } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
@@ -8,15 +8,15 @@ import { jwtVerify, SignJWT, type JWTPayload } from 'jose';
 import type {
   AuthTokenVerifierPort,
   VerifiedRefreshToken,
-} from '../../../core/auth/application/port/authTokenVerifier.port';
+} from '@core/auth/application/port/authTokenVerifier.port';
 import type {
   IssuedSessionTokens,
   SessionTokenIssuerPort,
-} from '../../../core/auth/application/port/sessionTokenIssuer.port';
+} from '@core/auth/application/port/sessionTokenIssuer.port';
 import type {
   AuthenticatedPrincipal,
   UserRole,
-} from '../../../core/auth/application/type/authenticatedPrincipal';
+} from '@core/auth/application/type/authenticatedPrincipal';
 
 const ACCESS_TOKEN_TYPE = 'access';
 const REFRESH_TOKEN_TYPE = 'refresh';
@@ -61,7 +61,7 @@ export class JwtTokenService implements SessionTokenIssuerPort, AuthTokenVerifie
 
   async verifyAccess(token: string): Promise<AuthenticatedPrincipal> {
     const payload = await this.verify(token);
-    if (payload.token_type !== ACCESS_TOKEN_TYPE) throw new CoreError('WRONG_TOKEN');
+    if (payload.token_type !== ACCESS_TOKEN_TYPE) throw new DomainException('WRONG_TOKEN');
     const userId = this.userIdFrom(payload);
     const role = this.roleFrom(payload.role);
     const sessionId = this.sessionIdFrom(payload.sid);
@@ -72,7 +72,7 @@ export class JwtTokenService implements SessionTokenIssuerPort, AuthTokenVerifie
 
   async verifyRefresh(token: string): Promise<VerifiedRefreshToken> {
     const payload = await this.verify(token);
-    if (payload.token_type !== REFRESH_TOKEN_TYPE) throw new CoreError('WRONG_TOKEN');
+    if (payload.token_type !== REFRESH_TOKEN_TYPE) throw new DomainException('WRONG_TOKEN');
     return {
       userId: this.subjectUserIdFrom(payload),
       sessionId: this.sessionIdFrom(payload.sid),
@@ -105,8 +105,8 @@ export class JwtTokenService implements SessionTokenIssuerPort, AuthTokenVerifie
       });
       return payload;
     } catch (error: unknown) {
-      if (this.isExpiredJwtError(error)) throw new CoreError('EXPIRED_TOKEN');
-      throw new CoreError('WRONG_TOKEN');
+      if (this.isExpiredJwtError(error)) throw new DomainException('EXPIRED_TOKEN');
+      throw new DomainException('WRONG_TOKEN');
     }
   }
 
@@ -117,7 +117,7 @@ export class JwtTokenService implements SessionTokenIssuerPort, AuthTokenVerifie
   private userIdFrom(payload: JWTPayload): number {
     const subjectId = this.subjectUserIdFrom(payload);
     const claimId = this.safePositiveInteger(payload.id);
-    if (subjectId !== claimId) throw new CoreError('WRONG_TOKEN');
+    if (subjectId !== claimId) throw new DomainException('WRONG_TOKEN');
     return subjectId;
   }
 
@@ -127,17 +127,17 @@ export class JwtTokenService implements SessionTokenIssuerPort, AuthTokenVerifie
 
   private safePositiveInteger(value: unknown): number {
     const parsed = typeof value === 'number' ? value : Number(value);
-    if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new CoreError('WRONG_TOKEN');
+    if (!Number.isSafeInteger(parsed) || parsed <= 0) throw new DomainException('WRONG_TOKEN');
     return parsed;
   }
 
   private roleFrom(value: unknown): UserRole {
     if (value === 'PENDING' || value === 'USER') return value;
-    throw new CoreError('WRONG_TOKEN');
+    throw new DomainException('WRONG_TOKEN');
   }
 
   private sessionIdFrom(value: unknown): string {
     if (typeof value === 'string' && value.length > 0) return value;
-    throw new CoreError('WRONG_TOKEN');
+    throw new DomainException('WRONG_TOKEN');
   }
 }

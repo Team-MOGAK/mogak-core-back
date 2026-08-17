@@ -6,11 +6,11 @@ import { Test } from '@nestjs/testing';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
 
-import { BoundedThrottlerStorage } from '../../../apps/api/src/api/common/http/boundedThrottler.storage';
-import { configureApp } from '../../../apps/api/src/api/app.setup';
-import { AuthService } from '../../../apps/api/src/core/auth/application/service/auth.service';
-import { AccessTokenGuard } from '../../../apps/api/src/api/auth/presentation/controller/accessToken.guard';
-import { AuthController } from '../../../apps/api/src/api/auth/presentation/controller/auth.controller';
+import { BoundedThrottlerStorage } from '@api/common/http/boundedThrottler.storage';
+import { configureApp } from '@api/app.setup';
+import { AuthService } from '@core/auth/application/service/auth.service';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import { AuthController } from '@api/auth/presentation/controller/auth.controller';
 
 describe('인증 HTTP 계약', () => {
   let app: INestApplication;

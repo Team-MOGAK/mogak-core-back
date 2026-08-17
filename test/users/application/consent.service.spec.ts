@@ -1,8 +1,8 @@
-import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
+import { DomainException } from '@core/common/error/domainException';
 import { testMock } from '../../testMock';
 
-import type { ConsentRepositoryPort } from '../../../apps/api/src/core/users/application/port/consent.repository.port';
-import { ConsentService } from '../../../apps/api/src/core/users/application/service/consent.service';
+import type { ConsentRepositoryPort } from '@core/users/application/port/consent.repository.port';
+import { ConsentService } from '@core/users/application/service/consent.service';
 
 describe('동의 서비스', () => {
   it('상태를 저장하기 전에 중복 동의 식별자를 거부한다', async () => {
@@ -20,7 +20,7 @@ describe('동의 서비스', () => {
         { consentItemId: 1, agreed: true },
         { consentItemId: 1, agreed: false },
       ]),
-    ).rejects.toEqual(new CoreError('DUPLICATE_CONSENT_ITEM'));
+    ).rejects.toEqual(new DomainException('DUPLICATE_CONSENT_ITEM'));
     expect(repository.upsertUserConsents).not.toHaveBeenCalled();
   });
 });

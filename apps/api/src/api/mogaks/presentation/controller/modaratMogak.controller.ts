@@ -9,13 +9,13 @@ import {
   Put,
   UseGuards,
 } from '@nestjs/common';
-import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../../../core/auth/application/type/authenticatedPrincipal';
-import { AccessTokenGuard } from '../../../auth/presentation/controller/accessToken.guard';
-import { CurrentUser } from '../../../auth/presentation/controller/currentUser.decorator';
-import { RegisteredUserGuard } from '../../../auth/presentation/controller/registeredUser.guard';
-import { successResponse } from '../../../common/http/apiResponse';
-import { ZodBody, ZodParams } from '../../../common/validation/zodParameter.decorator';
-import { MogakService } from '../../../../core/mogaks/application/service/mogak.service';
+import type { AuthenticatedPrincipal as AuthenticatedUser } from '@core/auth/application/type/authenticatedPrincipal';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decorator';
+import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
+import { successResponse } from '@api/common/http/apiResponse';
+import { ZodBody, ZodParams } from '@api/common/validation/zodParameter.decorator';
+import { MogakService } from '@core/mogaks/application/service/mogak.service';
 import {
   moderatIdParamSchema,
   moderatRequestSchema,

@@ -1,7 +1,7 @@
 import { Controller, Get, Inject } from '@nestjs/common';
 
-import { successResponse } from '../../../common/http/apiResponse';
-import { MetadataService } from '../../../../core/users/application/service/metadata.service';
+import { successResponse } from '@api/common/http/apiResponse';
+import { MetadataService } from '@core/users/application/service/metadata.service';
 import type { MetadataResponse } from '../type/metadata.response';
 
 @Controller('api/metadata')

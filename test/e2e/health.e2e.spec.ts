@@ -1,8 +1,8 @@
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { AppModule } from '../../apps/api/src/composition/app.module';
-import { configureApp } from '../../apps/api/src/api/app.setup';
+import { AppModule } from '@composition/app.module';
+import { configureApp } from '@api/app.setup';
 
 describe('헬스체크 엔드포인트', () => {
   let app: INestApplication;

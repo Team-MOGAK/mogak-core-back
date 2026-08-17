@@ -1,10 +1,9 @@
-import { AppErrorCode } from '../http/appErrorCode';
-import { DomainException } from '../http/domain.exception';
+import { DomainException } from '@core/common/error/domainException';
 
 export function requiredTrimmed(value: string): string {
   const trimmed = value.trim();
   if (trimmed.length === 0) {
-    throw new DomainException(AppErrorCode.INVALID_PARAMETER);
+    throw new DomainException('INVALID_PARAMETER');
   }
   return trimmed;
 }

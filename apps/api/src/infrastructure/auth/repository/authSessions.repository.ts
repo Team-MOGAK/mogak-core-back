@@ -4,8 +4,8 @@ import { and, eq, gt } from 'drizzle-orm';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
 import { authSessions } from '../../database/schema';
-import type { SessionRotationCommand } from '../../../core/auth/application/type/auth.command';
-import { AuthPersistenceException } from '../../../core/auth/domain/exception/authPersistence.exception';
+import type { SessionRotationCommand } from '@core/auth/application/type/auth.command';
+import { AuthPersistenceException } from '@core/auth/domain/exception/authPersistence.exception';
 import type { AuthSessionRecord } from '../type/auth.record';
 
 @Injectable()

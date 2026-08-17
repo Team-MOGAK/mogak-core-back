@@ -1,13 +1,12 @@
 import { Controller, Headers, HttpCode, HttpStatus, Inject, Post, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 
-import { successResponse } from '../../../common/http/apiResponse';
-import { AppErrorCode } from '../../../common/http/appErrorCode';
-import { DomainException } from '../../../common/http/domain.exception';
-import { ZodBody, ZodParams } from '../../../common/validation/zodParameter.decorator';
-import { AuthService } from '../../../../core/auth/application/service/auth.service';
-import type { AuthenticatedPrincipal } from '../../../../core/auth/application/type/authenticatedPrincipal';
-import { SocialProvider } from '../../../../core/auth/domain/vo/socialProvider.vo';
+import { successResponse } from '@api/common/http/apiResponse';
+import { DomainException } from '@core/common/error/domainException';
+import { ZodBody, ZodParams } from '@api/common/validation/zodParameter.decorator';
+import { AuthService } from '@core/auth/application/service/auth.service';
+import type { AuthenticatedPrincipal } from '@core/auth/application/type/authenticatedPrincipal';
+import { SocialProvider } from '@core/auth/domain/vo/socialProvider.vo';
 import {
   providerParamsSchema,
   socialLoginRequestSchema,
@@ -43,7 +42,7 @@ export class AuthController {
           await this.authService.login(provider, request.token),
         );
       default:
-        throw new DomainException(AppErrorCode.UNSUPPORTED_SOCIAL_PROVIDER);
+        throw new DomainException('UNSUPPORTED_SOCIAL_PROVIDER');
     }
   }
 
@@ -73,7 +72,6 @@ export class AuthController {
 }
 
 function requiredRefreshToken(value: string | undefined): string {
-  if (value === undefined || value.trim().length === 0)
-    throw new DomainException(AppErrorCode.EMPTY_TOKEN);
+  if (value === undefined || value.trim().length === 0) throw new DomainException('EMPTY_TOKEN');
   return value;
 }

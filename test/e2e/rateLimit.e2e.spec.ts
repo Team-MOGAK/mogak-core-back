@@ -2,9 +2,9 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
-import { AppModule } from '../../apps/api/src/composition/app.module';
-import { configureApp } from '../../apps/api/src/api/app.setup';
-import { MetadataService } from '../../apps/api/src/core/users/application/service/metadata.service';
+import { AppModule } from '@composition/app.module';
+import { configureApp } from '@api/app.setup';
+import { MetadataService } from '@core/users/application/service/metadata.service';
 
 describe('전역 HTTP rate limit', () => {
   let app: INestApplication;

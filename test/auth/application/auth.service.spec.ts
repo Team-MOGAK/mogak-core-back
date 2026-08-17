@@ -1,16 +1,16 @@
-import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
+import { DomainException } from '@core/common/error/domainException';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
-import type { AuthPersistencePort } from '../../../apps/api/src/core/auth/application/port/authPersistence.port';
-import type { AuthTokenVerifierPort } from '../../../apps/api/src/core/auth/application/port/authTokenVerifier.port';
-import type { SessionTokenIssuerPort } from '../../../apps/api/src/core/auth/application/port/sessionTokenIssuer.port';
-import type { SocialIdentityVerifierPort } from '../../../apps/api/src/core/auth/application/port/socialIdentityVerifier.port';
-import { AuthService } from '../../../apps/api/src/core/auth/application/service/auth.service';
-import type { AuthenticatedPrincipal } from '../../../apps/api/src/core/auth/application/type/authenticatedPrincipal';
+import type { AuthPersistencePort } from '@core/auth/application/port/authPersistence.port';
+import type { AuthTokenVerifierPort } from '@core/auth/application/port/authTokenVerifier.port';
+import type { SessionTokenIssuerPort } from '@core/auth/application/port/sessionTokenIssuer.port';
+import type { SocialIdentityVerifierPort } from '@core/auth/application/port/socialIdentityVerifier.port';
+import { AuthService } from '@core/auth/application/service/auth.service';
+import type { AuthenticatedPrincipal } from '@core/auth/application/type/authenticatedPrincipal';
 import {
   DuplicateEmailException,
   DuplicateSocialAccountException,
-} from '../../../apps/api/src/core/auth/domain/exception/authPersistence.exception';
+} from '@core/auth/domain/exception/authPersistence.exception';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
@@ -75,7 +75,7 @@ describe('인증 서비스', () => {
       const service = new AuthService(verifiers, persistence, tokens, tokens);
 
       await expect(service.authenticateAccessToken('accessToken')).rejects.toEqual(
-        new CoreError('LOGOUT_TOKEN'),
+        new DomainException('LOGOUT_TOKEN'),
       );
     },
   );
@@ -83,7 +83,7 @@ describe('인증 서비스', () => {
   it('액세스 토큰 검증 실패를 그대로 전파한다', async () => {
     const persistence = createPersistence();
     const tokens = createTokenPorts();
-    const failure = new CoreError('WRONG_TOKEN');
+    const failure = new DomainException('WRONG_TOKEN');
     jest.mocked(tokens.verifyAccess).mockRejectedValue(failure);
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
@@ -139,7 +139,7 @@ describe('인증 서비스', () => {
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.refresh('current-refresh-token')).rejects.toEqual(
-      new CoreError('WRONG_TOKEN'),
+      new DomainException('WRONG_TOKEN'),
     );
   });
 
@@ -157,7 +157,7 @@ describe('인증 서비스', () => {
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
-      new CoreError('INVALID_SOCIAL_TOKEN'),
+      new DomainException('INVALID_SOCIAL_TOKEN'),
     );
     expect(persistence.findUserBySocialIdentity).not.toHaveBeenCalled();
   });
@@ -227,7 +227,7 @@ describe('인증 서비스', () => {
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
-      new CoreError('SOCIAL_ACCOUNT_LINK_REQUIRED'),
+      new DomainException('SOCIAL_ACCOUNT_LINK_REQUIRED'),
     );
     expect(persistence.createSession).not.toHaveBeenCalled();
   });
@@ -282,7 +282,7 @@ describe('인증 서비스', () => {
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('KAKAO', 'accessToken')).rejects.toEqual(
-      new CoreError('SOCIAL_ACCOUNT_LINK_REQUIRED'),
+      new DomainException('SOCIAL_ACCOUNT_LINK_REQUIRED'),
     );
     expect(persistence.createAccount).not.toHaveBeenCalled();
   });
@@ -317,7 +317,7 @@ describe('인증 서비스', () => {
 
     await expect(service.login('KAKAO', 'accessToken')).resolves.toMatchObject({ userId: 7 });
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
-      new CoreError('SOCIAL_EMAIL_NOT_VERIFIED'),
+      new DomainException('SOCIAL_EMAIL_NOT_VERIFIED'),
     );
   });
 });

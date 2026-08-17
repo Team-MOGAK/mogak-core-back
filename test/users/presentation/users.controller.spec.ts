@@ -6,16 +6,16 @@ import { Test } from '@nestjs/testing';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import request from 'supertest';
 
-import { BoundedThrottlerStorage } from '../../../apps/api/src/api/common/http/boundedThrottler.storage';
-import { configureApp } from '../../../apps/api/src/api/app.setup';
-import { AccessTokenGuard } from '../../../apps/api/src/api/auth/presentation/controller/accessToken.guard';
-import { RegisteredUserGuard } from '../../../apps/api/src/api/auth/presentation/controller/registeredUser.guard';
-import { ConsentService } from '../../../apps/api/src/core/users/application/service/consent.service';
-import { MetadataService } from '../../../apps/api/src/core/users/application/service/metadata.service';
-import { UserService } from '../../../apps/api/src/core/users/application/service/user.service';
-import { ConsentController } from '../../../apps/api/src/api/users/presentation/controller/consent.controller';
-import { MetadataController } from '../../../apps/api/src/api/users/presentation/controller/metadata.controller';
-import { UsersController } from '../../../apps/api/src/api/users/presentation/controller/users.controller';
+import { BoundedThrottlerStorage } from '@api/common/http/boundedThrottler.storage';
+import { configureApp } from '@api/app.setup';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
+import { ConsentService } from '@core/users/application/service/consent.service';
+import { MetadataService } from '@core/users/application/service/metadata.service';
+import { UserService } from '@core/users/application/service/user.service';
+import { ConsentController } from '@api/users/presentation/controller/consent.controller';
+import { MetadataController } from '@api/users/presentation/controller/metadata.controller';
+import { UsersController } from '@api/users/presentation/controller/users.controller';
 
 describe('사용자 HTTP 계약', () => {
   let app: INestApplication;

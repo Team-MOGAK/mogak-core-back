@@ -1,8 +1,8 @@
-import { isCommentAuthor } from '../../../../apps/api/src/core/posts/domain/policy/postComment.policy';
+import { isCommentAuthor } from '@core/posts/domain/policy/postComment.policy';
 import {
   validateCommentContents,
   validatePostContents,
-} from '../../../../apps/api/src/core/posts/domain/policy/postContents.policy';
+} from '@core/posts/domain/policy/postContents.policy';
 
 describe('게시글 도메인 규칙', () => {
   it('게시글과 댓글 내용을 정규화하고 각각의 최대 길이를 적용한다', () => {

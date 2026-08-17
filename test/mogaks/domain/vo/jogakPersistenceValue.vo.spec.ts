@@ -1,8 +1,8 @@
-import { JogakExecutionStatus } from '../../../../apps/api/src/core/mogaks/domain/vo/jogakExecution.vo';
+import { JogakExecutionStatus } from '@core/mogaks/domain/vo/jogakExecution.vo';
 import {
   JogakScheduleType,
   JogakScheduleWeekdayName,
-} from '../../../../apps/api/src/core/mogaks/domain/vo/jogakSchedule.vo';
+} from '@core/mogaks/domain/vo/jogakSchedule.vo';
 
 describe('조각 영속 값 VO', () => {
   it('저장된 실행 상태를 도메인 상태로 해석한다', () => {

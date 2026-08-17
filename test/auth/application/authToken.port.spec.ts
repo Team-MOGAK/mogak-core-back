@@ -1,5 +1,5 @@
-import { AUTH_TOKEN_VERIFIER } from '../../../apps/api/src/core/auth/application/port/authTokenVerifier.port';
-import { SESSION_TOKEN_ISSUER } from '../../../apps/api/src/core/auth/application/port/sessionTokenIssuer.port';
+import { AUTH_TOKEN_VERIFIER } from '@core/auth/application/port/authTokenVerifier.port';
+import { SESSION_TOKEN_ISSUER } from '@core/auth/application/port/sessionTokenIssuer.port';
 
 describe('세션 토큰 Port', () => {
   it('발급과 검증 역할의 DI 토큰을 분리한다', () => {

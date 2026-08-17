@@ -1,10 +1,9 @@
 import { testMock } from '../../testMock';
 import type { ExecutionContext } from '@nestjs/common';
 
-import { AppErrorCode } from '../../../apps/api/src/api/common/http/appErrorCode';
-import { DomainException } from '../../../apps/api/src/api/common/http/domain.exception';
-import type { AuthService } from '../../../apps/api/src/core/auth/application/service/auth.service';
-import { AccessTokenGuard } from '../../../apps/api/src/api/auth/presentation/controller/accessToken.guard';
+import { DomainException } from '@core/common/error/domainException';
+import type { AuthService } from '@core/auth/application/service/auth.service';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
@@ -32,14 +31,12 @@ describe('액세스 토큰 가드', () => {
 
   it('현재 세션이 로그아웃된 뒤에는 T005 오류를 반환한다', async () => {
     const authService = {
-      authenticateAccessToken: testMock().mockRejectedValue(
-        new DomainException(AppErrorCode.LOGOUT_TOKEN),
-      ),
+      authenticateAccessToken: testMock().mockRejectedValue(new DomainException('LOGOUT_TOKEN')),
     } as unknown as AuthService;
     const guard = new AccessTokenGuard(authService);
 
     await expect(
       guard.canActivate(executionContext({ headers: { authorization: 'Bearer accessToken' } })),
-    ).rejects.toEqual(new DomainException(AppErrorCode.LOGOUT_TOKEN));
+    ).rejects.toEqual(new DomainException('LOGOUT_TOKEN'));
   });
 });

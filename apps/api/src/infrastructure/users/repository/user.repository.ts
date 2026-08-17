@@ -1,17 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
 
-import type { UserRepositoryPort } from '../../../core/users/application/port/user.repository.port';
+import type { UserRepositoryPort } from '@core/users/application/port/user.repository.port';
 import type {
   CompleteRegistrationCommand,
   UpdateJobCommand,
   UpdateNicknameCommand,
   UpdateProfileImageCommand,
-} from '../../../core/users/application/type/user.command';
+} from '@core/users/application/type/user.command';
 import {
   DuplicateNicknameException,
   UserPersistenceException,
-} from '../../../core/users/domain/exception/userPersistence.exception';
+} from '@core/users/domain/exception/userPersistence.exception';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
 import { authSessions, jobs, userConsents, users } from '../../database/schema';
@@ -19,7 +19,7 @@ import type { UserRecord } from '../type/user.record';
 import type {
   RegistrationCandidate,
   UserProfileProjection,
-} from '../../../core/users/application/type/user.result';
+} from '@core/users/application/type/user.result';
 
 @Injectable()
 export class UserRepository implements UserRepositoryPort {

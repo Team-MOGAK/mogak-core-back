@@ -9,13 +9,13 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
-import type { AuthenticatedPrincipal } from '../../../../core/auth/application/type/authenticatedPrincipal';
-import { AccessTokenGuard } from '../../../auth/presentation/controller/accessToken.guard';
-import { CurrentUser } from '../../../auth/presentation/controller/currentUser.decorator';
-import { RegisteredUserGuard } from '../../../auth/presentation/controller/registeredUser.guard';
-import { successResponse } from '../../../common/http/apiResponse';
-import { ZodParams, ZodQuery } from '../../../common/validation/zodParameter.decorator';
-import { SocialService } from '../../../../core/social/application/service/social.service';
+import type { AuthenticatedPrincipal } from '@core/auth/application/type/authenticatedPrincipal';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decorator';
+import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
+import { successResponse } from '@api/common/http/apiResponse';
+import { ZodParams, ZodQuery } from '@api/common/validation/zodParameter.decorator';
+import { SocialService } from '@core/social/application/service/social.service';
 import {
   networkPostsQuerySchema,
   nicknameParamsSchema,

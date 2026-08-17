@@ -1,12 +1,12 @@
-import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
+import { DomainException } from '@core/common/error/domainException';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 
-import type { OwnedMogakPort } from '../../../apps/api/src/core/mogaks/application/port/ownedMogak.port';
-import type { OwnedOccurrencePort } from '../../../apps/api/src/core/mogaks/application/port/ownedOccurrence.port';
-import type { StoragePort } from '../../../apps/api/src/core/storage/application/storage.port';
-import type { PostRepositoryPort } from '../../../apps/api/src/core/posts/application/port/post.repository.port';
-import { PostService } from '../../../apps/api/src/core/posts/application/service/post.service';
+import type { OwnedMogakPort } from '@core/mogaks/application/port/ownedMogak.port';
+import type { OwnedOccurrencePort } from '@core/mogaks/application/port/ownedOccurrence.port';
+import type { StoragePort } from '@core/storage/application/storage.port';
+import type { PostRepositoryPort } from '@core/posts/application/port/post.repository.port';
+import { PostService } from '@core/posts/application/service/post.service';
 
 function repository(): PostRepositoryPort {
   return {
@@ -110,7 +110,7 @@ describe('게시글 서비스', () => {
         targetDate: '2026-07-23',
         contents: '오늘 회고',
       }),
-    ).rejects.toEqual(new CoreError('POST_ALREADY_EXISTS'));
+    ).rejects.toEqual(new DomainException('POST_ALREADY_EXISTS'));
   });
 
   it('발생을 해석하기 전에 비어 있거나 너무 긴 게시글 내용을 거부한다', async () => {
@@ -120,14 +120,14 @@ describe('게시글 서비스', () => {
 
     await expect(
       service.createPost(7, { jogakId: 11, targetDate: '2026-07-23', contents: '   ' }),
-    ).rejects.toEqual(new CoreError('INVALID_PARAMETER'));
+    ).rejects.toEqual(new DomainException('INVALID_PARAMETER'));
     await expect(
       service.createPost(7, {
         jogakId: 11,
         targetDate: '2026-07-23',
         contents: 'x'.repeat(351),
       }),
-    ).rejects.toEqual(new CoreError('POST_CONTENTS_TOO_LONG'));
+    ).rejects.toEqual(new DomainException('POST_CONTENTS_TOO_LONG'));
     expect(occurrences.resolveOwnedOccurrence).not.toHaveBeenCalled();
     expect(posts.createForOccurrence).not.toHaveBeenCalled();
   });
@@ -227,7 +227,7 @@ describe('게시글 서비스', () => {
     const service = new PostService(posts, jogaks(), storage(), mogaks());
 
     await expect(service.updateComment(7, 31, 41, '수정 시도')).rejects.toEqual(
-      new CoreError('FORBIDDEN'),
+      new DomainException('FORBIDDEN'),
     );
     expect(posts.updateComment).not.toHaveBeenCalled();
   });

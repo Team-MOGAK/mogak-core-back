@@ -1,9 +1,9 @@
-import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
+import { DomainException } from '@core/common/error/domainException';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 
-import type { SocialRepositoryPort } from '../../../apps/api/src/core/social/application/port/social.repository.port';
-import { SocialService } from '../../../apps/api/src/core/social/application/service/social.service';
+import type { SocialRepositoryPort } from '@core/social/application/port/social.repository.port';
+import { SocialService } from '@core/social/application/service/social.service';
 
 function repository(): SocialRepositoryPort {
   return {
@@ -40,7 +40,7 @@ describe('소셜 팔로우 서비스', () => {
     const service = new SocialService(social);
 
     await expect(service.follow(7, '모각러')).rejects.toEqual(
-      new CoreError('FOLLOW_ALREADY_EXISTS'),
+      new DomainException('FOLLOW_ALREADY_EXISTS'),
     );
   });
 
@@ -49,7 +49,7 @@ describe('소셜 팔로우 서비스', () => {
     jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 7 });
     const service = new SocialService(social);
 
-    await expect(service.follow(7, '나')).rejects.toEqual(new CoreError('INVALID_PARAMETER'));
+    await expect(service.follow(7, '나')).rejects.toEqual(new DomainException('INVALID_PARAMETER'));
     expect(social.createFollow).not.toHaveBeenCalled();
   });
 
@@ -59,7 +59,9 @@ describe('소셜 팔로우 서비스', () => {
     jest.mocked(social.deleteFollow).mockResolvedValue(false);
     const service = new SocialService(social);
 
-    await expect(service.unfollow(7, '모각러')).rejects.toEqual(new CoreError('FOLLOW_NOT_FOUND'));
+    await expect(service.unfollow(7, '모각러')).rejects.toEqual(
+      new DomainException('FOLLOW_NOT_FOUND'),
+    );
   });
 
   it('원본 행에서 멘토와 모토 수를 계산해 반환한다', async () => {
@@ -129,7 +131,7 @@ describe('소셜 팔로우 서비스', () => {
     const service = new SocialService(social);
 
     await expect(service.listNetworkPosts(7, 0, 10, 'viewCnt')).rejects.toEqual(
-      new CoreError('INVALID_PARAMETER'),
+      new DomainException('INVALID_PARAMETER'),
     );
     expect(social.listNetworkPosts).not.toHaveBeenCalled();
   });

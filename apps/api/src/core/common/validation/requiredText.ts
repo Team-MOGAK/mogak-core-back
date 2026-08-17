@@ -1,7 +1,7 @@
-import { CoreError } from '../error/coreError';
+import { DomainException } from '../error/domainException';
 
 export function requiredTrimmed(value: string): string {
   const trimmed = value.trim();
-  if (trimmed.length === 0) throw new CoreError('INVALID_PARAMETER');
+  if (trimmed.length === 0) throw new DomainException('INVALID_PARAMETER');
   return trimmed;
 }

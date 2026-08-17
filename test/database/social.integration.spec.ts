@@ -4,7 +4,7 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
-import { follows, users } from '../../apps/api/src/infrastructure/database/schema';
+import { follows, users } from '@infra/database/schema';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined)

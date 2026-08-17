@@ -1,11 +1,11 @@
 import { testMock } from '../../testMock';
-import type { Database } from '../../../apps/api/src/infrastructure/database/database.provider';
+import type { Database } from '@infra/database/database.provider';
 import {
   AuthPersistenceException,
   DuplicateEmailException,
   DuplicateSocialAccountException,
-} from '../../../apps/api/src/core/auth/domain/exception/authPersistence.exception';
-import { AuthRepository } from '../../../apps/api/src/infrastructure/auth/repository/auth.repository';
+} from '@core/auth/domain/exception/authPersistence.exception';
+import { AuthRepository } from '@infra/auth/repository/auth.repository';
 
 const identity = {
   provider: 'GOOGLE' as const,

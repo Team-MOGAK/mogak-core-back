@@ -1,8 +1,8 @@
 import { testMock } from '../../testMock';
 
-import type { Database } from '../../../apps/api/src/infrastructure/database/database.provider';
-import { MogakPersistenceException } from '../../../apps/api/src/infrastructure/mogaks/exception/mogakPersistence.exception';
-import { MogakRepository } from '../../../apps/api/src/infrastructure/mogaks/repository/mogak.repository';
+import type { Database } from '@infra/database/database.provider';
+import { MogakPersistenceException } from '@infra/mogaks/exception/mogakPersistence.exception';
+import { MogakRepository } from '@infra/mogaks/repository/mogak.repository';
 
 describe('모각 저장소', () => {
   it('모다랫 삽입 결과가 없으면 MogakPersistenceException을 던진다', async () => {

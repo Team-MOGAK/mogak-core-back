@@ -3,8 +3,8 @@ import 'reflect-metadata';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 
-import { AppModule } from './composition/app.module';
-import { configureApp } from './api/app.setup';
+import { AppModule } from '@composition/app.module';
+import { configureApp } from '@api/app.setup';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);

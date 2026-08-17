@@ -4,7 +4,7 @@ import {
   calendarDateSchema,
   positiveIdSchema,
   requiredTextSchema,
-} from '../../../common/validation/requestSchema';
+} from '@api/common/validation/requestSchema';
 
 export const scheduleRequestSchema = z
   .object({

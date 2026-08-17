@@ -12,16 +12,15 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 
-import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../../../core/auth/application/type/authenticatedPrincipal';
-import { AccessTokenGuard } from '../../../auth/presentation/controller/accessToken.guard';
-import { CurrentUser } from '../../../auth/presentation/controller/currentUser.decorator';
-import { RegisteredUserGuard } from '../../../auth/presentation/controller/registeredUser.guard';
-import { successResponse } from '../../../common/http/apiResponse';
-import { AppErrorCode } from '../../../common/http/appErrorCode';
-import { DomainException } from '../../../common/http/domain.exception';
-import { ZodBody, ZodParams, ZodQuery } from '../../../common/validation/zodParameter.decorator';
-import { JogaksService } from '../../../../core/mogaks/application/service/jogaks.service';
-import type { JogakExecutionStatus } from '../../../../core/mogaks/domain/vo/jogakExecution.vo';
+import type { AuthenticatedPrincipal as AuthenticatedUser } from '@core/auth/application/type/authenticatedPrincipal';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decorator';
+import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
+import { successResponse } from '@api/common/http/apiResponse';
+import { DomainException } from '@core/common/error/domainException';
+import { ZodBody, ZodParams, ZodQuery } from '@api/common/validation/zodParameter.decorator';
+import { JogaksService } from '@core/mogaks/application/service/jogaks.service';
+import type { JogakExecutionStatus } from '@core/mogaks/domain/vo/jogakExecution.vo';
 import {
   createJogakRequestSchema,
   dateQuerySchema,
@@ -187,7 +186,7 @@ export class JogaksController {
 
 function asScheduleType(value: string): 'ONCE' | 'WEEKLY' {
   if (value === 'ONCE' || value === 'WEEKLY') return value;
-  throw new DomainException(AppErrorCode.INVALID_SCHEDULE);
+  throw new DomainException('INVALID_SCHEDULE');
 }
 
 function scheduleFor(request: CreateJogakRequest) {
@@ -198,16 +197,16 @@ function scheduleFor(request: CreateJogakRequest) {
       request.today !== undefined ||
       request.endDate !== undefined
     ) {
-      throw new DomainException(AppErrorCode.INVALID_PARAMETER);
+      throw new DomainException('INVALID_PARAMETER');
     }
     return explicitScheduleFor(request.schedule);
   }
   if (request.isRoutine === undefined || request.today === undefined) {
-    throw new DomainException(AppErrorCode.INVALID_PARAMETER);
+    throw new DomainException('INVALID_PARAMETER');
   }
   if (!request.isRoutine) {
     if (request.days !== undefined || request.endDate !== undefined) {
-      throw new DomainException(AppErrorCode.INVALID_SCHEDULE);
+      throw new DomainException('INVALID_SCHEDULE');
     }
     return { scheduleType: 'ONCE' as const, effectiveFrom: request.today };
   }

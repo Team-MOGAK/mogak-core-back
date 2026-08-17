@@ -1,16 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
 
-import type { ConsentRepositoryPort } from '../../../core/users/application/port/consent.repository.port';
+import type { ConsentRepositoryPort } from '@core/users/application/port/consent.repository.port';
 import type {
   ConsentAgreementCommand,
   UpdateMarketingConsentCommand,
-} from '../../../core/users/application/type/consent.command';
+} from '@core/users/application/type/consent.command';
 import type {
   ConsentItemState,
   MarketingConsentResult,
-} from '../../../core/users/application/type/consent.result';
-import { UserPersistenceException } from '../../../core/users/domain/exception/userPersistence.exception';
+} from '@core/users/application/type/consent.result';
+import { UserPersistenceException } from '@core/users/domain/exception/userPersistence.exception';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
 import { consentItems, userConsents } from '../../database/schema';

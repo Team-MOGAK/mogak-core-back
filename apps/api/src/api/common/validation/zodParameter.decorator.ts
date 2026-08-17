@@ -1,8 +1,7 @@
 import { Body, Param, Query, type PipeTransform } from '@nestjs/common';
 import type { z } from 'zod';
 
-import { AppErrorCode } from '../http/appErrorCode';
-import { DomainException } from '../http/domain.exception';
+import { DomainException } from '@core/common/error/domainException';
 
 export const zodParsePipe = <TSchema extends z.ZodType>(
   schema: TSchema,
@@ -11,7 +10,7 @@ export const zodParsePipe = <TSchema extends z.ZodType>(
     const result = schema.safeParse(value);
 
     if (!result.success) {
-      throw new DomainException(AppErrorCode.INVALID_PARAMETER);
+      throw new DomainException('INVALID_PARAMETER');
     }
 
     return result.data;

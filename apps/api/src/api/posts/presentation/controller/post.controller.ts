@@ -13,19 +13,16 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 
-import { successResponse } from '../../../common/http/apiResponse';
-import {
-  MAX_POST_IMAGE_COUNT,
-  postImageUploadOptions,
-} from '../../../common/http/imageUpload.options';
-import { parseMultipartJson } from '../../../common/validation/multipartJson';
-import type { AuthenticatedPrincipal as AuthenticatedUser } from '../../../../core/auth/application/type/authenticatedPrincipal';
-import { AccessTokenGuard } from '../../../auth/presentation/controller/accessToken.guard';
-import { CurrentUser } from '../../../auth/presentation/controller/currentUser.decorator';
-import { RegisteredUserGuard } from '../../../auth/presentation/controller/registeredUser.guard';
-import { STORAGE_PORT, type StoragePort } from '../../../../core/storage/application/storage.port';
-import { ZodBody, ZodParams, ZodQuery } from '../../../common/validation/zodParameter.decorator';
-import { PostService } from '../../../../core/posts/application/service/post.service';
+import { successResponse } from '@api/common/http/apiResponse';
+import { MAX_POST_IMAGE_COUNT, postImageUploadOptions } from '@api/common/http/imageUpload.options';
+import { parseMultipartJson } from '@api/common/validation/multipartJson';
+import type { AuthenticatedPrincipal as AuthenticatedUser } from '@core/auth/application/type/authenticatedPrincipal';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decorator';
+import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
+import { STORAGE_PORT, type StoragePort } from '@core/storage/application/storage.port';
+import { ZodBody, ZodParams, ZodQuery } from '@api/common/validation/zodParameter.decorator';
+import { PostService } from '@core/posts/application/service/post.service';
 import {
   commentRequestSchema,
   createPostRequestSchema,

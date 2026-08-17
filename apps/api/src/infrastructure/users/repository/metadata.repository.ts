@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 
-import type { MetadataRepositoryPort } from '../../../core/users/application/port/metadata.repository.port';
-import type { MetadataResult } from '../../../core/users/application/type/metadata.result';
+import type { MetadataRepositoryPort } from '@core/users/application/port/metadata.repository.port';
+import type { MetadataResult } from '@core/users/application/type/metadata.result';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
 import { addresses, jobs } from '../../database/schema';

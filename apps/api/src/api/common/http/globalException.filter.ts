@@ -9,9 +9,8 @@ import {
 import { ThrottlerException } from '@nestjs/throttler';
 import type { Response } from 'express';
 
-import { CoreError } from '../../../core/common/error/coreError';
+import { DomainException } from '@core/common/error/domainException';
 import { AppErrorCode, type AppErrorCode as AppErrorDefinition } from './appErrorCode';
-import { DomainException } from './domain.exception';
 import { errorResponse } from './apiResponse';
 
 function errorForStatus(status: number): AppErrorDefinition {
@@ -49,19 +48,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return;
     }
 
-    if (exception instanceof CoreError) {
-      const error = appErrorForCoreCode(exception.code);
-      this.logger.warn({
-        type: 'core_error',
-        code: error.code,
-        status: HttpStatus[error.httpStatus],
-      });
-    } else if (exception instanceof DomainException) {
+    if (exception instanceof DomainException) {
+      const error = appErrorForDomainCode(exception.code);
       this.logger.warn({
         type: 'domain_exception',
-        code: exception.errorCode.code,
-        status: HttpStatus[exception.errorCode.httpStatus],
-        message: exception.errorCode.message,
+        code: error.code,
+        status: HttpStatus[error.httpStatus],
+        message: error.message,
       });
     } else if (exception instanceof HttpException) {
       if (exception.getStatus() >= HttpStatus.INTERNAL_SERVER_ERROR) {
@@ -75,19 +68,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     const error =
-      exception instanceof CoreError
-        ? appErrorForCoreCode(exception.code)
-        : exception instanceof DomainException
-          ? exception.errorCode
-          : exception instanceof HttpException
-            ? errorForStatus(exception.getStatus())
-            : AppErrorCode.INTERNAL_SERVER_ERROR;
+      exception instanceof DomainException
+        ? appErrorForDomainCode(exception.code)
+        : exception instanceof HttpException
+          ? errorForStatus(exception.getStatus())
+          : AppErrorCode.INTERNAL_SERVER_ERROR;
 
     response.status(error.httpStatus).json(errorResponse(error));
   }
 }
 
-function appErrorForCoreCode(code: string): AppErrorDefinition {
+function appErrorForDomainCode(code: string): AppErrorDefinition {
   const candidate = AppErrorCode[code as keyof typeof AppErrorCode];
   return candidate ?? AppErrorCode.INTERNAL_SERVER_ERROR;
 }

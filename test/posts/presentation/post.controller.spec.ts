@@ -5,17 +5,13 @@ import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
-import { configureApp } from '../../../apps/api/src/api/app.setup';
-import { AppErrorCode } from '../../../apps/api/src/api/common/http/appErrorCode';
-import { DomainException } from '../../../apps/api/src/api/common/http/domain.exception';
-import {
-  STORAGE_PORT,
-  type StoragePort,
-} from '../../../apps/api/src/core/storage/application/storage.port';
-import { AccessTokenGuard } from '../../../apps/api/src/api/auth/presentation/controller/accessToken.guard';
-import { RegisteredUserGuard } from '../../../apps/api/src/api/auth/presentation/controller/registeredUser.guard';
-import { PostService } from '../../../apps/api/src/core/posts/application/service/post.service';
-import { PostController } from '../../../apps/api/src/api/posts/presentation/controller/post.controller';
+import { configureApp } from '@api/app.setup';
+import { DomainException } from '@core/common/error/domainException';
+import { STORAGE_PORT, type StoragePort } from '@core/storage/application/storage.port';
+import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
+import { PostService } from '@core/posts/application/service/post.service';
+import { PostController } from '@api/posts/presentation/controller/post.controller';
 
 describe('게시글 HTTP 계약', () => {
   let app: INestApplication;
@@ -149,7 +145,7 @@ describe('게시글 HTTP 계약', () => {
 
     jest
       .mocked(storage.uploadPostImages)
-      .mockRejectedValue(new DomainException(AppErrorCode.STORAGE_DISABLED));
+      .mockRejectedValue(new DomainException('STORAGE_DISABLED'));
     await request(app.getHttpServer())
       .post('/api/jogaks/11/posts')
       .field('request', JSON.stringify({ targetDate: '2026-07-23', contents: '오늘 회고' }))

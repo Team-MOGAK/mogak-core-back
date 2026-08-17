@@ -1,8 +1,8 @@
-import { CoreError } from '../../../apps/api/src/core/common/error/coreError';
+import { DomainException } from '@core/common/error/domainException';
 import { testMock } from '../../testMock';
 
-import type { SocialIdentityVerifier } from '../../../apps/api/src/core/auth/application/port/socialIdentityVerifier.port';
-import { SocialIdentityVerifierRegistry } from '../../../apps/api/src/infrastructure/auth/verifier/socialIdentityVerifier.registry';
+import type { SocialIdentityVerifier } from '@core/auth/application/port/socialIdentityVerifier.port';
+import { SocialIdentityVerifierRegistry } from '@infra/auth/verifier/socialIdentityVerifier.registry';
 
 describe('소셜 식별자 검증기 레지스트리', () => {
   it('요청한 공급자를 지원하는 검증기를 선택한다', async () => {
@@ -27,7 +27,7 @@ describe('소셜 식별자 검증기 레지스트리', () => {
     const registry = new SocialIdentityVerifierRegistry([]);
 
     await expect(registry.verify('KAKAO', 'accessToken')).rejects.toEqual(
-      new CoreError('UNSUPPORTED_SOCIAL_PROVIDER'),
+      new DomainException('UNSUPPORTED_SOCIAL_PROVIDER'),
     );
   });
 });

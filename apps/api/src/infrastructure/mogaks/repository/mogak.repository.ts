@@ -12,24 +12,24 @@ import {
   mogakCategories,
   mogaks,
 } from '../../database/schema';
-import type { MogakRepositoryPort } from '../../../core/mogaks/application/port/mogak.repository.port';
+import type { MogakRepositoryPort } from '@core/mogaks/application/port/mogak.repository.port';
 import type {
   MogakCategoryResult,
   MogakResult,
   ModaratResult,
-} from '../../../core/mogaks/application/type/mogak.result';
+} from '@core/mogaks/application/type/mogak.result';
 import type {
   CreatedJogakResult,
   ExecutionResult,
   OccurrenceScheduleResult,
   OwnedJogakResult,
-} from '../../../core/mogaks/application/type/jogak.result';
+} from '@core/mogaks/application/type/jogak.result';
 import { MogakPersistenceException } from '../exception/mogakPersistence.exception';
-import { JogakExecutionStatus } from '../../../core/mogaks/domain/vo/jogakExecution.vo';
+import { JogakExecutionStatus } from '@core/mogaks/domain/vo/jogakExecution.vo';
 import {
   JogakScheduleType,
   JogakScheduleWeekdayName,
-} from '../../../core/mogaks/domain/vo/jogakSchedule.vo';
+} from '@core/mogaks/domain/vo/jogakSchedule.vo';
 
 type CreateModaratInput = Parameters<MogakRepositoryPort['createModarat']>[0];
 type UpdateModaratInput = Parameters<MogakRepositoryPort['updateOwnedModarat']>[0];

@@ -4,16 +4,16 @@ import { and, eq, gt } from 'drizzle-orm';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
 import { authSessions, socialAccounts, users } from '../../database/schema';
-import type { AuthPersistencePort } from '../../../core/auth/application/port/authPersistence.port';
-import type { SessionRotationCommand } from '../../../core/auth/application/type/auth.command';
-import type { AuthUser, SessionDraft } from '../../../core/auth/application/type/auth.result';
-import type { UserRole } from '../../../core/auth/application/type/authenticatedPrincipal';
-import type { VerifiedSocialIdentity } from '../../../core/auth/domain/vo/verifiedSocialIdentity.vo';
+import type { AuthPersistencePort } from '@core/auth/application/port/authPersistence.port';
+import type { SessionRotationCommand } from '@core/auth/application/type/auth.command';
+import type { AuthUser, SessionDraft } from '@core/auth/application/type/auth.result';
+import type { UserRole } from '@core/auth/application/type/authenticatedPrincipal';
+import type { VerifiedSocialIdentity } from '@core/auth/domain/vo/verifiedSocialIdentity.vo';
 import {
   AuthPersistenceException,
   DuplicateEmailException,
   DuplicateSocialAccountException,
-} from '../../../core/auth/domain/exception/authPersistence.exception';
+} from '@core/auth/domain/exception/authPersistence.exception';
 
 @Injectable()
 export class AuthRepository implements AuthPersistencePort {

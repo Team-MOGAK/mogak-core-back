@@ -2,10 +2,10 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
-import { BoundedThrottlerStorage } from '../api/common/http/boundedThrottler.storage';
-import { AppConfigModule } from '../infrastructure/config/config.module';
-import { DatabaseModule } from '../infrastructure/database/database.module';
-import { HealthModule } from '../api/health/health.module';
+import { BoundedThrottlerStorage } from '@api/common/http/boundedThrottler.storage';
+import { AppConfigModule } from '@infra/config/config.module';
+import { DatabaseModule } from '@infra/database/database.module';
+import { HealthModule } from '@api/health/health.module';
 import { AuthModule } from './modules/auth.module';
 import { StorageModule } from './modules/storage.module';
 import { MogakModule } from './modules/mogak.module';
