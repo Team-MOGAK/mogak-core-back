@@ -5,7 +5,7 @@ import ts from 'typescript';
 
 type Violation = Readonly<{ file: string; message: string }>;
 
-const sourceRoot = resolve(process.cwd(), 'src');
+const sourceRoot = resolve(process.cwd(), 'apps/api/src');
 const forbiddenDomainPackages = [
   /^@nestjs(?:\/|$)/,
   /^zod(?:\/|$)/,
@@ -19,6 +19,12 @@ const forbiddenDomainLayerNames = new Set([
   'presentation',
   'database',
 ]);
+const sourceAliases = {
+  '@api/': 'api',
+  '@core/': 'core',
+  '@infra/': 'infrastructure',
+  '@composition/': 'composition',
+} as const;
 
 describe('layer boundaries', () => {
   it('keeps source imports and request contracts within the agreed architecture', () => {
@@ -28,12 +34,12 @@ describe('layer boundaries', () => {
   });
 
   it('keeps PostgreSQL unique-violation details out of auth and user application services', () => {
-    expect(readFileSync('src/auth/application/service/auth.service.ts', 'utf8')).not.toMatch(
-      /23505|users_email_unique|social_accounts_provider_user_unique/,
-    );
-    expect(readFileSync('src/users/application/service/user.service.ts', 'utf8')).not.toMatch(
-      /23505|users_nickname_unique/,
-    );
+    expect(
+      readFileSync('apps/api/src/core/auth/application/service/auth.service.ts', 'utf8'),
+    ).not.toMatch(/23505|users_email_unique|social_accounts_provider_user_unique/);
+    expect(
+      readFileSync('apps/api/src/core/users/application/service/user.service.ts', 'utf8'),
+    ).not.toMatch(/23505|users_nickname_unique/);
   });
 
   it('rejects dynamic module references and generic type-contract bypasses', () => {
@@ -68,6 +74,11 @@ describe('layer boundaries', () => {
         root,
         'social/application/type/probe.presentation.ts',
         `void import('../../presentation/controller/social.controller');`,
+      );
+      writeFixture(
+        root,
+        'core/social/application/type/probe.api.ts',
+        `import { SocialController } from '@api/social/presentation/controller/social.controller'; void SocialController;`,
       );
       writeFixture(
         root,
@@ -116,6 +127,9 @@ describe('layer boundaries', () => {
             "application must not import presentation '../../presentation/controller/social.controller'",
           ),
           expect.stringContaining(
+            "core must not import an adapter layer '@api/social/presentation/controller/social.controller'",
+          ),
+          expect.stringContaining(
             "application must not import database '../../../database/schema'",
           ),
           expect.stringContaining(
@@ -153,6 +167,30 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
     const projectPath = relative(root, file);
     const segments = projectPath.split(sep);
     const imports = collectModuleSpecifiers(sourceFile);
+
+    if (segments.includes('core')) {
+      for (const moduleSpecifier of imports) {
+        if (forbiddenDomainPackages.some((pattern) => pattern.test(moduleSpecifier))) {
+          violations.push({
+            file: projectPath,
+            message: `core must not import framework, persistence, or HTTP package '${moduleSpecifier}'`,
+          });
+        }
+        if (
+          targetsLayer(
+            root,
+            file,
+            moduleSpecifier,
+            new Set(['api', 'infrastructure', 'composition', 'database']),
+          )
+        ) {
+          violations.push({
+            file: projectPath,
+            message: `core must not import an adapter layer '${moduleSpecifier}'`,
+          });
+        }
+      }
+    }
 
     if (segments.includes('domain')) {
       for (const moduleSpecifier of imports) {
@@ -324,9 +362,21 @@ function targetsLayer(
   moduleSpecifier: string,
   layers: ReadonlySet<string>,
 ): boolean {
-  if (!moduleSpecifier.startsWith('.')) return false;
-  const target = relative(root, resolve(dirname(importingFile), moduleSpecifier));
+  const target = targetPath(root, importingFile, moduleSpecifier);
+  if (target === null) return false;
   return target.split(sep).some((segment) => layers.has(segment));
+}
+
+function targetPath(root: string, importingFile: string, moduleSpecifier: string): string | null {
+  if (moduleSpecifier.startsWith('.')) {
+    return relative(root, resolve(dirname(importingFile), moduleSpecifier));
+  }
+  for (const [alias, layer] of Object.entries(sourceAliases)) {
+    if (moduleSpecifier.startsWith(alias)) {
+      return relative(root, resolve(root, layer, moduleSpecifier.slice(alias.length)));
+    }
+  }
+  return null;
 }
 
 function hasDtoResidual(source: string): boolean {

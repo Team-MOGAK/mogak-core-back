@@ -1,16 +1,16 @@
 import {
   decideJogakExecutionTransition,
   snapshotJogakTitle,
-} from '../../../../src/mogaks/domain/policy/jogakExecution.policy';
+} from '@core/mogaks/domain/policy/jogakExecution.policy';
 import {
   MAX_JOGAKS_PER_MOGAK,
   validateJogakCapacity,
-} from '../../../../src/mogaks/domain/policy/jogak.policy';
+} from '@core/mogaks/domain/policy/jogak.policy';
 import {
   deriveOccurrenceStatus,
   occursOn,
   validateJogakSchedule,
-} from '../../../../src/mogaks/domain/policy/jogakSchedule.policy';
+} from '@core/mogaks/domain/policy/jogakSchedule.policy';
 
 describe('조각 도메인 규칙', () => {
   it('모각에는 현재 또는 미래 일정이 있는 조각을 여덟 개까지만 둘 수 있다', () => {

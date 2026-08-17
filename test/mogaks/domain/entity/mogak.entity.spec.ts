@@ -2,7 +2,7 @@ import {
   MAX_MOGAKS_PER_MODARAT,
   selectMogakCategory,
   validateMogakCapacity,
-} from '../../../../src/mogaks/domain/policy/mogak.policy';
+} from '@core/mogaks/domain/policy/mogak.policy';
 
 describe('모각 도메인 규칙', () => {
   it('모다랏에는 여덟 개까지만 모각을 둘 수 있다', () => {
