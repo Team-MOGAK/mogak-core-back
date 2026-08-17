@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import {
   MAX_IMAGE_FILE_SIZE_BYTES,
   MAX_POST_IMAGE_COUNT,

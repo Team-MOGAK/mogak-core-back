@@ -1,7 +1,7 @@
 import type { z } from 'zod';
 
 import { AppErrorCode } from '../http/appErrorCode';
-import { DomainException } from '../http/domain.exception';
+import { DomainException } from '../domain.exception';
 
 export function parseMultipartJson<TSchema extends z.ZodType>(
   body: unknown,

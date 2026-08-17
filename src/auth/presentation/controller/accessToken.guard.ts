@@ -1,7 +1,7 @@
 import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../../common/http/appErrorCode';
-import { DomainException } from '../../../common/http/domain.exception';
+import { DomainException } from '../../../common/domain.exception';
 import { AuthService } from '../../application/service/auth.service';
 import type { AuthenticatedPrincipal } from '../../application/type/authenticatedPrincipal';
 

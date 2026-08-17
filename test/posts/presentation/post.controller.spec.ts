@@ -7,7 +7,7 @@ import request from 'supertest';
 
 import { configureApp } from '../../../src/app.setup';
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import { STORAGE_PORT, type StoragePort } from '../../../src/storage/application/storage.port';
 import { AccessTokenGuard } from '../../../src/auth/presentation/controller/accessToken.guard';
 import { RegisteredUserGuard } from '../../../src/auth/presentation/controller/registeredUser.guard';

@@ -1,7 +1,7 @@
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import type { AuthPersistencePort } from '../../../src/auth/application/port/authPersistence.port';
 import type { AuthTokenVerifierPort } from '../../../src/auth/application/port/authTokenVerifier.port';
 import type { SessionTokenIssuerPort } from '../../../src/auth/application/port/sessionTokenIssuer.port';

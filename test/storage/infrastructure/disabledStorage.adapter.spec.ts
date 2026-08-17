@@ -1,5 +1,5 @@
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import { DisabledStorageAdapter } from '../../../src/storage/infrastructure/disabledStorage.adapter';
 
 describe('비활성화된 저장소 어댑터', () => {

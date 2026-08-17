@@ -1,5 +1,5 @@
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import { requiredTrimmed } from '../../../src/common/validation/requiredText';
 
 describe('필수 문자열 정규화', () => {

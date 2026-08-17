@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../../common/http/appErrorCode';
-import { DomainException } from '../../../common/http/domain.exception';
+import { DomainException } from '../../../common/domain.exception';
 import { STORAGE_PORT, type StoragePort } from '../../../storage/application/storage.port';
 import { isSelfFollow } from '../../domain/policy/follow.policy';
 import { SOCIAL_REPOSITORY, type SocialRepositoryPort } from '../port/social.repository.port';

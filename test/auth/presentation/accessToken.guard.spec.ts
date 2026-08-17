@@ -2,7 +2,7 @@ import { testMock } from '../../testMock';
 import type { ExecutionContext } from '@nestjs/common';
 
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import type { AuthService } from '../../../src/auth/application/service/auth.service';
 import { AccessTokenGuard } from '../../../src/auth/presentation/controller/accessToken.guard';
 

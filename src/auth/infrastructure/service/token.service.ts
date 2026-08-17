@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { jwtVerify, SignJWT, type JWTPayload } from 'jose';
 
 import { AppErrorCode } from '../../../common/http/appErrorCode';
-import { DomainException } from '../../../common/http/domain.exception';
+import { DomainException } from '../../../common/domain.exception';
 import type {
   AuthTokenVerifierPort,
   VerifiedRefreshToken,

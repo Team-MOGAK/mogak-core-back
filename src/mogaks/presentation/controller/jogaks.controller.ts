@@ -18,7 +18,7 @@ import { CurrentUser } from '../../../auth/presentation/controller/currentUser.d
 import { RegisteredUserGuard } from '../../../auth/presentation/controller/registeredUser.guard';
 import { successResponse } from '../../../common/http/apiResponse';
 import { AppErrorCode } from '../../../common/http/appErrorCode';
-import { DomainException } from '../../../common/http/domain.exception';
+import { DomainException } from '../../../common/domain.exception';
 import { ZodBody, ZodParams, ZodQuery } from '../../../common/validation/zodParameter.decorator';
 import { JogaksService } from '../../application/service/jogaks.service';
 import type { JogakExecutionStatus } from '../../domain/vo/jogakExecution.vo';

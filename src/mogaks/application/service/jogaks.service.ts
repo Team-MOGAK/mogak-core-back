@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 
 import { AppErrorCode } from '../../../common/http/appErrorCode';
-import { DomainException } from '../../../common/http/domain.exception';
+import { DomainException } from '../../../common/domain.exception';
 import { requiredTrimmed } from '../../../common/validation/requiredText';
 import {
   decideJogakExecutionTransition,

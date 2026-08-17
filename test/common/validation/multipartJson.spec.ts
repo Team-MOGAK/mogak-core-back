@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import { parseMultipartJson } from '../../../src/common/validation/multipartJson';
 
 const postSchema = z

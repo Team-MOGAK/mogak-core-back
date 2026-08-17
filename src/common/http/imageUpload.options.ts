@@ -1,7 +1,7 @@
 import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
 
 import { AppErrorCode } from './appErrorCode';
-import { DomainException } from './domain.exception';
+import { DomainException } from '../domain.exception';
 
 export const MAX_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 export const MAX_POST_IMAGE_COUNT = 5;

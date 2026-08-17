@@ -2,7 +2,7 @@ import { Body, Param, Query, type PipeTransform } from '@nestjs/common';
 import type { z } from 'zod';
 
 import { AppErrorCode } from '../http/appErrorCode';
-import { DomainException } from '../http/domain.exception';
+import { DomainException } from '../domain.exception';
 
 export const zodParsePipe = <TSchema extends z.ZodType>(
   schema: TSchema,

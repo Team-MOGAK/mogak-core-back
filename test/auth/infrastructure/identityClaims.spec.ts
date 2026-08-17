@@ -1,5 +1,5 @@
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import { identityFromJwtClaims } from '../../../src/auth/infrastructure/verifier/identityClaims';
 
 describe('식별 토큰 클레임 해석', () => {

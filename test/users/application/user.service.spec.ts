@@ -4,7 +4,7 @@ import { testMock } from '../../testMock';
 import type { SessionTokenIssuerPort } from '../../../src/auth/application/port/sessionTokenIssuer.port';
 import type { AuthenticatedPrincipal } from '../../../src/auth/application/type/authenticatedPrincipal';
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import type { StoragePort } from '../../../src/storage/application/storage.port';
 import type { ConsentRepositoryPort } from '../../../src/users/application/port/consent.repository.port';
 import type { MetadataRepositoryPort } from '../../../src/users/application/port/metadata.repository.port';

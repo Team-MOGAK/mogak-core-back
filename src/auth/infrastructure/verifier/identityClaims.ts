@@ -1,7 +1,7 @@
 import type { JWTPayload } from 'jose';
 
 import { AppErrorCode } from '../../../common/http/appErrorCode';
-import { DomainException } from '../../../common/http/domain.exception';
+import { DomainException } from '../../../common/domain.exception';
 import type { SocialProvider } from '../../domain/vo/socialProvider.vo';
 import type { VerifiedSocialIdentity } from '../../domain/vo/verifiedSocialIdentity.vo';
 

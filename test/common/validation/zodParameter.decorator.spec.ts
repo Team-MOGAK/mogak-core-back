@@ -2,7 +2,7 @@ import { type ArgumentMetadata } from '@nestjs/common';
 import { z } from 'zod';
 
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import { zodParsePipe } from '../../../src/common/validation/zodParameter.decorator';
 
 const idSchema = z.object({ id: z.coerce.number().int().positive() }).strict();

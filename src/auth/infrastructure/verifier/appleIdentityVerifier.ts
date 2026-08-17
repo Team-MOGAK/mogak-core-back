@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 import { AppErrorCode } from '../../../common/http/appErrorCode';
-import { DomainException } from '../../../common/http/domain.exception';
+import { DomainException } from '../../../common/domain.exception';
 import type { SocialIdentityVerifier } from '../../application/port/socialIdentityVerifier.port';
 import type { SocialProvider } from '../../domain/vo/socialProvider.vo';
 import { identityFromJwtClaims } from './identityClaims';

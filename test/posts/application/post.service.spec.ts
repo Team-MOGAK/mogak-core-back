@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import type { OwnedMogakPort } from '../../../src/mogaks/application/port/ownedMogak.port';
 import type { OwnedOccurrencePort } from '../../../src/mogaks/application/port/ownedOccurrence.port';
 import type { StoragePort } from '../../../src/storage/application/storage.port';

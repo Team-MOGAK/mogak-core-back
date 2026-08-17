@@ -3,7 +3,7 @@ import { Throttle } from '@nestjs/throttler';
 
 import { successResponse } from '../../../common/http/apiResponse';
 import { AppErrorCode } from '../../../common/http/appErrorCode';
-import { DomainException } from '../../../common/http/domain.exception';
+import { DomainException } from '../../../common/domain.exception';
 import { ZodBody, ZodParams } from '../../../common/validation/zodParameter.decorator';
 import { AuthService } from '../../application/service/auth.service';
 import type { AuthenticatedPrincipal } from '../../application/type/authenticatedPrincipal';

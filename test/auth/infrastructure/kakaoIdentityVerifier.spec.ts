@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import { KakaoIdentityVerifier } from '../../../src/auth/infrastructure/verifier/kakaoIdentityVerifier';
 
 describe('카카오 식별자 검증기', () => {

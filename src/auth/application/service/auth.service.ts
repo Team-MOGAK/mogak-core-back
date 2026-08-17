@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { generateId } from '../../../common/util/idGenerator';
 
 import { AppErrorCode } from '../../../common/http/appErrorCode';
-import { DomainException } from '../../../common/http/domain.exception';
+import { DomainException } from '../../../common/domain.exception';
 import {
   validateNewSocialIdentity,
   type SocialIdentityValidation,
