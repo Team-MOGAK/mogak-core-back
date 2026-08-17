@@ -1,14 +1,24 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt } from 'drizzle-orm';
+import { and, eq, gt, isNull } from 'drizzle-orm';
 
-import type { Database } from '../../database/database.provider';
-import { DATABASE } from '../../database/database.tokens';
-import { authSessions, socialAccounts, users } from '../../database/schema';
+import {
+  authSessions,
+  consentItems,
+  socialAccounts,
+  userConsents,
+  users,
+} from '@infra/database/schema';
+import type { Database } from '@infra/database/database.provider';
+import { DATABASE } from '@infra/database/database.tokens';
 import type { AuthPersistencePort } from '@core/auth/application/port/authPersistence.port';
 import type { SessionRotationCommand } from '@core/auth/application/type/auth.command';
 import type { AuthUser, SessionDraft } from '@core/auth/application/type/auth.result';
 import type { UserRole } from '@core/auth/application/type/authenticatedPrincipal';
 import type { VerifiedSocialIdentity } from '@core/auth/domain/vo/verifiedSocialIdentity.vo';
+import type {
+  RegistrationRole,
+  RegistrationSnapshot,
+} from '@core/users/domain/policy/userRegistration.policy';
 import {
   AuthPersistenceException,
   DuplicateEmailException,
@@ -46,6 +56,42 @@ export class AuthRepository implements AuthPersistencePort {
     return row === undefined ? null : asAuthUser(row);
   }
 
+  async findRegistrationSnapshot(userId: number): Promise<RegistrationSnapshot> {
+    const user = await this.db.query.users.findFirst({ where: eq(users.id, userId) });
+    if (user === undefined) {
+      throw new AuthPersistenceException('user disappeared while reading registration snapshot');
+    }
+
+    const requiredConsents = await this.db
+      .select({ agreed: userConsents.agreed })
+      .from(consentItems)
+      .leftJoin(
+        userConsents,
+        and(eq(userConsents.consentItemId, consentItems.id), eq(userConsents.userId, userId)),
+      )
+      .where(and(eq(consentItems.active, true), eq(consentItems.required, true)));
+
+    return {
+      nickname: user.nickname,
+      jobId: user.jobId,
+      addressId: user.addressId,
+      requiredConsentAgreements: requiredConsents.map((consent) => consent.agreed === true),
+    };
+  }
+
+  async normalizeNullRole(userId: number, role: RegistrationRole): Promise<AuthUser> {
+    await this.db
+      .update(users)
+      .set({ role, updatedAt: new Date() })
+      .where(and(eq(users.id, userId), isNull(users.role)));
+
+    const normalized = await this.db.query.users.findFirst({ where: eq(users.id, userId) });
+    if (normalized === undefined || normalized.role === null) {
+      throw new AuthPersistenceException('null user role was not normalized');
+    }
+    return asAuthUser(normalized);
+  }
+
   async createAccount(identity: VerifiedSocialIdentity): Promise<AuthUser> {
     try {
       return await this.db.transaction(async (tx) => {
@@ -74,7 +120,13 @@ export class AuthRepository implements AuthPersistencePort {
       if (isUniqueConstraint(error, 'users_email_unique')) {
         throw new DuplicateEmailException();
       }
-      if (isUniqueConstraint(error, 'uq_social_account_provider_user')) {
+      if (
+        isUniqueConstraint(
+          error,
+          'uq_social_account_provider_user',
+          'social_accounts_provider_user_unique',
+        )
+      ) {
         throw new DuplicateSocialAccountException();
       }
       throw new AuthPersistenceException('Failed to create auth account', { cause: error });
@@ -141,23 +193,25 @@ function asAuthUser(user: {
   id: number;
   email: string | null;
   nickname: string | null;
-  role: string;
+  role: string | null;
 }): AuthUser {
   return { id: user.id, email: user.email, nickname: user.nickname, role: asUserRole(user.role) };
 }
 
-function asUserRole(value: string): UserRole {
+function asUserRole(value: string | null): UserRole | null {
+  if (value === null) return null;
   if (value === 'PENDING' || value === 'USER') return value;
   throw new AuthPersistenceException(`Unsupported persisted user role: ${value}`);
 }
 
-function isUniqueConstraint(error: unknown, constraint: string): boolean {
+function isUniqueConstraint(error: unknown, ...constraints: readonly string[]): boolean {
   return (
     typeof error === 'object' &&
     error !== null &&
     'code' in error &&
     error.code === '23505' &&
     'constraint' in error &&
-    error.constraint === constraint
+    typeof error.constraint === 'string' &&
+    constraints.includes(error.constraint)
   );
 }

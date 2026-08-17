@@ -32,6 +32,8 @@ function createPersistence(): AuthPersistencePort {
     findUserById: testMock(),
     findUserByEmail: testMock(),
     findUserBySocialIdentity: testMock(),
+    findRegistrationSnapshot: testMock(),
+    normalizeNullRole: testMock(),
     createAccount: testMock(),
     createSession: testMock(),
     rotateSession: testMock(),
@@ -185,12 +187,15 @@ describe('인증 서비스', () => {
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({
-      isRegistered: false,
-      userId: 7,
-      tokens: expect.objectContaining({
-        accessToken: expect.any(String),
-        refreshToken: expect.any(String),
-      }),
+      flow: 'NEW',
+      result: {
+        isRegistered: false,
+        userId: 7,
+        tokens: expect.objectContaining({
+          accessToken: expect.any(String),
+          refreshToken: expect.any(String),
+        }),
+      },
     });
     expect(persistence.createAccount).toHaveBeenCalledWith(identity);
     expect(persistence.createSession).toHaveBeenCalledWith(
@@ -210,7 +215,41 @@ describe('인증 서비스', () => {
     expect(accountCreationCall).toBeLessThan(sessionCreationCall);
   });
 
-  it('계정 생성 중 이메일 중복이 발생하면 소셜 계정 연결을 요구한다', async () => {
+  it('계정 생성 중 이메일 중복 후 같은 소셜 식별자가 확인되면 가입을 재개한다', async () => {
+    const verifiers = {
+      verify: testMock().mockResolvedValue({
+        provider: 'GOOGLE',
+        providerUserId: 'google-subject',
+        email: 'mogak@example.test',
+        emailVerified: true,
+      }),
+    } as unknown as SocialIdentityVerifierPort;
+    const persistence = createPersistence();
+    jest
+      .mocked(persistence.findUserBySocialIdentity)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 7,
+        email: 'mogak@example.test',
+        nickname: null,
+        role: 'PENDING',
+      });
+    jest.mocked(persistence.findUserByEmail).mockResolvedValue(null);
+    jest.mocked(persistence.createAccount).mockRejectedValue(new DuplicateEmailException());
+    const tokens = createTokenPorts();
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
+
+    await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({
+      flow: 'RESUME',
+      result: { userId: 7, isRegistered: false },
+    });
+    expect(persistence.createSession).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ refreshTokenHash: 'refresh-token-hash' }),
+    );
+  });
+
+  it('계정 생성 중 이메일 중복 뒤 exact identity를 찾지 못하면 U012로 거부하고 세션을 만들지 않는다', async () => {
     const verifiers = {
       verify: testMock().mockResolvedValue({
         provider: 'GOOGLE',
@@ -229,6 +268,7 @@ describe('인증 서비스', () => {
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
       new DomainException(DomainErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED),
     );
+    expect(persistence.findUserBySocialIdentity).toHaveBeenCalledTimes(2);
     expect(persistence.createSession).not.toHaveBeenCalled();
   });
 
@@ -253,7 +293,10 @@ describe('인증 서비스', () => {
     const tokens = createTokenPorts();
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
-    await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({ userId: winner.id });
+    await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({
+      flow: 'RESUME',
+      result: { userId: winner.id, isRegistered: false },
+    });
     expect(persistence.findUserBySocialIdentity).toHaveBeenCalledTimes(2);
     expect(persistence.createSession).toHaveBeenCalledWith(
       winner.id,
@@ -315,9 +358,125 @@ describe('인증 서비스', () => {
     const tokens = createTokenPorts();
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
-    await expect(service.login('KAKAO', 'accessToken')).resolves.toMatchObject({ userId: 7 });
+    await expect(service.login('KAKAO', 'accessToken')).resolves.toMatchObject({
+      flow: 'NEW',
+      result: { userId: 7 },
+    });
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
       new DomainException(DomainErrorCode.SOCIAL_EMAIL_NOT_VERIFIED),
     );
+  });
+
+  it('기존 PENDING 사용자는 가입 재개 코드를 받고 새 세션을 발급받는다', async () => {
+    const persistence = createPersistence();
+    jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: null,
+      role: 'PENDING',
+    });
+    const tokens = createTokenPorts();
+    const service = new AuthService(
+      {
+        verify: testMock().mockResolvedValue({
+          provider: 'GOOGLE',
+          providerUserId: 'google-subject',
+          email: 'mogak@example.test',
+          emailVerified: true,
+        }),
+      } as unknown as SocialIdentityVerifierPort,
+      persistence,
+      tokens,
+      tokens,
+    );
+
+    await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({
+      flow: 'RESUME',
+      result: { isRegistered: false, userId: 7 },
+    });
+  });
+
+  it('null role의 필수 가입 정보와 필수 동의가 모두 충족되면 USER로 정규화한다', async () => {
+    const persistence = createPersistence();
+    jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: '모각이',
+      role: null,
+    });
+    jest.mocked(persistence.findRegistrationSnapshot).mockResolvedValue({
+      nickname: '모각이',
+      jobId: 2,
+      addressId: 3,
+      requiredConsentAgreements: [true],
+    });
+    jest.mocked(persistence.normalizeNullRole).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: '모각이',
+      role: 'USER',
+    });
+    const tokens = createTokenPorts();
+    const service = new AuthService(
+      {
+        verify: testMock().mockResolvedValue({
+          provider: 'GOOGLE',
+          providerUserId: 'google-subject',
+          email: 'mogak@example.test',
+          emailVerified: true,
+        }),
+      } as unknown as SocialIdentityVerifierPort,
+      persistence,
+      tokens,
+      tokens,
+    );
+
+    await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({
+      flow: 'REGISTERED',
+      result: { isRegistered: true, userId: 7 },
+    });
+    expect(persistence.normalizeNullRole).toHaveBeenCalledWith(7, 'USER');
+  });
+
+  it('null role의 필수 가입 정보가 하나라도 비어 있으면 PENDING으로 정규화해 가입을 재개한다', async () => {
+    const persistence = createPersistence();
+    jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: '모각이',
+      role: null,
+    });
+    jest.mocked(persistence.findRegistrationSnapshot).mockResolvedValue({
+      nickname: '모각이',
+      jobId: 2,
+      addressId: null,
+      requiredConsentAgreements: [true],
+    });
+    jest.mocked(persistence.normalizeNullRole).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: '모각이',
+      role: 'PENDING',
+    });
+    const tokens = createTokenPorts();
+    const service = new AuthService(
+      {
+        verify: testMock().mockResolvedValue({
+          provider: 'GOOGLE',
+          providerUserId: 'google-subject',
+          email: 'mogak@example.test',
+          emailVerified: true,
+        }),
+      } as unknown as SocialIdentityVerifierPort,
+      persistence,
+      tokens,
+      tokens,
+    );
+
+    await expect(service.login('GOOGLE', 'id-token')).resolves.toMatchObject({
+      flow: 'RESUME',
+      result: { isRegistered: false, userId: 7 },
+    });
+    expect(persistence.normalizeNullRole).toHaveBeenCalledWith(7, 'PENDING');
   });
 });

@@ -37,10 +37,15 @@ export class AuthController {
     switch (provider) {
       case SocialProvider.APPLE:
       case SocialProvider.GOOGLE:
-      case SocialProvider.KAKAO:
+      case SocialProvider.KAKAO: {
+        const outcome = await this.authService.login(provider, request.token);
         return successResponse<LoginResponse>(
-          await this.authService.login(provider, request.token),
+          outcome.result,
+          HttpStatus.OK,
+          new Date(),
+          outcome.flow === 'RESUME' ? 'AUTH_SIGNUP_RESUME_REQUIRED' : undefined,
         );
+      }
       default:
         throw new DomainException(DomainErrorCode.UNSUPPORTED_SOCIAL_PROVIDER);
     }

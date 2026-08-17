@@ -6,7 +6,7 @@ export type AuthUser = Readonly<{
   id: number;
   email: string | null;
   nickname: string | null;
-  role: UserRole;
+  role: UserRole | null;
 }>;
 
 export type SessionDraft = Readonly<{
@@ -19,4 +19,11 @@ export type SocialLoginResult = Readonly<{
   isRegistered: boolean;
   userId: number;
   tokens: TokenResult;
+}>;
+
+export type SocialLoginFlow = 'NEW' | 'RESUME' | 'REGISTERED';
+
+export type SocialLoginOutcome = Readonly<{
+  flow: SocialLoginFlow;
+  result: SocialLoginResult;
 }>;
