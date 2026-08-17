@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>유효하지 않은 요청 입력 관측성 구현 제어</title>
+    <style>body{max-width:880px;margin:2rem auto;padding:0 1rem;font:16px/1.55 system-ui,sans-serif;color:#18212f}header,section{margin:1rem 0;padding:1rem;border:1px solid #d8dee8;border-radius:8px}dt{font-weight:700}dd{margin:0 0 .7rem}code{background:#f1f3f6;padding:.1rem .25rem}</style>
+  </head>
+  <body>
+    <header>
+      <p><strong>단계:</strong> 구현 완료 · <strong>강도:</strong> 표준</p>
+      <h1>유효하지 않은 요청 입력 관측성 구현 제어</h1>
+      <dl>
+        <dt>목적</dt><dd>Z005 입력 검증 실패를 비밀값 노출 없이 진단한다.</dd>
+        <dt>사용자</dt><dd>API 입력 오류를 조사하는 백엔드 운영자·개발자.</dd>
+        <dt>문제</dt><dd>기존 로그에는 오류 코드만 있어 거절된 원문 요청값을 확인할 수 없다.</dd>
+        <dt>핵심 흐름</dt><dd>Z005 → 원문 params/query/body 재귀 정제 → 전역 warn 로그 → 기존 Z005 응답.</dd>
+      </dl>
+      <p>승인 기준선: <code>/Users/hyunseok/IdeaProjects/mogak-core-back/docs/reviews/invalid-request-observability-design.html</code> · 재승인: 2026-08-17, 사용자 “ㅇㅇ. 그렇게 해야할듯”</p>
+    </header>
+    <main><article>
+      <section><h2>현재 구현</h2><p><code>GlobalExceptionFilter</code>가 모든 Z005의 원문 params/query/body를 기록한다. <code>authorization</code>, <code>token</code>, <code>password</code>, <code>secret</code>, <code>cookie</code>를 포함하는 중첩 키는 키와 값 모두 제거하고, multipart body도 기록하지 않는다. 깊이·배열·객체·문자열 크기 제한은 <code>[TRUNCATED]</code>다.</p></section>
+      <section><h2>구현 상태</h2><p><code>src/common/domain.exception.ts</code>는 공통 도메인 예외로 유지하고, <code>src/common/http/globalException.filter.ts</code>에서 blacklist 기반 정제를 구현했다. Zod pipe는 원래의 Z005 변환 책임만 가진다. 독립 읽기 전용 점검에서 승인 범위의 blocker 없음으로 확인됐다.</p></section>
+      <section><h2>이슈 등록부</h2><p><strong>완화됨:</strong> allowlist가 새 비민감 입력을 누락하던 설계를 제거했다. 승인된 인증 키는 재귀적으로 로그에서 제거하고, 대소문자·배열 헤더를 포함한 multipart 원문·과도한 payload는 별도 경계로 처리한다. 정제 중 접근 오류도 요청값을 생략해 Z005 응답을 유지한다. 현재 독립 점검 중이다.</p></section>
+      <section><h2>검증 증거·공백</h2><p><code>pnpm test test/common/http/globalException.filter.spec.ts</code>: 11 passed. <code>pnpm typecheck</code>, <code>pnpm lint</code>, <code>git diff --check</code>: 통과. 전체 Jest는 이전 실행에서 환경상 장시간 완료되지 않아 미완료다.</p></section>
+      <section id="review"><h2>리뷰</h2><p><strong>자기 변경 · 검토 완료 · concrete finding 없음.</strong> 실제 diff와 승인 범위를 대조했다. 인증 키의 재귀 제거, multipart 본문 제외, 정제 실패 시 Z005 응답 유지, <code>DomainException</code>의 common 이동을 확인했다.</p><table><caption>리뷰 확인과 검증 경계</caption><thead><tr><th>항목</th><th>결과</th></tr></thead><tbody><tr><td>원문 로그 경계</td><td>params/query/body 원문은 남기고 승인된 인증 키·multipart 본문은 생략</td></tr><tr><td>공통 예외 이동</td><td>모든 source/test import가 <code>src/common/domain.exception.ts</code>를 사용</td></tr><tr><td>검증</td><td>관련 테스트·아키텍처 테스트 16개, typecheck, lint, diff check 통과</td></tr><tr><td>잔여 공백</td><td>전체 Jest는 환경에서 장시간 완료되지 않아 미완료</td></tr></tbody></table></section>
+      <section><h2>개발자 운영 이해</h2><p>미실시. 새 로그는 <code>request.params</code>, <code>request.query</code>, <code>request.body</code>에서 확인하며, 인증 키나 multipart 본문이 없으면 원문을 찾으려 시도하지 않는다.</p></section>
+    </article></main>
+  </body>
+</html>

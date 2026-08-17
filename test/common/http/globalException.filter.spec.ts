@@ -3,7 +3,7 @@ import { jest } from '@jest/globals';
 import { ThrottlerException } from '@nestjs/throttler';
 
 import { AppErrorCode } from '../../../src/common/http/appErrorCode';
-import { DomainException } from '../../../src/common/http/domain.exception';
+import { DomainException } from '../../../src/common/domain.exception';
 import { GlobalExceptionFilter } from '../../../src/common/http/globalException.filter';
 
 describe('GlobalExceptionFilter의 rate limit 처리', () => {
@@ -117,6 +117,162 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       status: 'FORBIDDEN',
       message: '권한이 부여되지 않았습니다',
     });
+  });
+
+  it('Z005는 원문 요청값을 남기되 인증 필드를 재귀적으로 제거한다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          method: 'POST',
+          baseUrl: '/api/posts',
+          route: { path: '/:postId' },
+          params: { postId: 'wrong' },
+          query: { page: 'wrong', access_token: 'query-secret' },
+          body: {
+            title: '비밀 제목',
+            nested: { accessToken: 'nested-secret', email: 'person@example.com', categoryCode: 'STUDY' },
+            unknown: '원문 값',
+          },
+        }),
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter().catch(
+      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      host as never,
+    );
+
+    expect(warn).toHaveBeenCalledWith({
+      type: 'domain_exception',
+      code: 'Z005',
+      status: 'BAD_REQUEST',
+      message: '입력값이 유효하지 않습니다',
+      method: 'POST',
+      route: '/api/posts/:postId',
+      request: {
+        params: { postId: 'wrong' },
+        query: { page: 'wrong' },
+        body: {
+          title: '비밀 제목',
+          nested: { email: 'person@example.com', categoryCode: 'STUDY' },
+          unknown: '원문 값',
+        },
+      },
+    });
+  });
+
+  it('multipart 원문과 크기 제한을 적용한다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          method: 'POST',
+          route: { path: '/upload' },
+          headers: { 'content-type': 'Multipart/Form-Data; boundary=example' },
+          body: { request: '{"accessToken":"secret"}' },
+        }),
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter().catch(
+      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      host as never,
+    );
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.not.objectContaining({ body: expect.anything() }),
+      }),
+    );
+  });
+
+  it('정제 중 접근 오류가 나도 Z005 응답을 유지하고 요청값은 생략한다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const body = {};
+    Object.defineProperty(body, 'broken', {
+      enumerable: true,
+      get: () => {
+        throw new Error('cannot read request property');
+      },
+    });
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({ method: 'POST', route: { path: '/items' }, body }),
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter().catch(
+      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      host as never,
+    );
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ request: expect.not.objectContaining({ body: expect.anything() }) }),
+    );
+  });
+
+  it('배열 형태 content-type도 보수적으로 body를 생략한다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          method: 'POST',
+          route: { path: '/upload' },
+          headers: { 'content-type': ['application/json'] },
+          body: { token: 'secret' },
+        }),
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter().catch(
+      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      host as never,
+    );
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ request: expect.not.objectContaining({ body: expect.anything() }) }),
+    );
+  });
+
+  it('과도한 원문 문자열과 순환 구조를 잘라낸다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const circular: Record<string, unknown> = { page: 'wrong', comment: 'a'.repeat(1_001) };
+    circular.self = circular;
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({ method: 'POST', route: { path: '/items' }, body: circular }),
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter().catch(
+      new DomainException(AppErrorCode.INVALID_PARAMETER),
+      host as never,
+    );
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: expect.objectContaining({
+          body: { page: 'wrong', comment: '[TRUNCATED]', self: '[TRUNCATED]' },
+        }),
+      }),
+    );
   });
 });
 
