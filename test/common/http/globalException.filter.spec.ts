@@ -136,13 +136,36 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
 
     new GlobalExceptionFilter().catch(exception, host as never);
 
-    expect(error).toHaveBeenCalledWith('Unhandled exception', exception.stack);
+    expect(error).toHaveBeenCalledWith(
+      { event: 'unhandled_exception', database: undefined },
+      exception.stack,
+    );
     expect(status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'INTERNAL_SERVER_ERROR',
         code: 'Z500',
       }),
+    );
+  });
+
+  it('DB 제약 오류에서는 제약 식별자만 안전하게 남긴다', () => {
+    const exception = new Error('Failed query', {
+      cause: { code: '23503', constraint: 'mogak_modarat_id_fkey', table: 'mogak' },
+    });
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const host = { switchToHttp: () => ({ getResponse: () => ({ status }) }) };
+
+    new GlobalExceptionFilter().catch(exception, host as never);
+
+    expect(error).toHaveBeenCalledWith(
+      {
+        event: 'unhandled_exception',
+        database: { code: '23503', constraint: 'mogak_modarat_id_fkey', table: 'mogak' },
+      },
+      exception.stack,
     );
   });
 });

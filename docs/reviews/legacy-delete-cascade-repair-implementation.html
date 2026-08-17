@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="ko">
+  <head><meta charset="utf-8"><title>레거시 삭제 연쇄 복구 구현 제어</title></head>
+  <body>
+    <header>
+      <p>구현 제어 단계: 운영 제어 보류</p>
+      <h1>레거시 삭제 연쇄 복구 구현 제어</h1>
+      <dl><dt>목적</dt><dd>조각 계층을 삭제하고 게시글은 독립적으로 보존한다.</dd><dt>핵심 흐름</dt><dd>FK 보정 → 부모 삭제 → post 보존 → 상세의 상위 정보 null 반환</dd></dl>
+      <p>기준: <a href="legacy-delete-cascade-repair-design.html">설계 승인본</a></p>
+    </header>
+    <nav aria-label="목차"><a href="#implementation">구현</a> · <a href="#evidence">검증</a> · <a href="#review">리뷰</a></nav>
+    <main><article>
+      <section id="implementation"><h2>현재 구현</h2><ul><li>레거시 호환 마이그레이션이 <code>modarat → mogak → jogak → daily_jogak</code> FK를 cascade로 보정한다.</li><li><code>post.daily_jogak_id</code> FK를 제거하고 값과 post 하위 FK는 유지한다.</li><li>게시글 상세은 상위 실행·조각·모각을 LEFT JOIN하며 삭제된 원본 식별자는 null로 응답한다.</li><li>DB 오류는 code·constraint·table만 구조화 로그에 남긴다.</li></ul></section>
+      <section id="evidence"><h2>검증 근거</h2><ul><li>focused Jest 3 suite, 24 test 통과.</li><li><code>pnpm typecheck</code>, 변경 파일 ESLint, <code>pnpm build</code>, migration script syntax 통과.</li><li>임시 로컬 PostgreSQL의 레거시 최소 스키마에서 호환 스크립트를 실행했다. 모다랏 삭제 뒤 mogak·jogak·daily_jogak은 0건, post는 1건, post FK는 0건이었다. 임시 DB는 삭제했다.</li></ul></section>
+      <section id="issues"><h2>이슈 등록</h2><p>해결: DB constraint 식별자를 안전한 구조화 로그에 남긴다.</p><p>잔여 위험: 실제 운영 DB의 constraint·데이터 상태와 DDL 잠금 시간은 배포 전 카탈로그 조회로 확인해야 한다. 전체 lint는 별도 worktree의 ESLint root 충돌로 실패했고 변경 파일 lint는 통과했다.</p></section>
+<section id="review"><h2>리뷰</h2><p>상태: 검토 완료 · 자기 변경 읽기 전용 재검토</p><table><caption>발견 사항</caption><thead><tr><th>ID</th><th>분류</th><th>상태</th><th>근거와 영향</th><th>처리</th></tr></thead><tbody><tr><td>R1</td><td>Blocker</td><td>accepted</td><td><code>cloudbuild.yaml</code>은 이미지만 만들고 <code>Dockerfile</code>은 <code>node dist/main.js</code>만 실행한다. FK 변경은 <code>scripts/migrateLegacySchemaCompatibility.mjs</code> 안에만 있다.</td><td>사용자가 운영 DB에서 <code>pnpm db:migrate:legacy-compat</code>를 직접 실행한다. 스크립트는 저장소에 유지한다.</td></tr><tr><td>R2</td><td>Non-blocking risk</td><td>open</td><td>임시 최소 스키마에서는 cascade·post 보존만 확인했다. orphan post의 실제 repository LEFT JOIN과 post 하위 보존은 자동 통합 테스트로 고정되지 않았다.</td><td>레거시 fixture 기반 migration/repository 통합 테스트를 후속으로 추가한다.</td></tr></tbody></table><p>리뷰 판단: non-blocking risk만 있음. 현재 코드 구현의 직접적 오류는 확인하지 못했다.</p></section>
+    </article></main>
+  </body>
+</html>

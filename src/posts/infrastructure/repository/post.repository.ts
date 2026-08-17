@@ -160,9 +160,9 @@ export class PostRepository implements PostRepositoryPort {
     const [post] = await this.db
       .select(postDetailProjection())
       .from(posts)
-      .innerJoin(jogakExecutions, eq(posts.jogakExecutionId, jogakExecutions.id))
-      .innerJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
-      .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+      .leftJoin(jogakExecutions, eq(posts.jogakExecutionId, jogakExecutions.id))
+      .leftJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
+      .leftJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
       .where(and(eq(posts.id, postId), eq(posts.authorId, userId)));
     return post === undefined ? null : toPostDetailResult(post);
   }

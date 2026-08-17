@@ -3,9 +3,9 @@ export type ToggleLikeResult = 'CREATED' | 'REMOVED';
 export type PostDetailResult = Readonly<{
   id: number;
   authorId: number;
-  jogakId: number;
-  mogakId: number;
-  scheduledDate: string;
+  jogakId: number | null;
+  mogakId: number | null;
+  scheduledDate: string | null;
   contents: string;
   likeCount: number;
   commentCount: number;
