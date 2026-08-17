@@ -11,19 +11,19 @@
       <p><strong>단계:</strong> 구현 완료 · <strong>강도:</strong> 표준</p>
       <h1>유효하지 않은 요청 입력 관측성 구현 제어</h1>
       <dl>
-        <dt>목적</dt><dd>Z005 입력 검증 실패를 비밀값 노출 없이 진단한다.</dd>
+        <dt>목적</dt><dd>도메인 예외를 비밀값 노출 없이 진단한다.</dd>
         <dt>사용자</dt><dd>API 입력 오류를 조사하는 백엔드 운영자·개발자.</dd>
         <dt>문제</dt><dd>기존 로그에는 오류 코드만 있어 거절된 원문 요청값을 확인할 수 없다.</dd>
-        <dt>핵심 흐름</dt><dd>Z005 → 원문 params/query/body 재귀 정제 → 전역 warn 로그 → 기존 Z005 응답.</dd>
+        <dt>핵심 흐름</dt><dd>DomainException → 원문 params/query/body 재귀 정제 → 전역 warn 로그 → 기존 오류 응답.</dd>
       </dl>
-      <p>승인 기준선: <code>/Users/hyunseok/IdeaProjects/mogak-core-back/docs/reviews/invalid-request-observability-design.html</code> · 승인: 2026-08-17, 사용자 “ㄱㄱㄱㄱㄱ”</p>
+      <p>승인 기준선: <code>/Users/hyunseok/IdeaProjects/mogak-core-back/docs/reviews/invalid-request-observability-design.html</code> · 승인: 2026-08-17, 사용자 “ㅇㅇ ㄱ”</p>
     </header>
     <main><article>
-      <section><h2>현재 구현</h2><p><code>GlobalExceptionFilter</code>가 모든 Z005의 원문 params/query/body를 기록한다. <code>authorization</code>, <code>token</code>, <code>password</code>, <code>secret</code>, <code>cookie</code>를 포함하는 중첩 키는 키와 값 모두 제거하고, multipart body도 기록하지 않는다. 깊이·배열·객체·문자열 크기 제한은 <code>[TRUNCATED]</code>다.</p></section>
-      <section><h2>구현 상태</h2><p>메인 병합 후 <code>apps/api/src/core/common/error/domainException.ts</code>의 core 예외 계약과 <code>apps/api/src/api/common/http/globalException.filter.ts</code>의 HTTP 매핑을 유지했다. 매핑 결과가 Z005일 때 blacklist 기반 정제를 적용한다.</p></section>
+      <section><h2>현재 구현</h2><p><code>GlobalExceptionFilter</code>가 모든 <code>DomainException</code>의 원문 params/query/body를 기록한다. <code>authorization</code>, <code>token</code>, <code>password</code>, <code>secret</code>, <code>cookie</code>를 포함하는 중첩 키는 키와 값 모두 제거하고, multipart body도 기록하지 않는다. 깊이·배열·객체·문자열 크기 제한은 <code>[TRUNCATED]</code>다.</p></section>
+      <section><h2>구현 상태</h2><p>메인 병합 후 <code>apps/api/src/core/common/error/domainException.ts</code>의 core 예외 계약과 <code>apps/api/src/api/common/http/globalException.filter.ts</code>의 HTTP 매핑을 유지했다. 매핑 결과 코드와 무관하게 모든 <code>DomainException</code>에 기존 정제를 적용한다.</p></section>
       <section><h2>이슈 등록부</h2><p><strong>해결됨:</strong> 메인의 API/core 계층 분리와 기존 예외 이동이 충돌했다. 메인의 core 오류 코드 → HTTP 오류 매핑을 유지하고, 전역 필터와 테스트에 원문 로그 기능을 이식했다.</p></section>
-      <section><h2>검증 증거·공백</h2><p><code>pnpm test --runInBand</code>: 53 suites / 205 tests passed. <code>pnpm typecheck</code>, <code>pnpm lint</code>, <code>pnpm build</code>, <code>git diff --check</code>: 통과.</p></section>
-      <section id="review"><h2>리뷰</h2><p><strong>자기 변경 · 검토 완료 · concrete finding 없음.</strong> 메인 병합 뒤 실제 diff와 승인 범위를 대조했다. 인증 키 재귀 제거, multipart 본문 제외, 정제 실패 시 Z005 응답 유지, core 예외의 HTTP 매핑 보존을 확인했다.</p><table><caption>리뷰 확인과 검증 경계</caption><thead><tr><th>항목</th><th>결과</th></tr></thead><tbody><tr><td>원문 로그 경계</td><td>params/query/body 원문은 남기고 승인된 인증 키·multipart 본문은 생략</td></tr><tr><td>core 오류 매핑</td><td><code>DomainErrorCode.INVALID_PARAMETER</code>가 기존 Z005 HTTP 계약으로 변환된 뒤 로깅</td></tr><tr><td>검증</td><td>전체 Jest, typecheck, lint, build, diff check 통과</td></tr><tr><td>잔여 공백</td><td>없음</td></tr></tbody></table></section>
+      <section><h2>검증 증거·공백</h2><p>도메인 예외 필터 단위 테스트(13 tests), 전체 Jest(53 suites / 206 tests), <code>pnpm typecheck</code>, <code>pnpm lint</code>, <code>pnpm format:check</code>는 통과했다.</p></section>
+      <section id="review"><h2>리뷰</h2><p><strong>독립 검토 완료 · 보완 완료.</strong> 모든 DomainException으로 로그 범위를 넓히되, 인증 키 재귀 제거, multipart 본문 제외, 정제 실패 시 기존 응답 유지, core 예외의 HTTP 매핑 보존을 확인했다. 최상위 요청 필드 getter가 예외를 던지는 경우도 해당 필드만 생략하도록 보완했다.</p><table><caption>리뷰 확인과 검증 경계</caption><thead><tr><th>항목</th><th>결과</th></tr></thead><tbody><tr><td>원문 로그 경계</td><td>모든 DomainException에서 params/query/body 원문은 남기고 승인된 인증 키·multipart 본문은 생략</td></tr><tr><td>core 오류 매핑</td><td>기존 DomainErrorCode → AppErrorCode HTTP 계약을 보존한 채 로깅</td></tr><tr><td>실패 안전성</td><td>최상위 params/query/body 접근 오류는 해당 필드만 생략하고 원래 응답을 유지</td></tr><tr><td>검증</td><td>필터 단위 테스트, 전체 Jest, typecheck, lint, format check 통과</td></tr><tr><td>잔여 공백</td><td>없음</td></tr></tbody></table></section>
       <section><h2>개발자 운영 이해</h2><p>미실시. 새 로그는 <code>request.params</code>, <code>request.query</code>, <code>request.body</code>에서 확인하며, 인증 키나 multipart 본문이 없으면 원문을 찾으려 시도하지 않는다.</p></section>
     </article></main>
   </body>

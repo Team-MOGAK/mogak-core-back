@@ -30,7 +30,7 @@ type RequestForRateLimitLog = {
   route?: { path?: string };
 };
 
-type RequestForValidationLog = RequestForRateLimitLog & {
+type RequestForDomainExceptionLog = RequestForRateLimitLog & {
   body?: unknown;
   headers?: Record<string, string | string[] | undefined>;
   params?: unknown;
@@ -70,9 +70,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         code: error.code,
         status: HttpStatus[error.httpStatus],
         message: error.message,
-        ...(error.code === AppErrorCode.INVALID_PARAMETER.code
-          ? validationLog(http.getRequest<RequestForValidationLog>())
-          : {}),
+        ...domainExceptionLog(http.getRequest<RequestForDomainExceptionLog>()),
       });
     } else if (exception instanceof HttpException) {
       if (exception.getStatus() >= HttpStatus.INTERNAL_SERVER_ERROR) {
@@ -101,10 +99,10 @@ function appErrorForDomainCode(code: string): AppErrorDefinition {
   return candidate ?? AppErrorCode.INTERNAL_SERVER_ERROR;
 }
 
-function validationLog(request: RequestForValidationLog) {
-  const params = safelySanitizeRequestValue(request.params);
-  const query = safelySanitizeRequestValue(request.query);
-  const body = isMultipartRequest(request) ? OMIT : safelySanitizeRequestValue(request.body);
+function domainExceptionLog(request: RequestForDomainExceptionLog) {
+  const params = safelySanitizeRequestField(request, 'params');
+  const query = safelySanitizeRequestField(request, 'query');
+  const body = isMultipartRequest(request) ? OMIT : safelySanitizeRequestField(request, 'body');
 
   return {
     method: request.method,
@@ -117,7 +115,18 @@ function validationLog(request: RequestForValidationLog) {
   };
 }
 
-function isMultipartRequest(request: RequestForValidationLog): boolean {
+function safelySanitizeRequestField(
+  request: RequestForDomainExceptionLog,
+  field: 'params' | 'query' | 'body',
+): unknown | typeof OMIT {
+  try {
+    return safelySanitizeRequestValue(request[field]);
+  } catch {
+    return OMIT;
+  }
+}
+
+function isMultipartRequest(request: RequestForDomainExceptionLog): boolean {
   try {
     const contentType = request.headers?.['content-type'];
     if (Array.isArray(contentType)) return true;
