@@ -56,6 +56,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const host = {
       switchToHttp: () => ({
+        getRequest: () => ({ method: 'GET', route: { path: '/users/:id' }, params: { id: '42' } }),
         getResponse: () => ({ status }),
       }),
     };
@@ -75,12 +76,20 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     );
   });
 
-  it('DomainException은 기존 오류 정보를 warn 로그에 남긴다', () => {
+  it('Z005가 아닌 DomainException도 정제된 요청 원문과 오류 정보를 warn 로그에 남긴다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const host = {
       switchToHttp: () => ({
+        getRequest: () => ({
+          method: 'GET',
+          baseUrl: '/api',
+          route: { path: '/users/:id' },
+          params: { id: 'wrong' },
+          query: { include: 'profile', access_token: 'query-secret' },
+          body: { token: 'body-secret', nickname: 'moga' },
+        }),
         getResponse: () => ({ status }),
       }),
     };
@@ -95,6 +104,13 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       code: 'U001',
       status: 'NOT_FOUND',
       message: '존재하지 않는 사용자입니다',
+      method: 'GET',
+      route: '/api/users/:id',
+      request: {
+        params: { id: 'wrong' },
+        query: { include: 'profile' },
+        body: { nickname: 'moga' },
+      },
     });
   });
 
@@ -104,6 +120,11 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const host = {
       switchToHttp: () => ({
+        getRequest: () => ({
+          method: 'DELETE',
+          route: { path: '/posts/:id' },
+          params: { id: 'missing' },
+        }),
         getResponse: () => ({ status }),
       }),
     };
@@ -118,6 +139,9 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       code: 'T004',
       status: 'FORBIDDEN',
       message: '권한이 부여되지 않았습니다',
+      method: 'DELETE',
+      route: '/posts/:id',
+      request: { params: { id: 'missing' } },
     });
   });
 
@@ -230,6 +254,37 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     );
   });
 
+  it('최상위 요청 필드 접근 오류가 나도 DomainException 응답을 유지한다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const request = { method: 'GET', route: { path: '/users/:id' }, params: { id: '42' } };
+    Object.defineProperty(request, 'query', {
+      enumerable: true,
+      get: () => {
+        throw new Error('cannot read query');
+      },
+    });
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => request,
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter().catch(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
+      host as never,
+    );
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        request: { params: { id: '42' } },
+      }),
+    );
+  });
+
   it('과도한 원문 문자열과 순환 구조를 잘라낸다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
@@ -267,6 +322,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
     const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const host = {
       switchToHttp: () => ({
+        getRequest: () => ({ method: 'GET', route: { path: '/users/:id' }, params: { id: '42' } }),
         getResponse: () => ({ status }),
       }),
     };
@@ -289,6 +345,9 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
       code: 'U001',
       status: 'NOT_FOUND',
       message: '존재하지 않는 사용자입니다',
+      method: 'GET',
+      route: '/users/:id',
+      request: { params: { id: '42' } },
     });
   });
 
@@ -298,6 +357,11 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
     jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const host = {
       switchToHttp: () => ({
+        getRequest: () => ({
+          method: 'GET',
+          route: { path: '/items/:id' },
+          params: { id: 'unknown' },
+        }),
         getResponse: () => ({ status }),
       }),
     };
@@ -325,8 +389,10 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
     const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const getRequest = jest.fn(() => ({ body: { token: 'must-not-log' } }));
     const host = {
       switchToHttp: () => ({
+        getRequest,
         getResponse: () => ({ status }),
       }),
     };
@@ -337,6 +403,7 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
       { event: 'unhandled_exception', database: undefined },
       exception.stack,
     );
+    expect(getRequest).not.toHaveBeenCalled();
     expect(status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -375,8 +442,10 @@ describe('GlobalExceptionFilter의 서버 오류 처리', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
     const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const getRequest = jest.fn(() => ({ body: { token: 'must-not-log' } }));
     const host = {
       switchToHttp: () => ({
+        getRequest,
         getResponse: () => ({ status }),
       }),
     };
@@ -384,5 +453,6 @@ describe('GlobalExceptionFilter의 서버 오류 처리', () => {
     new GlobalExceptionFilter().catch(exception, host as never);
 
     expect(error).toHaveBeenCalledWith('Unhandled HTTP exception', exception.stack);
+    expect(getRequest).not.toHaveBeenCalled();
   });
 });
