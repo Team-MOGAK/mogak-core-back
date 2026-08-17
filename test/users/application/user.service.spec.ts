@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 
@@ -81,7 +81,7 @@ describe('사용자 서비스', () => {
     );
 
     await expect(service.verifyNickname('   ')).rejects.toEqual(
-      new DomainException('INVALID_PARAMETER'),
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
     );
     expect(users.existsByNickname).not.toHaveBeenCalled();
   });
@@ -98,7 +98,7 @@ describe('사용자 서비스', () => {
     );
 
     await expect(service.verifyNickname('모각러')).rejects.toEqual(
-      new DomainException('INVALID_NICKNAME'),
+      new DomainException(DomainErrorCode.INVALID_NICKNAME),
     );
   });
 
@@ -115,7 +115,7 @@ describe('사용자 서비스', () => {
     );
 
     await expect(service.updateNickname(7, '모각러')).rejects.toEqual(
-      new DomainException('INVALID_NICKNAME'),
+      new DomainException(DomainErrorCode.INVALID_NICKNAME),
     );
   });
 
@@ -168,7 +168,7 @@ describe('사용자 서비스', () => {
         address: '서울특별시',
         consents: [],
       }),
-    ).rejects.toEqual(new DomainException('INVALID_NICKNAME'));
+    ).rejects.toEqual(new DomainException(DomainErrorCode.INVALID_NICKNAME));
   });
 
   it('대기 사용자를 완료하고 동의 상태를 저장한 뒤 세션을 사용자 토큰으로 교체한다', async () => {

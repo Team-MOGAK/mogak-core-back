@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import type { JWTPayload } from 'jose';
 
 import type { SocialProvider } from '@core/auth/domain/vo/socialProvider.vo';
@@ -9,7 +9,7 @@ export function identityFromJwtClaims(
   claims: Pick<JWTPayload, 'sub'> & Record<string, unknown>,
 ): VerifiedSocialIdentity {
   if (typeof claims.sub !== 'string' || claims.sub.length === 0) {
-    throw new DomainException('INVALID_SOCIAL_TOKEN');
+    throw new DomainException(DomainErrorCode.INVALID_SOCIAL_TOKEN);
   }
   return {
     provider,

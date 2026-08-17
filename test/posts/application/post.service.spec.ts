@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 
@@ -110,7 +110,7 @@ describe('게시글 서비스', () => {
         targetDate: '2026-07-23',
         contents: '오늘 회고',
       }),
-    ).rejects.toEqual(new DomainException('POST_ALREADY_EXISTS'));
+    ).rejects.toEqual(new DomainException(DomainErrorCode.POST_ALREADY_EXISTS));
   });
 
   it('발생을 해석하기 전에 비어 있거나 너무 긴 게시글 내용을 거부한다', async () => {
@@ -120,14 +120,14 @@ describe('게시글 서비스', () => {
 
     await expect(
       service.createPost(7, { jogakId: 11, targetDate: '2026-07-23', contents: '   ' }),
-    ).rejects.toEqual(new DomainException('INVALID_PARAMETER'));
+    ).rejects.toEqual(new DomainException(DomainErrorCode.INVALID_PARAMETER));
     await expect(
       service.createPost(7, {
         jogakId: 11,
         targetDate: '2026-07-23',
         contents: 'x'.repeat(351),
       }),
-    ).rejects.toEqual(new DomainException('POST_CONTENTS_TOO_LONG'));
+    ).rejects.toEqual(new DomainException(DomainErrorCode.POST_CONTENTS_TOO_LONG));
     expect(occurrences.resolveOwnedOccurrence).not.toHaveBeenCalled();
     expect(posts.createForOccurrence).not.toHaveBeenCalled();
   });
@@ -227,7 +227,7 @@ describe('게시글 서비스', () => {
     const service = new PostService(posts, jogaks(), storage(), mogaks());
 
     await expect(service.updateComment(7, 31, 41, '수정 시도')).rejects.toEqual(
-      new DomainException('FORBIDDEN'),
+      new DomainException(DomainErrorCode.FORBIDDEN),
     );
     expect(posts.updateComment).not.toHaveBeenCalled();
   });

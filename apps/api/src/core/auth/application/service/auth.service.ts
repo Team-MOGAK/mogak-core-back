@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { generateId } from '@core/common/util/idGenerator';
 
 import {
@@ -28,7 +28,7 @@ export class AuthService {
   async login(provider: SocialProvider, token: string): Promise<SocialLoginResult> {
     const identity = await this.socialIdentityVerifier.verify(provider, token);
     if (identity.provider !== provider) {
-      throw new DomainException('INVALID_SOCIAL_TOKEN');
+      throw new DomainException(DomainErrorCode.INVALID_SOCIAL_TOKEN);
     }
 
     const existingUser = await this.authPersistence.findUserBySocialIdentity(
@@ -44,7 +44,7 @@ export class AuthService {
       identity.email !== null &&
       (await this.authPersistence.findUserByEmail(identity.email)) !== null
     ) {
-      throw new DomainException('SOCIAL_ACCOUNT_LINK_REQUIRED');
+      throw new DomainException(DomainErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
     }
 
     try {
@@ -52,7 +52,7 @@ export class AuthService {
       return this.issueSession(newUser);
     } catch (error: unknown) {
       if (error instanceof DuplicateEmailException) {
-        throw new DomainException('SOCIAL_ACCOUNT_LINK_REQUIRED');
+        throw new DomainException(DomainErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
       }
       if (error instanceof DuplicateSocialAccountException) {
         const winner = await this.authPersistence.findUserBySocialIdentity(
@@ -71,7 +71,7 @@ export class AuthService {
     const claims = await this.authTokenVerifier.verifyRefresh(refreshToken);
     const user = await this.authPersistence.findUserById(claims.userId);
     if (user === null) {
-      throw new DomainException('WRONG_TOKEN');
+      throw new DomainException(DomainErrorCode.WRONG_TOKEN);
     }
     const nextTokens = await this.sessionTokenIssuer.issue(this.principal(user, claims.sessionId));
     const rotated = await this.authPersistence.rotateSession({
@@ -82,7 +82,7 @@ export class AuthService {
       now: new Date(),
     });
     if (!rotated) {
-      throw new DomainException('WRONG_TOKEN');
+      throw new DomainException(DomainErrorCode.WRONG_TOKEN);
     }
     return this.tokens(nextTokens);
   }
@@ -90,7 +90,7 @@ export class AuthService {
   async authenticateAccessToken(token: string): Promise<AuthenticatedPrincipal> {
     const principal = await this.authTokenVerifier.verifyAccess(token);
     if (!(await this.authPersistence.isSessionActive(principal.sessionId, principal.userId))) {
-      throw new DomainException('LOGOUT_TOKEN');
+      throw new DomainException(DomainErrorCode.LOGOUT_TOKEN);
     }
     return principal;
   }
@@ -101,17 +101,19 @@ export class AuthService {
 
   async withdraw(userId: number): Promise<void> {
     if (!(await this.authPersistence.deleteUser(userId))) {
-      throw new DomainException('USER_NOT_FOUND');
+      throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
     }
   }
 
   private throwForInvalidIdentity(validation: SocialIdentityValidation): void {
     if (validation.success) return;
-    const errorCode = {
-      PROVIDER_USER_ID_REQUIRED: 'INVALID_SOCIAL_TOKEN',
-      EMAIL_REQUIRED: 'SOCIAL_EMAIL_REQUIRED',
-      EMAIL_NOT_VERIFIED: 'SOCIAL_EMAIL_NOT_VERIFIED',
-    }[validation.reason];
+    const errorCode = (
+      {
+        PROVIDER_USER_ID_REQUIRED: 'INVALID_SOCIAL_TOKEN',
+        EMAIL_REQUIRED: 'SOCIAL_EMAIL_REQUIRED',
+        EMAIL_NOT_VERIFIED: 'SOCIAL_EMAIL_NOT_VERIFIED',
+      } as const
+    )[validation.reason];
     throw new DomainException(errorCode);
   }
 

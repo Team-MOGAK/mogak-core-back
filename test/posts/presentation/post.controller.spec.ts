@@ -6,7 +6,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { configureApp } from '@api/app.setup';
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { STORAGE_PORT, type StoragePort } from '@core/storage/application/storage.port';
 import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
@@ -145,7 +145,7 @@ describe('게시글 HTTP 계약', () => {
 
     jest
       .mocked(storage.uploadPostImages)
-      .mockRejectedValue(new DomainException('STORAGE_DISABLED'));
+      .mockRejectedValue(new DomainException(DomainErrorCode.STORAGE_DISABLED));
     await request(app.getHttpServer())
       .post('/api/jogaks/11/posts')
       .field('request', JSON.stringify({ targetDate: '2026-07-23', contents: '오늘 회고' }))

@@ -1,7 +1,7 @@
 import { type ArgumentMetadata } from '@nestjs/common';
 import { z } from 'zod';
 
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { zodParsePipe } from '@api/common/validation/zodParameter.decorator';
 
 const idSchema = z.object({ id: z.coerce.number().int().positive() }).strict();
@@ -14,7 +14,7 @@ describe('Zod 파라미터 검증 Pipe', () => {
 
   it('잘못된 값과 정의되지 않은 필드를 Z005로 거부한다', () => {
     expect(() => zodParsePipe(idSchema).transform({ id: '0', unexpected: true }, metadata)).toThrow(
-      new DomainException('INVALID_PARAMETER'),
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
     );
   });
 });

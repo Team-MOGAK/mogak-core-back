@@ -1,5 +1,7 @@
 import { HttpStatus } from '@nestjs/common';
 
+import type { DomainErrorCode } from '@core/common/error/domainErrorCode';
+
 export type ErrorDefinition = Readonly<{
   httpStatus: HttpStatus;
   code: string;
@@ -242,6 +244,6 @@ export const AppErrorCode = {
     code: 'Z500',
     message: '서버와의 연결에 실패했습니다',
   },
-} as const satisfies Record<string, ErrorDefinition>;
+} as const satisfies Record<DomainErrorCode, ErrorDefinition>;
 
 export type AppErrorCode = (typeof AppErrorCode)[keyof typeof AppErrorCode];

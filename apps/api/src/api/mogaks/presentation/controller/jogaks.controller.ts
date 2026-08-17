@@ -17,7 +17,7 @@ import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.
 import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decorator';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 import { successResponse } from '@api/common/http/apiResponse';
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { ZodBody, ZodParams, ZodQuery } from '@api/common/validation/zodParameter.decorator';
 import { JogaksService } from '@core/mogaks/application/service/jogaks.service';
 import type { JogakExecutionStatus } from '@core/mogaks/domain/vo/jogakExecution.vo';
@@ -186,7 +186,7 @@ export class JogaksController {
 
 function asScheduleType(value: string): 'ONCE' | 'WEEKLY' {
   if (value === 'ONCE' || value === 'WEEKLY') return value;
-  throw new DomainException('INVALID_SCHEDULE');
+  throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
 }
 
 function scheduleFor(request: CreateJogakRequest) {
@@ -197,16 +197,16 @@ function scheduleFor(request: CreateJogakRequest) {
       request.today !== undefined ||
       request.endDate !== undefined
     ) {
-      throw new DomainException('INVALID_PARAMETER');
+      throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
     }
     return explicitScheduleFor(request.schedule);
   }
   if (request.isRoutine === undefined || request.today === undefined) {
-    throw new DomainException('INVALID_PARAMETER');
+    throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
   }
   if (!request.isRoutine) {
     if (request.days !== undefined || request.endDate !== undefined) {
-      throw new DomainException('INVALID_SCHEDULE');
+      throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
     }
     return { scheduleType: 'ONCE' as const, effectiveFrom: request.today };
   }

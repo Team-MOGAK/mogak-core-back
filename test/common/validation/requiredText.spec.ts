@@ -1,9 +1,11 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { requiredTrimmed } from '@api/common/validation/requiredText';
 
 describe('필수 문자열 정규화', () => {
   it('공백만 있는 필수 문자열을 잘못된 파라미터로 거부한다', () => {
-    expect(() => requiredTrimmed('   ')).toThrow(new DomainException('INVALID_PARAMETER'));
+    expect(() => requiredTrimmed('   ')).toThrow(
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
+    );
   });
 
   it('필수 문자열의 앞뒤 공백을 제거한다', () => {

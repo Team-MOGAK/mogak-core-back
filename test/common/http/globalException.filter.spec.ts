@@ -2,7 +2,7 @@ import { HttpStatus, Logger, ServiceUnavailableException } from '@nestjs/common'
 import { jest } from '@jest/globals';
 import { ThrottlerException } from '@nestjs/throttler';
 
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { GlobalExceptionFilter } from '@api/common/http/globalException.filter';
 
 describe('GlobalExceptionFilter의 rate limit 처리', () => {
@@ -60,7 +60,10 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(new DomainException('USER_NOT_FOUND'), host as never);
+    new GlobalExceptionFilter().catch(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
+      host as never,
+    );
 
     expect(status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
     expect(json).toHaveBeenCalledWith(
@@ -82,7 +85,10 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(new DomainException('USER_NOT_FOUND'), host as never);
+    new GlobalExceptionFilter().catch(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
+      host as never,
+    );
 
     expect(warn).toHaveBeenCalledWith({
       type: 'domain_exception',
@@ -102,7 +108,10 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(new DomainException('FORBIDDEN'), host as never);
+    new GlobalExceptionFilter().catch(
+      new DomainException(DomainErrorCode.FORBIDDEN),
+      host as never,
+    );
 
     expect(warn).toHaveBeenCalledWith({
       type: 'domain_exception',
@@ -126,7 +135,10 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(new DomainException('USER_NOT_FOUND'), host as never);
+    new GlobalExceptionFilter().catch(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
+      host as never,
+    );
 
     expect(status).toHaveBeenCalledWith(HttpStatus.NOT_FOUND);
     expect(json).toHaveBeenCalledWith(
@@ -154,7 +166,10 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(new DomainException('UNMAPPED_CORE_ERROR'), host as never);
+    new GlobalExceptionFilter().catch(
+      new DomainException('UNMAPPED_CORE_ERROR' as DomainErrorCode),
+      host as never,
+    );
 
     expect(status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(json).toHaveBeenCalledWith(

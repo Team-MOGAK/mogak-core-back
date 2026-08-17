@@ -1,6 +1,6 @@
 import type { ExecutionContext } from '@nestjs/common';
 
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 
 function executionContext(request: Record<string, unknown>): ExecutionContext {
@@ -19,7 +19,7 @@ describe('가입 완료 사용자 가드', () => {
           user: { userId: 1, role: 'PENDING', sessionId: 'session-id' },
         }),
       ),
-    ).toThrow(new DomainException('FORBIDDEN'));
+    ).toThrow(new DomainException(DomainErrorCode.FORBIDDEN));
   });
 
   it('가입 완료 사용자의 보호 기능 접근을 허용한다', () => {

@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { Injectable } from '@nestjs/common';
 
 import type {
@@ -13,10 +13,11 @@ export class SocialIdentityVerifierRegistry implements SocialIdentityVerifierPor
   constructor(private readonly verifiers: readonly SocialIdentityVerifier[]) {}
 
   async verify(provider: SocialProvider, token: string): Promise<VerifiedSocialIdentity> {
-    if (token.trim().length === 0) throw new DomainException('INVALID_SOCIAL_TOKEN');
+    if (token.trim().length === 0) throw new DomainException(DomainErrorCode.INVALID_SOCIAL_TOKEN);
 
     const verifier = this.verifiers.find((candidate) => candidate.supports(provider));
-    if (verifier === undefined) throw new DomainException('UNSUPPORTED_SOCIAL_PROVIDER');
+    if (verifier === undefined)
+      throw new DomainException(DomainErrorCode.UNSUPPORTED_SOCIAL_PROVIDER);
 
     return verifier.verify(token);
   }

@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { DisabledStorageAdapter } from '@infra/storage/disabledStorage.adapter';
 
 describe('비활성화된 저장소 어댑터', () => {
@@ -6,7 +6,7 @@ describe('비활성화된 저장소 어댑터', () => {
     const storage = new DisabledStorageAdapter();
 
     await expect(storage.uploadProfile({} as Express.Multer.File)).rejects.toEqual(
-      new DomainException('STORAGE_DISABLED'),
+      new DomainException(DomainErrorCode.STORAGE_DISABLED),
     );
   });
 
@@ -18,7 +18,7 @@ describe('비활성화된 저장소 어댑터', () => {
     const storage = new DisabledStorageAdapter();
 
     await expect(storage.uploadPostImages([{} as Express.Multer.File])).rejects.toEqual(
-      new DomainException('STORAGE_DISABLED'),
+      new DomainException(DomainErrorCode.STORAGE_DISABLED),
     );
   });
 });

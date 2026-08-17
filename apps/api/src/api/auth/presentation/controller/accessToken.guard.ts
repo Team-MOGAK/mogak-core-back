@@ -1,6 +1,6 @@
 import { type CanActivate, type ExecutionContext, Inject, Injectable } from '@nestjs/common';
 
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { AuthService } from '@core/auth/application/service/auth.service';
 import type { AuthenticatedPrincipal } from '@core/auth/application/type/authenticatedPrincipal';
 
@@ -22,11 +22,12 @@ export class AccessTokenGuard implements CanActivate {
   }
 
   private bearerToken(value: string | string[] | undefined): string {
-    if (value === undefined || value.length === 0) throw new DomainException('EMPTY_TOKEN');
+    if (value === undefined || value.length === 0)
+      throw new DomainException(DomainErrorCode.EMPTY_TOKEN);
     if (Array.isArray(value) || !value.startsWith('Bearer '))
-      throw new DomainException('WRONG_TOKEN');
+      throw new DomainException(DomainErrorCode.WRONG_TOKEN);
     const token = value.slice('Bearer '.length).trim();
-    if (token.length === 0) throw new DomainException('EMPTY_TOKEN');
+    if (token.length === 0) throw new DomainException(DomainErrorCode.EMPTY_TOKEN);
     return token;
   }
 }

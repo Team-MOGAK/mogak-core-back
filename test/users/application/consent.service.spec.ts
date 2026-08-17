@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { testMock } from '../../testMock';
 
 import type { ConsentRepositoryPort } from '@core/users/application/port/consent.repository.port';
@@ -20,7 +20,7 @@ describe('동의 서비스', () => {
         { consentItemId: 1, agreed: true },
         { consentItemId: 1, agreed: false },
       ]),
-    ).rejects.toEqual(new DomainException('DUPLICATE_CONSENT_ITEM'));
+    ).rejects.toEqual(new DomainException(DomainErrorCode.DUPLICATE_CONSENT_ITEM));
     expect(repository.upsertUserConsents).not.toHaveBeenCalled();
   });
 });

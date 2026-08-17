@@ -2,7 +2,7 @@ import { Controller, Headers, HttpCode, HttpStatus, Inject, Post, UseGuards } fr
 import { Throttle } from '@nestjs/throttler';
 
 import { successResponse } from '@api/common/http/apiResponse';
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { ZodBody, ZodParams } from '@api/common/validation/zodParameter.decorator';
 import { AuthService } from '@core/auth/application/service/auth.service';
 import type { AuthenticatedPrincipal } from '@core/auth/application/type/authenticatedPrincipal';
@@ -42,7 +42,7 @@ export class AuthController {
           await this.authService.login(provider, request.token),
         );
       default:
-        throw new DomainException('UNSUPPORTED_SOCIAL_PROVIDER');
+        throw new DomainException(DomainErrorCode.UNSUPPORTED_SOCIAL_PROVIDER);
     }
   }
 
@@ -72,6 +72,7 @@ export class AuthController {
 }
 
 function requiredRefreshToken(value: string | undefined): string {
-  if (value === undefined || value.trim().length === 0) throw new DomainException('EMPTY_TOKEN');
+  if (value === undefined || value.trim().length === 0)
+    throw new DomainException(DomainErrorCode.EMPTY_TOKEN);
   return value;
 }

@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { identityFromJwtClaims } from '@infra/auth/verifier/identityClaims';
 
 describe('식별 토큰 클레임 해석', () => {
@@ -19,7 +19,7 @@ describe('식별 토큰 클레임 해석', () => {
 
   it('공급자 subject가 없는 토큰을 거부한다', () => {
     expect(() => identityFromJwtClaims('APPLE', { email: 'mogak@example.test' })).toThrow(
-      new DomainException('INVALID_SOCIAL_TOKEN'),
+      new DomainException(DomainErrorCode.INVALID_SOCIAL_TOKEN),
     );
   });
 });

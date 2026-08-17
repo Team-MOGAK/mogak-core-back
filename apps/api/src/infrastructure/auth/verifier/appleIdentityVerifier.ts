@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
@@ -34,7 +34,7 @@ export class AppleIdentityVerifier implements SocialIdentityVerifier {
       return identityFromJwtClaims('APPLE', payload);
     } catch (error: unknown) {
       if (error instanceof DomainException) throw error;
-      throw new DomainException('INVALID_SOCIAL_TOKEN');
+      throw new DomainException(DomainErrorCode.INVALID_SOCIAL_TOKEN);
     }
   }
 }

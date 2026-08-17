@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 
@@ -40,7 +40,7 @@ describe('소셜 팔로우 서비스', () => {
     const service = new SocialService(social);
 
     await expect(service.follow(7, '모각러')).rejects.toEqual(
-      new DomainException('FOLLOW_ALREADY_EXISTS'),
+      new DomainException(DomainErrorCode.FOLLOW_ALREADY_EXISTS),
     );
   });
 
@@ -49,7 +49,9 @@ describe('소셜 팔로우 서비스', () => {
     jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 7 });
     const service = new SocialService(social);
 
-    await expect(service.follow(7, '나')).rejects.toEqual(new DomainException('INVALID_PARAMETER'));
+    await expect(service.follow(7, '나')).rejects.toEqual(
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
+    );
     expect(social.createFollow).not.toHaveBeenCalled();
   });
 
@@ -60,7 +62,7 @@ describe('소셜 팔로우 서비스', () => {
     const service = new SocialService(social);
 
     await expect(service.unfollow(7, '모각러')).rejects.toEqual(
-      new DomainException('FOLLOW_NOT_FOUND'),
+      new DomainException(DomainErrorCode.FOLLOW_NOT_FOUND),
     );
   });
 
@@ -131,7 +133,7 @@ describe('소셜 팔로우 서비스', () => {
     const service = new SocialService(social);
 
     await expect(service.listNetworkPosts(7, 0, 10, 'viewCnt')).rejects.toEqual(
-      new DomainException('INVALID_PARAMETER'),
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
     );
     expect(social.listNetworkPosts).not.toHaveBeenCalled();
   });

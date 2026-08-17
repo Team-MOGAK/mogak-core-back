@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 import type { AuthPersistencePort } from '@core/auth/application/port/authPersistence.port';
@@ -75,7 +75,7 @@ describe('인증 서비스', () => {
       const service = new AuthService(verifiers, persistence, tokens, tokens);
 
       await expect(service.authenticateAccessToken('accessToken')).rejects.toEqual(
-        new DomainException('LOGOUT_TOKEN'),
+        new DomainException(DomainErrorCode.LOGOUT_TOKEN),
       );
     },
   );
@@ -83,7 +83,7 @@ describe('인증 서비스', () => {
   it('액세스 토큰 검증 실패를 그대로 전파한다', async () => {
     const persistence = createPersistence();
     const tokens = createTokenPorts();
-    const failure = new DomainException('WRONG_TOKEN');
+    const failure = new DomainException(DomainErrorCode.WRONG_TOKEN);
     jest.mocked(tokens.verifyAccess).mockRejectedValue(failure);
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
@@ -139,7 +139,7 @@ describe('인증 서비스', () => {
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.refresh('current-refresh-token')).rejects.toEqual(
-      new DomainException('WRONG_TOKEN'),
+      new DomainException(DomainErrorCode.WRONG_TOKEN),
     );
   });
 
@@ -157,7 +157,7 @@ describe('인증 서비스', () => {
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
-      new DomainException('INVALID_SOCIAL_TOKEN'),
+      new DomainException(DomainErrorCode.INVALID_SOCIAL_TOKEN),
     );
     expect(persistence.findUserBySocialIdentity).not.toHaveBeenCalled();
   });
@@ -227,7 +227,7 @@ describe('인증 서비스', () => {
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
-      new DomainException('SOCIAL_ACCOUNT_LINK_REQUIRED'),
+      new DomainException(DomainErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED),
     );
     expect(persistence.createSession).not.toHaveBeenCalled();
   });
@@ -282,7 +282,7 @@ describe('인증 서비스', () => {
     const service = new AuthService(verifiers, persistence, tokens, tokens);
 
     await expect(service.login('KAKAO', 'accessToken')).rejects.toEqual(
-      new DomainException('SOCIAL_ACCOUNT_LINK_REQUIRED'),
+      new DomainException(DomainErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED),
     );
     expect(persistence.createAccount).not.toHaveBeenCalled();
   });
@@ -317,7 +317,7 @@ describe('인증 서비스', () => {
 
     await expect(service.login('KAKAO', 'accessToken')).resolves.toMatchObject({ userId: 7 });
     await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
-      new DomainException('SOCIAL_EMAIL_NOT_VERIFIED'),
+      new DomainException(DomainErrorCode.SOCIAL_EMAIL_NOT_VERIFIED),
     );
   });
 });

@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import type { ConfigService } from '@nestjs/config';
 
 import { testMock } from '../../testMock';
@@ -39,7 +39,7 @@ describe('토큰 서비스', () => {
     const tokens = await service.issue({ userId: 7, role: 'USER', sessionId: SESSION_ID });
 
     await expect(service.verifyRefresh(tokens.accessToken)).rejects.toEqual(
-      new DomainException('WRONG_TOKEN'),
+      new DomainException(DomainErrorCode.WRONG_TOKEN),
     );
   });
 

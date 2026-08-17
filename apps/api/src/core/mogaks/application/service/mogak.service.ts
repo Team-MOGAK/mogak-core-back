@@ -1,4 +1,4 @@
-import { DomainException } from '@core/common/error/domainException';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { requiredTrimmed } from '@core/common/validation/requiredText';
 import { selectMogakCategory, validateMogakCapacity } from '../../domain/policy/mogak.policy';
 import type { MogakRepositoryPort } from '../port/mogak.repository.port';
@@ -23,7 +23,7 @@ export class MogakService implements OwnedMogakPort {
 
   async getModarat(userId: number, modaratId: number) {
     const modarat = await this.repository.findOwnedModarat(userId, modaratId);
-    if (modarat === null) throw new DomainException('MODARAT_NOT_FOUND');
+    if (modarat === null) throw new DomainException(DomainErrorCode.MODARAT_NOT_FOUND);
     return {
       ...modarat,
       mogaks: (await this.repository.listMogaksForOwnedModarat(userId, modaratId)).map(
@@ -44,13 +44,13 @@ export class MogakService implements OwnedMogakPort {
       color: requiredTrimmed(input.color),
       now: new Date(),
     });
-    if (updated === null) throw new DomainException('MODARAT_NOT_FOUND');
+    if (updated === null) throw new DomainException(DomainErrorCode.MODARAT_NOT_FOUND);
     return updated;
   }
 
   async deleteModarat(userId: number, modaratId: number): Promise<void> {
     if (!(await this.repository.deleteOwnedModarat(userId, modaratId))) {
-      throw new DomainException('MODARAT_NOT_FOUND');
+      throw new DomainException(DomainErrorCode.MODARAT_NOT_FOUND);
     }
   }
 
@@ -58,7 +58,7 @@ export class MogakService implements OwnedMogakPort {
     const category = await this.resolveCategory(input);
     await this.requireOwnedModarat(userId, input.modaratId);
     if (!validateMogakCapacity(await this.repository.countMogaks(input.modaratId))) {
-      throw new DomainException('MAX_MOGAKS');
+      throw new DomainException(DomainErrorCode.MAX_MOGAKS);
     }
     return toMogakResponse(
       await this.repository.createMogak({
@@ -88,13 +88,13 @@ export class MogakService implements OwnedMogakPort {
       customCategoryName: category.customCategoryName,
       now: new Date(),
     });
-    if (updated === null) throw new DomainException('MOGAK_NOT_FOUND');
+    if (updated === null) throw new DomainException(DomainErrorCode.MOGAK_NOT_FOUND);
     return toMogakResponse(updated);
   }
 
   async deleteMogak(userId: number, mogakId: number): Promise<void> {
     if (!(await this.repository.deleteOwnedMogak(userId, mogakId))) {
-      throw new DomainException('MOGAK_NOT_FOUND');
+      throw new DomainException(DomainErrorCode.MOGAK_NOT_FOUND);
     }
   }
 
@@ -104,13 +104,13 @@ export class MogakService implements OwnedMogakPort {
 
   async resolveOwnedMogak(userId: number, mogakId: number): Promise<Readonly<{ id: number }>> {
     const mogak = await this.repository.findOwnedMogak(userId, mogakId);
-    if (mogak === null) throw new DomainException('MOGAK_NOT_FOUND');
+    if (mogak === null) throw new DomainException(DomainErrorCode.MOGAK_NOT_FOUND);
     return { id: mogak.id };
   }
 
   private async requireOwnedModarat(userId: number, modaratId: number): Promise<void> {
     if ((await this.repository.findOwnedModarat(userId, modaratId)) === null) {
-      throw new DomainException('MODARAT_NOT_FOUND');
+      throw new DomainException(DomainErrorCode.MODARAT_NOT_FOUND);
     }
   }
 
@@ -121,11 +121,11 @@ export class MogakService implements OwnedMogakPort {
     try {
       selection = selectMogakCategory(input);
     } catch {
-      throw new DomainException('INVALID_PARAMETER');
+      throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
     }
     if (selection.type === 'OFFICIAL') {
       const category = await this.repository.findActiveCategoryByCode(selection.code);
-      if (category === null) throw new DomainException('MOGAK_CATEGORY_NOT_FOUND');
+      if (category === null) throw new DomainException(DomainErrorCode.MOGAK_CATEGORY_NOT_FOUND);
       return { categoryId: category.id, customCategoryName: null };
     }
     return { categoryId: null, customCategoryName: selection.name };
