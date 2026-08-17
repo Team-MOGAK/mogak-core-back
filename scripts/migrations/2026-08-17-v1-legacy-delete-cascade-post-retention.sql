@@ -1,0 +1,2 @@
+-- Superseded by 2026-08-17-v2-application-delete-post-retention.sql.
+-- Do not execute this file. It used DB ON DELETE CASCADE, which is no longer the approved design.

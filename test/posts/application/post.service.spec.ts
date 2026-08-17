@@ -358,6 +358,32 @@ describe('게시글 서비스', () => {
     });
   });
 
+  it('삭제된 조각의 게시글 상세는 상위 식별자를 null로 유지한다', async () => {
+    const posts = repository();
+    jest.mocked(posts.findOwnedPost).mockResolvedValue({
+      id: 31,
+      authorId: 7,
+      jogakId: null,
+      mogakId: null,
+      scheduledDate: null,
+      contents: '남겨진 회고',
+      likeCount: 0,
+      commentCount: 1,
+    });
+    jest.mocked(posts.listImagesForPosts).mockResolvedValue([]);
+    jest.mocked(posts.listCommentIds).mockResolvedValue([41]);
+    const service = new PostService(posts, jogaks(), storage(), mogaks());
+
+    await expect(service.getPost(7, 31)).resolves.toMatchObject({
+      postId: 31,
+      mogakId: null,
+      jogakId: null,
+      targetDate: null,
+      contents: '남겨진 회고',
+      commentId: [41],
+    });
+  });
+
   it('하나의 제한된 projection과 이미지 메타데이터 조회로 모각 게시글 일부를 반환한다', async () => {
     const posts = repository();
     const ownedMogaks = mogaks();

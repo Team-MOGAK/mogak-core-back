@@ -78,7 +78,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
     } else {
       this.logger.error(
-        'Unhandled exception',
+        {
+          event: 'unhandled_exception',
+          database: databaseErrorDetails(exception),
+        },
         exception instanceof Error ? exception.stack : undefined,
       );
     }
@@ -92,6 +95,25 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     response.status(error.httpStatus).json(errorResponse(error));
   }
+}
+
+function databaseErrorDetails(
+  exception: unknown,
+): Readonly<{ code?: string; constraint?: string; table?: string }> | undefined {
+  if (!(exception instanceof Error) || !('cause' in exception)) return undefined;
+  const cause = exception.cause;
+  if (typeof cause !== 'object' || cause === null) return undefined;
+  const details = cause as Record<string, unknown>;
+  const code = typeof details.code === 'string' ? details.code : undefined;
+  const constraint = typeof details.constraint === 'string' ? details.constraint : undefined;
+  const table = typeof details.table === 'string' ? details.table : undefined;
+  return code === undefined && constraint === undefined && table === undefined
+    ? undefined
+    : {
+        ...(code === undefined ? {} : { code }),
+        ...(constraint === undefined ? {} : { constraint }),
+        ...(table === undefined ? {} : { table }),
+      };
 }
 
 function appErrorForDomainCode(code: string): AppErrorDefinition {

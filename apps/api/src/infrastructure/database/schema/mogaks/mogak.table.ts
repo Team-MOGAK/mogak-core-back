@@ -8,7 +8,7 @@ export const mogaks = pgTable('mogak', {
   id: bigint('mogak_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
   modaratId: bigint('modarat_id', { mode: 'number' })
     .notNull()
-    .references(() => modarats.id, { onDelete: 'cascade' }),
+    .references(() => modarats.id),
   categoryId: integer('big_category').references(() => mogakCategories.id),
   customCategoryName: varchar('small_category', { length: 200 }),
   title: varchar('title', { length: 100 }).notNull(),

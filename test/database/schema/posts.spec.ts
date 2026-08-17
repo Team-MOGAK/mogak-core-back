@@ -63,4 +63,16 @@ describe('게시글 데이터베이스 스키마', () => {
       ),
     ).toContain('uq_post_like_post_user');
   });
+
+  it('삭제된 조각의 게시글을 보존하도록 실행 기록 외래키를 만들지 않는다', () => {
+    expect(postsSchema.posts).toBeDefined();
+    if (postsSchema.posts === undefined) return;
+
+    const foreignKeyColumns = getTableConfig(
+      postsSchema.posts as unknown as Parameters<typeof getTableConfig>[0],
+    ).foreignKeys.flatMap((foreignKey) =>
+      foreignKey.reference().columns.map((column) => column.name),
+    );
+    expect(foreignKeyColumns).not.toContain('daily_jogak_id');
+  });
 });

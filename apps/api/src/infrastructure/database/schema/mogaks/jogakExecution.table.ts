@@ -7,9 +7,9 @@ export const jogakExecutions = pgTable(
   'daily_jogak',
   {
     id: bigint('daily_jogak_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
-    jogakId: bigint('jogak_id', { mode: 'number' })
-      .notNull()
-      .references(() => jogaks.id, { onDelete: 'cascade' }),
+  jogakId: bigint('jogak_id', { mode: 'number' })
+    .notNull()
+    .references(() => jogaks.id),
     scheduledDate: date('target_date').notNull(),
     status: varchar('status', { length: 16 }).notNull(),
     jogakTitleSnapshot: varchar('title', { length: 100 }).notNull(),

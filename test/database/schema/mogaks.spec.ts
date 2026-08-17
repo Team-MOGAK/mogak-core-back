@@ -67,4 +67,20 @@ describe('모각 데이터베이스 스키마', () => {
       ),
     ).toContain('uq_daily_jogak_jogak_target');
   });
+
+  it('조각 계층의 삭제 연쇄를 DB FK cascade에 맡기지 않는다', () => {
+    const hierarchyTables = [
+      schema.mogaks,
+      schema.jogaks,
+      schema.jogakSchedules,
+      schema.jogakScheduleWeekdays,
+      schema.jogakExecutions,
+    ];
+
+    for (const table of hierarchyTables) {
+      for (const foreignKey of getTableConfig(table).foreignKeys) {
+        expect(foreignKey.onDelete).toBe('no action');
+      }
+    }
+  });
 });

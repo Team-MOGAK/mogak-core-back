@@ -7,7 +7,7 @@ export const jogakSchedules = pgTable('jogak_schedules', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
   jogakId: bigint('jogak_id', { mode: 'number' })
     .notNull()
-    .references(() => jogaks.id, { onDelete: 'cascade' }),
+    .references(() => jogaks.id),
   scheduleType: varchar('schedule_type', { length: 16 }).notNull(),
   effectiveFrom: date('effective_from').notNull(),
   effectiveTo: date('effective_to'),

@@ -12,9 +12,9 @@ export type CreatedPostRow = Readonly<{
 export type PostDetailRow = Readonly<{
   id: number;
   authorId: number;
-  jogakId: number;
-  mogakId: number;
-  scheduledDate: string;
+  jogakId: number | null;
+  mogakId: number | null;
+  scheduledDate: string | null;
   contents: string;
   likeCount: number;
   commentCount: number;

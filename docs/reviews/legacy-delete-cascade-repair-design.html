@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>레거시 삭제 연쇄 복구 설계</title>
+    <style>
+      body { max-width: 900px; margin: 2rem auto; padding: 0 1rem; font: 16px/1.55 system-ui, sans-serif; color: #18222d; }
+      header, section, aside { margin: 1.4rem 0; padding: 1rem; border: 1px solid #d8e0e8; border-radius: 8px; }
+      header { background: #f3f8fc; } aside { background: #fff8e6; } code, samp { overflow-wrap: anywhere; }
+      table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #d8e0e8; padding: .55rem; text-align: left; vertical-align: top; }
+      .state { font-weight: 700; color: #9b3a00; } .question[hidden], .result[hidden] { display: none; }
+      button { margin: .5rem .25rem 0 0; padding: .45rem .7rem; } output { display: block; margin-top: .6rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p><strong>설계 단계:</strong> <span class="state">설계 승인됨</span> · <strong>강도:</strong> Standard</p>
+      <h1>레거시 삭제 연쇄 복구 설계</h1>
+      <dl>
+        <dt>목적</dt><dd>운영의 레거시 PostgreSQL에서 모다랏·모각·조각은 삭제하되, 연결된 게시글과 게시글 하위 데이터는 보존하면서 삭제가 완료되게 한다.</dd>
+        <dt>사용자</dt><dd>모다랏·모각·조각을 삭제하는 로그인 사용자와 운영 배포 담당자</dd>
+        <dt>문제</dt><dd>Cloud Run revision <code>mogak-spring-00029-7xx</code>에서 <code>DELETE modarat</code>가 DB 제약 오류로 실패하며, 게시글은 조각 삭제 뒤에도 남겨야 한다.</dd>
+        <dt>핵심 흐름</dt><dd>삭제 요청 → 소유권 확인 → 애플리케이션 트랜잭션에서 자식부터 명시 삭제 → 게시글의 이전 실행 ID는 값으로 보존 → 원본 삭제 → 2xx 응답 및 목록 갱신</dd>
+      </dl>
+      <p>생성: <time datetime="2026-08-17">2026-08-17</time> · 갱신: <time datetime="2026-08-17">2026-08-17</time> · 재승인: <time datetime="2026-08-17T18:00:00+09:00">2026-08-17 18:00 KST</time></p>
+    </header>
+
+    <nav aria-label="설계 목차"><a href="#evidence">근거</a> · <a href="#model">변경 모델</a> · <a href="#invariants">불변조건</a> · <a href="#recovery">실패·복구</a> · <a href="#check">자체 확인</a> · <a href="#approval">승인</a></nav>
+    <main>
+      <article>
+        <section id="evidence">
+          <h2>관측 근거와 범위</h2>
+          <p>운영 로그는 <code>DELETE /api/modarats/7</code>가 500으로 끝났고, 소유 조건이 포함된 다음 원본 삭제가 실패했음을 보인다. 배포 revision은 <code>mogak-spring-00029-7xx</code>, commit은 <code>5dd94ab64f5b288a7dc219f39f6b0a502ba8fda5</code>다.</p>
+          <pre><code>delete from "modarat" where ("modarat"."modarat_id" = $1 and "modarat"."user_id" = $2) returning "modarat_id"</code></pre>
+          <p>현재 PR은 <code>modarat → mogak → jogak → daily_jogak</code> 및 일정 체인을 <code>ON DELETE CASCADE</code>로 보정한다. 이는 새 요구사항과 다르므로 <mark>이번 조각 계층 삭제 경로에는 DB cascade를 사용하지 않고, 애플리케이션이 자식부터 명시 삭제해야 한다.</mark> <code>post.daily_jogak_id</code>는 숫자 참조값으로 남기되 FK constraint를 제거한다. 기존 게시글 삭제의 하위 FK 정책은 이번 범위에서 변경하지 않는다.</p>
+        </section>
+
+        <section id="model">
+          <h2>제안 변경 모델</h2>
+          <figure>
+            <svg viewBox="0 0 760 130" role="img" aria-labelledby="diagram-title diagram-desc" width="100%">
+              <title id="diagram-title">애플리케이션 삭제 경로</title><desc id="diagram-desc">모다랏 삭제는 애플리케이션 트랜잭션이 일정과 실행, 조각, 모각을 자식부터 삭제한다. 게시글과 그 하위 데이터는 삭제하지 않는다.</desc>
+              <g fill="#f3f8fc" stroke="#476b8b"><rect x="10" y="40" width="100" height="38"/><rect x="145" y="40" width="100" height="38"/><rect x="280" y="40" width="100" height="38"/><rect x="415" y="15" width="120" height="38"/><rect x="415" y="77" width="120" height="38"/><rect x="600" y="77" width="140" height="38"/></g>
+              <g font-size="14" text-anchor="middle"><text x="60" y="64">modarat</text><text x="195" y="64">mogak</text><text x="330" y="64">jogak</text><text x="475" y="39">schedules</text><text x="475" y="101">daily_jogak</text><text x="670" y="101">post 및 하위</text></g>
+              <g stroke="#476b8b" marker-end="url(#arrow)"><path d="M110 59H145"/><path d="M245 59H280"/><path d="M380 55H415"/><path d="M380 67H415"/><path d="M535 96H600"/></g><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#476b8b"/></marker></defs>
+            </svg>
+            <figcaption>삭제는 애플리케이션 트랜잭션에서 자식부터 실행한다. DB FK cascade는 사용하지 않으며, post 및 하위 데이터는 삭제하지 않는다.</figcaption>
+          </figure>
+          <ol>
+            <li>운영 DB 카탈로그에서 조각 계층과 일정의 실제 FK·<code>confdeltype</code>을 읽어 해당 경로에 cascade constraint가 없는지 확인한다.</li>
+            <li>호환 SQL은 FK를 생성·교체하지 않는다. <code>post.daily_jogak_id</code> FK를 제거하고, 필요한 중복 방지 규칙만 <code>UNIQUE CONSTRAINT</code>로 선언한다. 별도 일반 index는 이번 범위에서 추가하지 않는다.</li>
+            <li>모다랏·모각·조각 삭제 repository는 한 트랜잭션에서 <code>jogak_schedule_weekdays → jogak_schedules → daily_jogak → jogak → mogak → modarat</code> 순으로 대상 범위의 행을 명시 삭제한다. 모각·조각 단건 삭제도 같은 순서의 필요한 하위 집합을 사용한다.</li>
+            <li>게시글의 이미지 메타데이터·댓글·좋아요는 post를 부모로 계속 cascade한다. 조각·모각·모다랏 삭제 후 post와 이 하위 데이터는 남고, 과거 <code>daily_jogak_id</code> 값만 고아 참조값으로 남는다.</li>
+            <li><code>GET /api/posts/:postId</code>는 상위 실행·조각·모각을 <code>LEFT JOIN</code>한다. 상위 데이터가 있으면 기존 <code>mogakId</code>, <code>jogakId</code>, <code>targetDate</code>를 반환하고, 삭제됐다면 세 필드를 <code>null</code>로 반환한다.</li>
+            <li>조각·날짜로 게시글을 찾는 API와 모각별 게시글 목록은 원본 조각·모각이 존재할 때만 의미가 있으므로, 삭제된 원본의 게시글을 그 경로에서 재노출하지 않는다. 소셜·지역 피드, 게시글 상세, 게시글 수정·삭제·댓글·좋아요는 계속 동작한다.</li>
+            <li>제약 교정 전후 모두 원인 constraint 이름을 로깅해 다음 운영 장애의 진단 가능성을 높인다. 개인정보·요청 본문은 기록하지 않는다.</li>
+          </ol>
+          <p><strong>비범위:</strong> soft delete, 보관함, 외부 Storage 객체 삭제, 일반 index 설계, API 경로·응답 계약 변경, 데이터 보존 정책 변경.</p>
+        </section>
+
+        <section id="invariants">
+          <h2>결정과 불변조건</h2>
+          <table><caption>삭제 경계 결정표</caption><thead><tr><th>항목</th><th>결정</th><th>이유</th></tr></thead><tbody>
+            <tr><td>삭제 방식</td><td>조각 계층에는 DB FK cascade 없음; 애플리케이션이 자식부터 명시 삭제</td><td>삭제 범위와 실패 지점을 애플리케이션에서 통제한다.</td></tr>
+            <tr><td>원자성</td><td>repository 트랜잭션 하나에서 자식 삭제와 부모 삭제를 수행</td><td>부분 삭제 후 실패를 만들지 않는다.</td></tr>
+            <tr><td>소유권</td><td>현행 <code>user_id</code> 소유 조건 유지</td><td>다른 사용자의 데이터를 삭제할 수 없다.</td></tr>
+            <tr><td>삭제 범위</td><td>모다랏·모각·조각은 일정·실행까지 삭제, post·이미지·댓글·좋아요는 보존</td><td>게시글의 과거 실행 ID는 FK가 아닌 값으로 유지한다.</td></tr>
+            <tr><td>게시글 상세 계약</td><td>상위 원본이 없으면 <code>mogakId</code>·<code>jogakId</code>·<code>targetDate</code>를 <code>null</code>로 반환</td><td>게시글·댓글 열람을 유지하면서 삭제된 조각을 가리키는 잘못된 식별자를 응답하지 않는다.</td></tr>
+            <tr><td>중복 방지</td><td><code>UNIQUE CONSTRAINT</code>만 추가하고 일반 index는 추가하지 않음</td><td>중복 데이터 방지만 이번 목적에 필요하며, 성능 index 설계는 별도 근거가 필요하다.</td></tr>
+          </tbody></table>
+        </section>
+
+        <section id="recovery">
+          <h2>실패 처리·복구·검증</h2>
+          <aside><strong>운영 위험:</strong> 명시 삭제 순서가 하나라도 틀리면 FK 위반으로 전체 트랜잭션이 롤백된다. 트래픽이 낮은 시점에 SQL을 적용하고, 조각 계층의 사전 카탈로그 조회에서 cascade가 남아 있으면 마이그레이션을 중단한다.</aside>
+          <ul>
+            <li>사전: <code>pg_constraint</code> 조회로 조각 계층의 실제 제약명과 삭제 규칙을 기록하고, 대상 FK의 <code>confdeltype</code>이 cascade가 아님을 확인한다.</li>
+            <li>검증: 하위 일정·실행·게시글·댓글·좋아요·이미지가 있는 fixture에서 조각, 모각, 모다랏을 각각 삭제한다. 애플리케이션 트랜잭션 뒤 일정·실행은 0건, post와 게시글 하위 행은 남아 있어야 한다. 이후 <code>GET /api/posts/:postId</code>가 200과 세 nullable 상위 필드를 반환하는지 확인한다.</li>
+            <li>장애 시: 명시 삭제 중 어느 단계가 실패해도 트랜잭션 전체를 롤백한다. API는 DB constraint 식별자를 가진 안전한 서버 로그를 남긴다.</li>
+          </ul>
+        </section>
+
+        <section id="check">
+          <h2>설계 자체 확인</h2>
+          <p>로컬 HTML의 선택 결과는 Codex에 자동 전달되지 않습니다. 이해 확인용이며, 아래 승인과는 별개입니다.</p>
+          <div class="question" data-question="1">
+            <fieldset><legend>1/4 — 모다랏 삭제 뒤 게시글을 보존하면서 DB cascade를 피하는 핵심 조건은?</legend>
+              <label><input type="radio" name="q1" value="a" /> 프론트가 목록을 즉시 비운다.</label><br />
+              <label><input type="radio" name="q1" value="b" /> 애플리케이션 트랜잭션이 자식부터 삭제하고, post.daily_jogak_id의 FK constraint는 제거한다.</label><br />
+              <label><input type="radio" name="q1" value="c" /> 조각 제목을 먼저 갱신한다.</label>
+            </fieldset><div class="result" hidden><p class="status"></p><p class="explanation"></p><p class="next"></p></div>
+          </div>
+          <div class="question" data-question="2" hidden>
+            <fieldset><legend>2/4 — SQL 적용 전 가장 먼저 확인할 운영 근거는?</legend>
+              <label><input type="radio" name="q2" value="a" /> PostgreSQL 카탈로그의 실제 constraint 이름과 cascade가 아닌 ON DELETE 규칙</label><br />
+              <label><input type="radio" name="q2" value="b" /> 앱 화면의 색상</label><br />
+              <label><input type="radio" name="q2" value="c" /> 새 조각의 제목 길이</label>
+            </fieldset><div class="result" hidden><p class="status"></p><p class="explanation"></p><p class="next"></p></div>
+          </div>
+          <div class="question" data-question="3" hidden>
+            <fieldset><legend>3/4 — 조각 삭제 후 보존 게시글 상세의 올바른 동작은?</legend>
+              <label><input type="radio" name="q3" value="a" /> 200만 반환하면 충분하다.</label><br />
+              <label><input type="radio" name="q3" value="b" /> post·댓글은 보이고, 삭제된 상위 식별자는 null로 반환된다.</label><br />
+              <label><input type="radio" name="q3" value="c" /> 삭제 버튼 색상이 바뀐다.</label>
+            </fieldset><div class="result" hidden><p class="status"></p><p class="explanation"></p><p class="next"></p></div>
+          </div>
+          <div class="question" data-question="4" hidden>
+            <fieldset><legend>4/4 — 자식 삭제 중 하나가 FK 오류로 실패하면 올바른 결과는?</legend>
+              <label><input type="radio" name="q4" value="a" /> 이미 삭제된 자식만 남기고 부모 삭제를 계속한다.</label><br />
+              <label><input type="radio" name="q4" value="b" /> 동일 트랜잭션 전체를 롤백하고 constraint 식별자를 로그로 남긴다.</label><br />
+              <label><input type="radio" name="q4" value="c" /> DB cascade를 즉시 켠다.</label>
+            </fieldset><div class="result" hidden><p class="status"></p><p class="explanation"></p><p class="next"></p></div>
+          </div>
+          <button type="button" id="previous">이전</button><button type="button" id="submit">답 제출</button><button type="button" id="next">다음</button>
+          <output id="progress" aria-live="polite">1 / 4</output><output id="overall" aria-live="polite"></output>
+        </section>
+        <section id="approval"><h2>설계 승인 상태</h2><p><strong>design-control-state:</strong> 미실시 — 범위·경계(Q1), 운영 관측(Q2), 응답 계약(Q3), 실패·복구(Q4), 검증(각 삭제 경로 fixture)을 점검한다. 권한은 기존 소유권 조건을 유지하므로 별도 질문을 면제한다. 로컬 HTML 결과는 Codex에 자동 전달되지 않는다.</p><p><strong>approval-state:</strong> 설계 승인됨. 승인 범위는 조각 계층 DB cascade 제거·금지, 애플리케이션의 자식 우선 트랜잭션 삭제, post 실행 FK 제거, 필요한 UNIQUE CONSTRAINT만 추가, 게시글 상세의 nullable 상위 식별자 계약과 통합 검증이다. 구현 기록은 <a href="legacy-delete-cascade-repair-implementation.html">구현 제어 문서</a>에서 관리한다.</p></section>
+      </article>
+    </main>
+    <script>
+      (() => { const cards=[...document.querySelectorAll('.question')], answers={ q1:'b',q2:'a',q3:'b',q4:'b' }; let current=0;
+        const show=()=>{cards.forEach((card,i)=>card.hidden=i!==current);document.querySelector('#progress').textContent=`${current+1} / ${cards.length}`};
+        document.querySelector('#previous').onclick=()=>{current=Math.max(0,current-1);show()}; document.querySelector('#next').onclick=()=>{current=Math.min(cards.length-1,current+1);show()};
+        document.querySelector('#submit').onclick=()=>{const card=cards[current], q=`q${current+1}`, chosen=document.querySelector(`input[name="${q}"]:checked`), result=card.querySelector('.result'); result.hidden=false; const ok=chosen?.value===answers[q]; result.querySelector('.status').textContent=ok?'확립':'보류'; result.querySelector('.explanation').textContent=ok?'삭제는 실제 DB FK 연쇄와 검증으로 보장해야 합니다.':'근거·경계·검증 항목을 다시 확인하세요.'; result.querySelector('.next').textContent=ok?'다음 질문으로 진행하세요.':'선택지를 바꾼 뒤 다시 제출하세요.'; document.querySelector('#overall').textContent=`현재 질문: ${ok?'확립':'보류'}`}; show(); })();
+    </script>
+  </body>
+</html>

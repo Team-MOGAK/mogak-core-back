@@ -44,6 +44,7 @@ type InsertExecutionInput = Parameters<MogakRepositoryPort['insertExecution']>[0
 type ReplaceOwnedJogakScheduleResult = Awaited<
   ReturnType<MogakRepositoryPort['replaceOwnedJogakSchedule']>
 >;
+type DeletionTransaction = Pick<Database, 'delete' | 'select'>;
 
 @Injectable()
 export class MogakRepository implements MogakRepositoryPort {
@@ -85,11 +86,20 @@ export class MogakRepository implements MogakRepositoryPort {
   }
 
   async deleteOwnedModarat(userId: number, modaratId: number): Promise<boolean> {
-    const deleted = await this.db
-      .delete(modarats)
-      .where(and(eq(modarats.id, modaratId), eq(modarats.userId, userId)))
-      .returning({ id: modarats.id });
-    return deleted.length === 1;
+    return this.db.transaction(async (tx) => {
+      const [owned] = await tx
+        .select({ id: modarats.id })
+        .from(modarats)
+        .where(and(eq(modarats.id, modaratId), eq(modarats.userId, userId)));
+      if (owned === undefined) return false;
+
+      await this.deleteMogakTree(tx, await this.mogakIdsForModarats(tx, [modaratId]));
+      const deleted = await tx
+        .delete(modarats)
+        .where(and(eq(modarats.id, modaratId), eq(modarats.userId, userId)))
+        .returning({ id: modarats.id });
+      return deleted.length === 1;
+    });
   }
 
   async countMogaks(modaratId: number): Promise<number> {
@@ -186,14 +196,17 @@ export class MogakRepository implements MogakRepositoryPort {
   }
 
   async deleteOwnedMogak(userId: number, mogakId: number): Promise<boolean> {
-    const owned = await this.findOwnedMogak(userId, mogakId);
-    if (owned === null) return false;
+    return this.db.transaction(async (tx) => {
+      const [owned] = await tx
+        .select({ id: mogaks.id })
+        .from(mogaks)
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .where(and(eq(mogaks.id, mogakId), eq(modarats.userId, userId)));
+      if (owned === undefined) return false;
 
-    const deleted = await this.db
-      .delete(mogaks)
-      .where(and(eq(mogaks.id, mogakId), eq(mogaks.modaratId, owned.modaratId)))
-      .returning({ id: mogaks.id });
-    return deleted.length === 1;
+      await this.deleteMogakTree(tx, [mogakId]);
+      return true;
+    });
   }
 
   async findOwnedJogak(userId: number, jogakId: number): Promise<OwnedJogakResult | null> {
@@ -224,13 +237,60 @@ export class MogakRepository implements MogakRepositoryPort {
   }
 
   async deleteOwnedJogak(userId: number, jogakId: number): Promise<boolean> {
-    const owned = await this.findOwnedJogak(userId, jogakId);
-    if (owned === null) return false;
-    const deleted = await this.db
-      .delete(jogaks)
-      .where(and(eq(jogaks.id, jogakId), eq(jogaks.mogakId, owned.mogakId)))
-      .returning({ id: jogaks.id });
-    return deleted.length === 1;
+    return this.db.transaction(async (tx) => {
+      const [owned] = await tx
+        .select({ id: jogaks.id })
+        .from(jogaks)
+        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .where(and(eq(jogaks.id, jogakId), eq(modarats.userId, userId)));
+      if (owned === undefined) return false;
+
+      await this.deleteJogakTree(tx, [jogakId]);
+      return true;
+    });
+  }
+
+  private async mogakIdsForModarats(
+    tx: DeletionTransaction,
+    modaratIds: readonly number[],
+  ): Promise<number[]> {
+    if (modaratIds.length === 0) return [];
+    const rows = await tx
+      .select({ id: mogaks.id })
+      .from(mogaks)
+      .where(inArray(mogaks.modaratId, [...modaratIds]));
+    return rows.map((row) => row.id);
+  }
+
+  private async deleteMogakTree(tx: DeletionTransaction, mogakIds: readonly number[]): Promise<void> {
+    if (mogakIds.length === 0) return;
+    const rows = await tx
+      .select({ id: jogaks.id })
+      .from(jogaks)
+      .where(inArray(jogaks.mogakId, [...mogakIds]));
+    await this.deleteJogakTree(
+      tx,
+      rows.map((row) => row.id),
+    );
+    await tx.delete(mogaks).where(inArray(mogaks.id, [...mogakIds]));
+  }
+
+  private async deleteJogakTree(tx: DeletionTransaction, jogakIds: readonly number[]): Promise<void> {
+    if (jogakIds.length === 0) return;
+    const schedules = await tx
+      .select({ id: jogakSchedules.id })
+      .from(jogakSchedules)
+      .where(inArray(jogakSchedules.jogakId, [...jogakIds]));
+    const scheduleIds = schedules.map((schedule) => schedule.id);
+    if (scheduleIds.length > 0) {
+      await tx
+        .delete(jogakScheduleWeekdays)
+        .where(inArray(jogakScheduleWeekdays.scheduleId, scheduleIds));
+      await tx.delete(jogakSchedules).where(inArray(jogakSchedules.id, scheduleIds));
+    }
+    await tx.delete(jogakExecutions).where(inArray(jogakExecutions.jogakId, [...jogakIds]));
+    await tx.delete(jogaks).where(inArray(jogaks.id, [...jogakIds]));
   }
 
   async replaceOwnedJogakSchedule(

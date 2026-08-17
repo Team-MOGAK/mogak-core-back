@@ -12,6 +12,7 @@ import {
   jogaks,
   modarats,
   mogaks,
+  posts,
   users,
 } from '@infra/database/schema';
 import { JogaksService } from '@core/mogaks/application/service/jogaks.service';
@@ -30,16 +31,24 @@ afterAll(async () => {
 });
 
 describe('모각 PostgreSQL 통합', () => {
-  it('사용자를 삭제하면 소유한 모각 계층 전체를 외래키 cascade로 하드 삭제한다', async () => {
+  it('모다랏 삭제는 애플리케이션 트랜잭션으로 계층을 지우고 게시글은 보존한다', async () => {
     const fixture = await createJogakFixture();
-    await db.insert(jogakExecutions).values({
+    const [execution] = await db.insert(jogakExecutions).values({
       jogakId: fixture.jogakId,
       scheduledDate: '2026-07-23',
       status: 'SUCCESS',
       jogakTitleSnapshot: '문제 풀이',
-    });
+    }).returning({ id: jogakExecutions.id });
+    if (execution === undefined) throw new Error('execution fixture insert did not return a row');
+    const [post] = await db.insert(posts).values({
+      jogakExecutionId: execution.id,
+      authorId: fixture.userId,
+      contents: '보존할 회고',
+    }).returning({ id: posts.id });
+    if (post === undefined) throw new Error('post fixture insert did not return a row');
 
-    await db.delete(users).where(eq(users.id, fixture.userId));
+    const repository = new MogakRepository(db as unknown as Database);
+    await expect(repository.deleteOwnedModarat(fixture.userId, fixture.modaratId)).resolves.toBe(true);
 
     await expect(rowCount(modarats, modarats.id, fixture.modaratId)).resolves.toBe(0);
     await expect(rowCount(mogaks, mogaks.id, fixture.mogakId)).resolves.toBe(0);
@@ -50,6 +59,8 @@ describe('모각 PostgreSQL 통합', () => {
     await expect(rowCount(jogakExecutions, jogakExecutions.jogakId, fixture.jogakId)).resolves.toBe(
       0,
     );
+    await expect(db.select().from(posts).where(eq(posts.id, post.id))).resolves.toHaveLength(1);
+    await db.delete(users).where(eq(users.id, fixture.userId));
   });
 
   it('같은 실행 발생을 동시에 삽입해도 하나만 저장한다', async () => {
