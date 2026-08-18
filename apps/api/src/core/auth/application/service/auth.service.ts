@@ -133,8 +133,7 @@ export class AuthService {
     user: AuthUser,
     requestedFlow: Extract<SocialLoginFlow, 'NEW' | 'RESUME'>,
   ): Promise<SocialLoginOutcome> {
-    const sessionUser =
-      user.role === null ? await this.normalizeNullRole(user.id) : user;
+    const sessionUser = user.role === null ? await this.normalizeNullRole(user.id) : user;
     const sessionId = generateId();
     const issuedTokens = await this.sessionTokenIssuer.issue(
       this.principal(sessionUser, sessionId),

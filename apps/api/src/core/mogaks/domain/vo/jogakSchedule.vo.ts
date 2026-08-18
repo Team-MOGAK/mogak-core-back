@@ -20,12 +20,21 @@ export type JogakScheduleInput = Readonly<{
   weekdays?: readonly string[];
 }>;
 
-export type ValidatedJogakSchedule = Readonly<{
-  scheduleType: JogakScheduleType;
+export type OnceJogakSchedule = Readonly<{
+  scheduleType: 'ONCE';
+  effectiveFrom: string;
+  effectiveTo: null;
+  weekdays: readonly [];
+}>;
+
+export type WeeklyJogakSchedule = Readonly<{
+  scheduleType: 'WEEKLY';
   effectiveFrom: string;
   effectiveTo: string | null;
   weekdays: readonly JogakScheduleWeekdayName[];
 }>;
+
+export type ValidatedJogakSchedule = OnceJogakSchedule | WeeklyJogakSchedule;
 
 export const JogakScheduleType = {
   parse(value: string): JogakScheduleType {

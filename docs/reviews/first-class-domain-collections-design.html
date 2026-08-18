@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>도메인 일급 컬렉션 도입 설계</title>
+    <style>
+      body { max-width: 920px; margin: 2rem auto; padding: 0 1rem; font: 16px/1.6 system-ui, sans-serif; color: #172033; }
+      header, section, aside, figure { margin: 1rem 0; padding: 1rem; border: 1px solid #d7dee9; border-radius: 8px; }
+      nav a { margin-right: .7rem; } table { border-collapse: collapse; width: 100%; }
+      th, td { padding: .55rem; border: 1px solid #d7dee9; text-align: left; vertical-align: top; }
+      code { background: #f1f5f9; padding: .1rem .25rem; } .state { color: #9a3412; font-weight: 700; }
+      .slide[hidden], .result[hidden] { display: none; } .controls { display: flex; gap: .6rem; align-items: center; margin-top: 1rem; }
+      .result { margin-top: .7rem; padding: .7rem; background: #f1f5f9; } button { padding: .4rem .7rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>도메인 일급 컬렉션 도입 설계</h1>
+      <dl>
+        <dt>목적</dt><dd>한 번 하는 조각 일정과 반복 조각 일정을 서로 다른 도메인 타입으로 분리하고, 일정 이력 규칙을 컬렉션에 모은다.</dd>
+        <dt>사용자</dt><dd>Jogak 일정·사용자 동의 기능을 유지보수하는 백엔드 개발자와 API 사용자.</dd>
+        <dt>문제</dt><dd>ONCE와 WEEKLY가 같은 nullable 배열 구조에 섞여 있고, 요일 검증·발생 판정·일정 이력 선택이 배열·정책 함수·application service에 분산돼 있다.</dd>
+        <dt>핵심 흐름</dt><dd>요청/영속 row → OnceSchedule 또는 RoutineSchedule → JogakSchedules → application metadata 결합 → 기존 배열 DTO 반환.</dd>
+        <dt>강도</dt><dd>Standard — 도메인과 application 경계를 재구성하되 API·DB 스키마·권한·외부 부작용은 바꾸지 않는다.</dd>
+        <dt>범위</dt><dd><code>JogakWeekdays</code>, <code>OnceSchedule</code>, <code>RoutineSchedule</code>, <code>JogakSchedules</code>, 일정 정책·서비스 경계와 단위 테스트.</dd>
+        <dt>생성·갱신</dt><dd><time datetime="2026-08-18T15:38:01+09:00">2026-08-18 15:38 KST</time></dd>
+        <dt>상태</dt><dd><span class="state">설계 승인됨</span></dd>
+      </dl>
+    </header>
+    <nav aria-label="설계 탐색"><a href="#goal">목표</a><a href="#model">변경 모델</a><a href="#invariants">불변식</a><a href="#scope">범위</a><a href="#risk">위험</a><a href="#verification">검증</a><a href="#control">이해 점검</a><a href="#approval">승인</a></nav>
+    <main><article>
+      <section id="goal">
+        <h2>목표와 비목표</h2>
+        <p><mark>요일·단일 일정·일정 이력을 역할별 객체로 만들고, 검증된 상태가 외부 배열 별칭 때문에 바뀌지 않게 한다.</mark> 기존 HTTP JSON 형태와 repository port의 배열 계약은 경계에서 유지한다.</p>
+        <p><strong>비목표:</strong> 피드·페이지네이션·조회 DTO 목록의 wrapper화, DB 스키마/마이그레이션, API 요청·응답 계약 변경, 일정 이력 전체의 기간 중복 제약 강화, 동의 정책 리팩터링은 포함하지 않는다.</p>
+      </section>
+      <section id="model">
+        <h2>변경 모델</h2>
+        <figure>
+          <figcaption>컬렉션 규칙을 한 생성 경계에 모으는 흐름</figcaption>
+          <pre><code>request 또는 persistence row
+          │
+          ▼
+OnceSchedule 또는 RoutineSchedule → JogakSchedules 생성
+  ├─ 입력 방어적 복사
+  ├─ 중복·유효값 불변식 확인
+  └─ 도메인 행위 제공
+          │
+          ▼
+policy / application service
+          │
+          ▼
+toArray()로 repository·response 경계에 배열 전달</code></pre>
+          <p>배열은 전송 형식으로만 남긴다. <code>scheduleId</code>, 제목·색상·카테고리는 domain 객체에 넣지 않고 application 재구성 레코드에 둔다. 이를 통해 도메인 규칙과 DB/표시 metadata를 분리한다.</p>
+        </figure>
+        <table>
+          <caption>도입할 객체와 책임</caption>
+          <thead><tr><th>컬렉션</th><th>생성/검증</th><th>도메인 행위</th><th>경계 변환</th></tr></thead>
+          <tbody>
+            <tr><td><code>OnceSchedule</code></td><td>실제 발생 기준일, 요일·종료일 없음</td><td><code>occursOn(date)</code></td><td>기존 <code>ONCE</code> snapshot 반환</td></tr>
+            <tr><td><code>JogakWeekdays</code></td><td>비어 있지 않음, 허용 요일만, 중복 금지</td><td><code>includes(weekday)</code></td><td><code>toArray()</code>는 복사본 반환</td></tr>
+            <tr><td><code>RoutineSchedule</code></td><td>실제 날짜, 기간, <code>JogakWeekdays</code> 필수</td><td><code>isActiveOn(date)</code>, <code>occursOn(date)</code></td><td>기존 <code>WEEKLY</code> snapshot 반환</td></tr>
+            <tr><td><code>JogakSchedules</code></td><td>정렬된 순수 일정 이력의 방어적 복사</td><td>현재·최신·후속 일정 선택</td><td><code>toArray()</code>은 복사본 반환</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section id="invariants">
+        <h2>불변식과 경계</h2>
+        <table>
+          <caption>보존하거나 새로 강제할 규칙</caption>
+          <thead><tr><th>영역</th><th>불변식</th><th>적용 경계</th></tr></thead>
+          <tbody>
+            <tr><td>WEEKLY 일정</td><td><code>RoutineSchedule</code>은 비어 있지 않고 중복·미지원 값이 없는 <code>JogakWeekdays</code>를 반드시 가진다.</td><td>요청 검증 및 persistence rehydration 모두.</td></tr>
+            <tr><td>ONCE 일정</td><td><code>OnceSchedule</code>에는 요일과 종료일이 존재하지 않는다.</td><td>ONCE snapshot 생성 및 rehydration 경계.</td></tr>
+            <tr><td>일정 이력</td><td>선택 기준은 <code>effectiveFrom ASC, scheduleId ASC</code> 순서를 보존한다.</td><td>application translator가 정렬한 뒤 <code>JogakSchedules</code>에 전달한다.</td></tr>
+            <tr><td>방어성</td><td>호출자가 원래 배열·객체를 바꿔도 이미 검증된 컬렉션이 변하지 않는다.</td><td>생성자 내부 복사 및 외부 반환 시 복사.</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section id="scope">
+        <h2>선택한 범위와 파일 계획</h2>
+        <ol>
+          <li><code>jogakWeekdays.vo.ts</code>에 immutable <code>JogakWeekdays</code>, <code>onceSchedule.vo.ts</code>에 <code>OnceSchedule</code>, <code>routineSchedule.vo.ts</code>에 <code>RoutineSchedule</code>, <code>jogakSchedules.vo.ts</code>에 <code>JogakSchedules</code>를 둔다. 공용 snapshot은 <code>jogakSchedule.vo.ts</code>에 남긴다.</li>
+          <li>DB row를 조립하는 <code>groupScheduleRows</code>는 raw row를 <code>HydratedScheduleRecord { scheduleId, schedule, metadata }</code>로 번역한다. 영속 데이터가 규칙을 위반하면 기존 persistence 오류 경계에 맞게 번역한다.</li>
+          <li><code>getDetail</code>은 현재/최신 일정, <code>update</code>는 수정 대상/후속 일정, occurrence projection은 각 타입의 <code>occursOn(date)</code>으로 판단한다. metadata 결합과 응답 변환은 application service에 남긴다.</li>
+          <li>repository/API에는 raw array를 계속 전달한다. 기존 public JSON 필드명·요일 입력 순서·오류 코드는 유지한다.</li>
+        </ol>
+        <aside><strong>경계 규칙:</strong> <code>JogakSchedules</code>는 <code>scheduleId</code>, 모각·조각 제목, 색상, 카테고리, DB row를 소유하지 않는다. 이 metadata는 application의 <code>HydratedScheduleRecord</code>에 남긴다. <code>ConsentSelections</code>는 외부 활성 항목 스냅샷과의 관계 검증이 핵심이므로 이번 변경에서 제외한다.</aside>
+      </section>
+      <section id="risk">
+        <h2>핵심 위험과 실패 처리</h2>
+        <p>가장 큰 위험은 내부 타입을 바꾸며 기존 API 배열이나 persistence 저장 배열까지 객체로 흘려보내는 것이다. 따라서 <code>toArray()</code>/<code>toSnapshot()</code>은 경계에서만 사용하고, 기존 request/response DTO는 변경하지 않는다.</p>
+        <p>저장된 weekday가 중복·지원 불가이면 조용히 정규화하지 않는다. 현재 저장 값 오류 처리 관례에 맞는 persistence 예외로 번역하여 데이터 이상을 드러낸다. 요청 값의 오류 코드 매핑(<code>ROUTINE_WEEKDAYS_REQUIRED</code>, <code>INVALID_SCHEDULE</code>)은 유지한다.</p>
+        <p><strong>대표 일정 결정:</strong> <code>GET /api/jogaks/:jogakId</code>는 캘린더의 일일 발생 목록이 아니라 조각의 설정 상세(<code>isRoutine</code>, <code>days</code>, <code>startDate</code>, <code>endDate</code>, <code>schedules</code>)를 반환한다. 이력에 오늘 유효한 <code>RoutineSchedule</code>과 과거 <code>OnceSchedule</code>이 함께 있으면 활성 루틴을 대표로 선택한다. 활성 루틴이 없을 때만 최신 이력을 fallback으로 쓴다. 일일 발생·실행 기록은 별도 <code>GET /api/jogaks?date=...</code> 및 <code>daily_jogak</code> 경계다.</p>
+      </section>
+      <section id="verification">
+        <h2>검증 계획</h2>
+        <ol>
+          <li>새 VO 단위 테스트: Once의 정확한 날짜 발생, Routine의 기간·요일 발생, <code>JogakWeekdays</code>의 중복/허용값/방어적 복사, 일정 이력의 현재·최신·후속 선택과 동일 시작일 안정성을 확인한다.</li>
+          <li>기존 Jogak 정책·서비스 테스트: ONCE/WEEKLY 발생 계산, request 오류 코드, DB row 재구성, 상세·수정·occurrence projection의 선택 결과를 확인한다.</li>
+          <li><code>pnpm test -- --runInBand test/mogaks/domain/entity/jogak.entity.spec.ts test/mogaks/application/jogaks.service.spec.ts</code>, <code>pnpm typecheck</code>, <code>pnpm lint</code>, <code>pnpm format:check</code>, <code>git diff --check</code>를 실행한다.</li>
+        </ol>
+      </section>
+      <section id="design-control-state">
+        <h2>설계 통제 상태</h2>
+        <p><strong>확인 중.</strong> 타입 분리 설계로 이전 설계 통제를 초기화했다. Q1~Q7은 범위, 불변식, 도메인/application 경계, persistence 실패, 대표 일정 선택, 검증을 다룬다. 대표 일정 선택은 2026-08-18 사용자 결정 “루틴 우선”으로 확정됐다. 권한·외부 부작용·운영 관측은 API/DB/로그 동작을 바꾸지 않아 적용 대상이 아니다. HTML에서 고른 답은 이 브라우저에만 남고 Codex에 자동 전달되지 않는다.</p>
+      </section>
+      <section id="control">
+        <h2>설계 이해 점검</h2>
+        <div class="slide" data-answer="b" data-explanation="생성 시 복사하고 경계에서 다시 복사해야 이미 검증한 상태가 외부 mutation으로 바뀌지 않는다.">
+          <fieldset><legend>Q1 — 호출자가 WEEKLY 요청 배열을 검증 후 변경해도, 이미 생성된 일정의 요일은 어떻게 되어야 할까?</legend><label><input type="radio" name="q1" value="a" /> A. 같은 배열을 참조하므로 함께 바뀐다.</label><br /><label><input type="radio" name="q1" value="b" /> B. 생성 시 복사했으므로 바뀌지 않는다.</label></fieldset><div class="result" hidden><strong></strong><p></p><p>다음 행동: 다른 설계 축을 확인하거나 승인 여부를 별도로 결정한다.</p></div>
+        </div>
+        <div class="slide" data-answer="b" data-explanation="OnceSchedule은 요일 컬렉션을 갖지 않는다. JogakWeekdays는 RoutineSchedule 전용이므로 빈 값도 생성 단계에서 거부한다." hidden>
+          <fieldset><legend>Q2 — RoutineSchedule이 빈 요일을 받으면 어느 경계에서 거부해야 할까?</legend><label><input type="radio" name="q2" value="a" /> A. Once에도 쓰이므로 빈 collection을 허용한다.</label><br /><label><input type="radio" name="q2" value="b" /> B. Routine 전용 JogakWeekdays 생성자가 거부한다.</label></fieldset><div class="result" hidden><strong></strong><p></p><p>다음 행동: 다른 설계 축을 확인하거나 승인 여부를 별도로 결정한다.</p></div>
+        </div>
+        <div class="slide" data-answer="b" data-explanation="일급 컬렉션은 내부 도메인 모델이며, HTTP와 repository 경계에는 기존 배열 DTO를 유지한다." hidden>
+          <fieldset><legend>Q3 — 이 변경 후 API 응답의 weekdays는 어떤 형태여야 할까?</legend><label><input type="radio" name="q3" value="a" /> A. 새 클래스 객체를 JSON으로 직접 노출한다.</label><br /><label><input type="radio" name="q3" value="b" /> B. 기존과 같은 배열 JSON을 유지한다.</label></fieldset><div class="result" hidden><strong></strong><p></p><p>다음 행동: 다른 설계 축을 확인하거나 승인 여부를 별도로 결정한다.</p></div>
+        </div>
+        <div class="slide" data-answer="a" data-explanation="저장된 잘못된 요일을 자동으로 고치면 데이터 이상을 감춘다. 같은 생성 경계에서 감지하고 persistence 오류로 번역한다." hidden>
+          <fieldset><legend>Q4 — DB에서 중복 weekday가 rehydration되면 어떻게 처리할까?</legend><label><input type="radio" name="q4" value="a" /> A. 오류로 드러내고 persistence 예외 경계에서 번역한다.</label><br /><label><input type="radio" name="q4" value="b" /> B. 조용히 중복을 제거해 계속 처리한다.</label></fieldset><div class="result" hidden><strong></strong><p></p><p>다음 행동: 다른 설계 축을 확인하거나 승인 여부를 별도로 결정한다.</p></div>
+        </div>
+        <div class="slide" data-answer="b" data-explanation="JogakSchedules는 순수 일정만 소유하며, scheduleId와 화면 metadata는 application translator에 남겨야 책임이 분리된다." hidden>
+          <fieldset><legend>Q5 — JogakSchedules가 소유하면 안 되는 것은 무엇일까?</legend><label><input type="radio" name="q5" value="a" /> A. 기간과 요일을 가진 순수 일정.</label><br /><label><input type="radio" name="q5" value="b" /> B. scheduleId, 제목, 색상, 카테고리 같은 persistence/표시 metadata.</label></fieldset><div class="result" hidden><strong></strong><p></p><p>다음 행동: 다른 설계 축을 확인하거나 승인 여부를 별도로 결정한다.</p></div>
+        </div>
+        <div class="slide" data-answer="a" data-explanation="GET /api/jogaks/:id는 설정 상세이고, 날짜별 발생 목록은 별도 endpoint다. 이번 리팩터는 두 경계를 바꾸지 않는다." hidden>
+          <fieldset><legend>Q6 — 조각 설정 상세와 날짜별 발생 목록은 이번 변경에서 어떻게 다룰까?</legend><label><input type="radio" name="q6" value="a" /> A. 기존 endpoint와 동작을 유지하고, 순수 일정 객체만 내부에 도입한다.</label><br /><label><input type="radio" name="q6" value="b" /> B. 둘을 하나의 응답으로 합친다.</label></fieldset><div class="result" hidden><strong></strong><p></p><p>다음 행동: 다른 설계 축을 확인하거나 승인 여부를 별도로 결정한다.</p></div>
+        </div>
+        <div class="slide" data-answer="a" data-explanation="오늘 유효한 Routine이 있으면 그것을 대표로 선택한다. 그렇지 않을 때만 가장 최근 이력을 fallback으로 사용해야 ONCE의 단일 날짜 의미를 보존한다." hidden>
+          <fieldset><legend>Q7 — 오늘 유효한 Routine과 과거 Once가 함께 있을 때 상세 설정의 대표 일정은 무엇이어야 할까?</legend><label><input type="radio" name="q7" value="a" /> A. 오늘 유효한 Routine.</label><br /><label><input type="radio" name="q7" value="b" /> B. 더 최근 날짜의 과거 Once.</label></fieldset><div class="result" hidden><strong></strong><p></p><p>다음 행동: 설계 요약을 확인한 뒤, 구현 승인은 별도로 결정한다.</p></div>
+        </div>
+        <div class="controls"><button type="button" id="previous">이전</button><span id="position"></span><button type="button" id="next">다음</button><button type="button" id="submit">현재 답 제출</button></div><output id="overall" aria-live="polite">답변 진행: 0 / 7</output>
+      </section>
+      <section id="approval">
+        <h2>승인 상태</h2>
+        <p><strong>설계 승인됨.</strong> 승인: <time datetime="2026-08-18T17:03:40+09:00">2026-08-18 17:03 KST</time>, 사용자 “구현 ㄱ”. 승인 범위는 <code>JogakWeekdays</code>·<code>OnceSchedule</code>·<code>RoutineSchedule</code>·<code>JogakSchedules</code>의 도입, application 재구성 경계, persistence rehydration 검증, 집중 회귀 테스트다. API·DB·동의 정책·일정 중복 제약 강화는 제외한다. 설정 상세는 활성 루틴 우선, 없으면 최신 이력 fallback으로 선택하며 날짜별 발생·실행 기록의 기존 경계도 유지한다. 구현 상태는 <a href="first-class-domain-collections-implementation.html">구현 제어 문서</a>에서 관리한다.</p>
+      </section>
+    </article></main>
+    <script>
+      const slides = [...document.querySelectorAll('.slide')]; let index = 0;
+      function render() { slides.forEach((slide, i) => { slide.hidden = i !== index; }); document.getElementById('position').textContent = `${index + 1} / ${slides.length}`; document.getElementById('overall').textContent = `답변 진행: ${slides.filter((s) => s.querySelector('input:checked')).length} / ${slides.length}`; }
+      document.getElementById('previous').onclick = () => { index = Math.max(0, index - 1); render(); };
+      document.getElementById('next').onclick = () => { index = Math.min(slides.length - 1, index + 1); render(); };
+      document.getElementById('submit').onclick = () => { const slide = slides[index]; const answer = slide.querySelector('input:checked'); const result = slide.querySelector('.result'); result.hidden = false; const ok = answer?.value === slide.dataset.answer; result.querySelector('strong').textContent = ok ? '확립' : '보류'; result.querySelector('p').textContent = slide.dataset.explanation; render(); };
+      render();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>조각 일정 함수형 모델 대안 설계</title>
+    <style>
+      body {
+        max-width: 920px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        color: #172033;
+      }
+      header,
+      section,
+      aside,
+      figure {
+        margin: 1rem 0;
+        padding: 1rem;
+        border: 1px solid #d7dee9;
+        border-radius: 8px;
+      }
+      nav a {
+        margin-right: 0.7rem;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        padding: 0.55rem;
+        border: 1px solid #d7dee9;
+        text-align: left;
+        vertical-align: top;
+      }
+      code {
+        background: #f1f5f9;
+        padding: 0.1rem 0.25rem;
+      }
+      .state {
+        color: #9a3412;
+        font-weight: 700;
+      }
+      .slide[hidden],
+      .result[hidden] {
+        display: none;
+      }
+      .controls {
+        display: flex;
+        gap: 0.6rem;
+        align-items: center;
+        margin-top: 1rem;
+      }
+      .result {
+        margin-top: 0.7rem;
+        padding: 0.7rem;
+        background: #f1f5f9;
+      }
+      button {
+        padding: 0.4rem 0.7rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>조각 일정 함수형 모델 대안 설계</h1>
+      <dl>
+        <dt>목적</dt>
+        <dd>조각 일정 규칙을 응집하되 런타임 클래스와 불필요한 객체 변환을 제거한다.</dd>
+        <dt>사용자</dt>
+        <dd>Jogak 일정 기능을 유지보수하는 백엔드 개발자와 API 사용자.</dd>
+        <dt>문제</dt>
+        <dd>
+          현재 요청마다 일정·요일·이력 클래스 인스턴스를 만들고 plain DTO로 되돌린다. TypeScript
+          서비스에서 타입 분리만을 위한 클래스 수가 늘어난다.
+        </dd>
+        <dt>핵심 흐름</dt>
+        <dd>
+          요청/영속 row → 검증된 discriminated union plain object → 순수 선택·발생 함수 → 기존 배열
+          DTO.
+        </dd>
+        <dt>강도</dt>
+        <dd>Standard — 내부 도메인 구현을 바꾸되 API·DB·repository 계약과 일정 의미는 유지한다.</dd>
+        <dt>기준 문서</dt>
+        <dd>
+          <a href="first-class-domain-collections-design.html">기존 클래스 기반 설계</a>의 대안이다.
+        </dd>
+        <dt>생성·갱신</dt>
+        <dd><time datetime="2026-08-18T18:00:00+09:00">2026-08-18 18:00 KST</time></dd>
+        <dt>상태</dt>
+        <dd><span class="state">설계 승인됨</span></dd>
+      </dl>
+    </header>
+    <nav aria-label="설계 탐색">
+      <a href="#goal">목표</a><a href="#model">모델</a><a href="#invariants">불변식</a
+      ><a href="#scope">범위</a><a href="#risk">위험</a><a href="#verification">검증</a
+      ><a href="#control">이해 점검</a><a href="#approval">승인</a>
+    </nav>
+    <main>
+      <article>
+        <section id="goal">
+          <h2>목표와 비목표</h2>
+          <p>
+            <mark
+              >일급 컬렉션의 규칙 응집은 유지하고, 구현 수단만 클래스에서 discriminated union과 순수
+              함수로 바꾼다.</mark
+            >
+          </p>
+          <p>
+            <strong>비목표:</strong> 성능 수치를 보장하는 것, API·DB·repository port 변경,
+            캐시·메모이제이션 도입, 날짜 branded type 도입, 일정 의미와 대표 선택 순서 변경.
+          </p>
+        </section>
+        <section id="model">
+          <h2>변경 모델</h2>
+          <figure>
+            <figcaption>클래스 snapshot 왕복을 없앤 일정 처리 흐름</figcaption>
+            <pre><code>request 또는 persistence row
+          │
+          ▼
+createJogakSchedule(input)
+  └─ 검증된 plain discriminated union 반환
+          │
+          ├─ occursOn(schedule, date)
+          ├─ representativeScheduleOn(records, date)
+          └─ successorScheduleOf(records, schedule)
+          │
+          ▼
+application metadata 결합 → 기존 배열 DTO</code></pre>
+            <p>
+              텍스트 도식의 의미: runtime class, <code>instanceof</code>, <code>toSnapshot()</code>,
+              history wrapper를 제거한다. 배열의 불변식은 생성 함수가 새 배열을 만들어 반환함으로써
+              보존한다.
+            </p>
+          </figure>
+          <table>
+            <caption>
+              현재 클래스와 함수형 대체물
+            </caption>
+            <thead>
+              <tr>
+                <th>현재</th>
+                <th>대체</th>
+                <th>유지하는 책임</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>OnceSchedule</code>, <code>RoutineSchedule</code></td>
+                <td>
+                  <code>OnceSchedule</code> / <code>RoutineSchedule</code> 타입의 discriminated
+                  union
+                </td>
+                <td>ONCE와 WEEKLY 필드 조합을 타입과 생성 검증으로 구분</td>
+              </tr>
+              <tr>
+                <td><code>JogakWeekdays</code></td>
+                <td><code>validateWeekdays()</code>가 복사한 readonly 배열</td>
+                <td>비어 있지 않음, 중복 금지, 허용 요일만</td>
+              </tr>
+              <tr>
+                <td><code>JogakSchedules</code></td>
+                <td>
+                  <code>currentScheduleOn()</code>, <code>representativeScheduleOn()</code>,
+                  <code>successorScheduleOf()</code>
+                </td>
+                <td>현재·대표·후속 선택 규칙</td>
+              </tr>
+              <tr>
+                <td><code>JogakScheduleDate</code></td>
+                <td>현행 순수 날짜 유틸 유지</td>
+                <td>날짜 형식·비교·요일 계산</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section id="invariants">
+          <h2>보존할 불변식</h2>
+          <table>
+            <caption>
+              타입·생성·선택 규칙
+            </caption>
+            <thead>
+              <tr>
+                <th>영역</th>
+                <th>규칙</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>ONCE</td>
+                <td>
+                  <code>effectiveTo: null</code>, <code>weekdays: []</code>이며 정확히
+                  <code>effectiveFrom</code>에만 발생한다.
+                </td>
+              </tr>
+              <tr>
+                <td>WEEKLY</td>
+                <td>유효하고 중복 없는 weekday가 하나 이상이며, 종료일은 없거나 시작일 이후다.</td>
+              </tr>
+              <tr>
+                <td>배열 경계</td>
+                <td>
+                  입력 weekday와 반환 DTO의 weekday는 모두 복사한다. 호출자 mutation이 검증된 일정에
+                  영향을 주지 않는다.
+                </td>
+              </tr>
+              <tr>
+                <td>이력 선택</td>
+                <td>
+                  <code>effectiveFrom ASC, scheduleId ASC</code> 정렬을 유지한다. 대표는 활성 WEEKLY
+                  → 당일 ONCE → 최신 이력, 수정 대상은 오늘 현재 일정, 후속은 더 늦은 시작일의 첫
+                  일정이다.
+                </td>
+              </tr>
+              <tr>
+                <td>실패</td>
+                <td>
+                  사용자 입력은 기존 <code>DomainException</code>, 손상된 persistence row는 원인을
+                  보존한 <code>MogakPersistenceException</code>으로 실패한다.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section id="scope">
+          <h2>구현 범위</h2>
+          <ol>
+            <li>
+              <code>jogakSchedule.vo.ts</code>의 <code>ValidatedJogakSchedule</code>을 ONCE/WEEKLY
+              discriminated union으로 구체화한다.
+            </li>
+            <li>
+              <code>jogakSchedule.policy.ts</code>에서 weekday 검증·복사, 일정 생성, 발생·활성·이력
+              선택을 순수 함수로 제공한다.
+            </li>
+            <li>
+              <code>jogaks.service.ts</code>는 plain schedule을 그대로 보관하고, identity 기반
+              재탐색과 <code>toSnapshot()</code> 호출을 제거한다.
+            </li>
+            <li>
+              <code>onceSchedule.vo.ts</code>, <code>routineSchedule.vo.ts</code>,
+              <code>jogakWeekdays.vo.ts</code>, <code>jogakSchedules.vo.ts</code>를 제거하고 함수형
+              API 기준으로 테스트를 교체한다.
+            </li>
+          </ol>
+          <aside>
+            <strong>성능 판단:</strong> 현재 코드에서 클래스가 확정된 병목이라는 측정값은 없다. 이
+            변경의 주효과는 인스턴스·snapshot·이력 wrapper 할당 감소와 코드 단순화다. DB I/O와
+            날짜별 발생 순회는 그대로 남는다.
+          </aside>
+        </section>
+        <section id="risk">
+          <h2>위험과 방지책</h2>
+          <p>
+            plain object는 수정하기 쉬우므로, 생성 함수에서 weekday를 복사하고 response 경계에서도
+            다시 복사한다. <code>readonly</code>만으로 런타임 freeze를 보장하지는 않지만, 현행 외부
+            계약에도 freeze는 없으므로 추가 비용 없이 복사 경계를 유지한다.
+          </p>
+          <p>
+            함수로 옮기면서 선택 순서가 바뀌지 않도록, record 정렬은 service에 유지하고 선택 함수는
+            정렬된 입력을 전제로 한다. 동일 시작일 tie-break는 <code>scheduleId ASC</code>를 계속
+            service에서 결정한다.
+          </p>
+        </section>
+        <section id="verification">
+          <h2>검증 계획</h2>
+          <ol>
+            <li>
+              순수 함수 테스트: ONCE/WEEKLY 발생, 빈·중복·미지원 weekday 거부, 입력·응답 배열 방어적
+              복사, 대표·현재·후속 선택, 동일 시작일 tie-break.
+            </li>
+            <li>
+              서비스 테스트: 상세·수정·occurrence projection과 persistence row 오류 타입/cause를
+              현재 계약대로 확인.
+            </li>
+            <li>
+              <code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>,
+              집중 Jest, 전체 Jest, <code>pnpm build</code>, <code>git diff --check</code>를
+              실행한다.
+            </li>
+          </ol>
+        </section>
+        <section id="design-control-state">
+          <h2>설계 통제 상태</h2>
+          <p>
+            <strong>미실시.</strong> Q1~Q5는 범위, 불변식, 경계, persistence 실패, 검증을 다룬다.
+            권한·외부 부작용·운영 관측은 API·DB·로그 동작이 변하지 않아 적용 대상이 아니다. 이
+            페이지의 답은 브라우저에만 남고 Codex에 자동 전달되지 않는다.
+          </p>
+        </section>
+        <section id="control">
+          <h2>설계 이해 점검</h2>
+          <div
+            class="slide"
+            data-answer="b"
+            data-explanation="클래스는 없애도 ONCE/WEEKLY의 필드 조합은 discriminated union과 생성 함수에서 계속 강제해야 한다."
+          >
+            <fieldset>
+              <legend>Q1 — 클래스 제거 후 ONCE에 weekday가 들어오면 어떻게 해야 할까?</legend>
+              <label
+                ><input type="radio" name="q1" value="a" /> A. plain object이므로 허용한다.</label
+              ><br /><label
+                ><input type="radio" name="q1" value="b" /> B. 생성 함수에서 거부한다.</label
+              >
+            </fieldset>
+            <div class="result" hidden>
+              <strong></strong>
+              <p></p>
+              <p>다음 행동: 다음 설계 축을 확인한다.</p>
+            </div>
+          </div>
+          <div
+            class="slide"
+            data-answer="a"
+            data-explanation="입력 배열을 복사해 검증된 schedule이 호출자 mutation에 영향받지 않게 한다."
+          >
+            <fieldset>
+              <legend>Q2 — 검증 뒤 호출자가 원래 weekday 배열을 수정하면 검증된 일정은?</legend>
+              <label><input type="radio" name="q2" value="a" /> A. 바뀌지 않는다.</label
+              ><br /><label><input type="radio" name="q2" value="b" /> B. 함께 바뀐다.</label>
+            </fieldset>
+            <div class="result" hidden>
+              <strong></strong>
+              <p></p>
+              <p>다음 행동: 다음 설계 축을 확인한다.</p>
+            </div>
+          </div>
+          <div
+            class="slide"
+            data-answer="b"
+            data-explanation="클래스 제거는 내부 구현 변경이다. HTTP와 repository에는 기존 배열 DTO를 유지한다."
+          >
+            <fieldset>
+              <legend>Q3 — API와 repository의 schedule 전달 형식은 어떻게 바뀌나?</legend>
+              <label><input type="radio" name="q3" value="a" /> A. 클래스 객체를 노출한다.</label
+              ><br /><label
+                ><input type="radio" name="q3" value="b" /> B. 기존 배열 DTO를 유지한다.</label
+              >
+            </fieldset>
+            <div class="result" hidden>
+              <strong></strong>
+              <p></p>
+              <p>다음 행동: 다음 설계 축을 확인한다.</p>
+            </div>
+          </div>
+          <div
+            class="slide"
+            data-answer="a"
+            data-explanation="저장 데이터 이상은 입력 오류가 아니라 persistence 재구성 오류이므로 기존 MogakPersistenceException 경계를 유지한다."
+          >
+            <fieldset>
+              <legend>Q4 — DB의 WEEKLY row가 빈 weekday를 가지면 어떤 오류인가?</legend>
+              <label><input type="radio" name="q4" value="a" /> A. MogakPersistenceException.</label
+              ><br /><label
+                ><input type="radio" name="q4" value="b" /> B. 사용자 요청의
+                INVALID_SCHEDULE.</label
+              >
+            </fieldset>
+            <div class="result" hidden>
+              <strong></strong>
+              <p></p>
+              <p>다음 행동: 다음 설계 축을 확인한다.</p>
+            </div>
+          </div>
+          <div
+            class="slide"
+            data-answer="b"
+            data-explanation="클래스 유무와 대표 선택 규칙은 별개다. 활성 Routine을 우선해야 기존 설정 상세 의미가 유지된다."
+            hidden
+          >
+            <fieldset>
+              <legend>Q5 — 활성 Routine과 당일 Once가 함께 있으면 상세의 대표 일정은?</legend>
+              <label><input type="radio" name="q5" value="a" /> A. 당일 Once.</label><br /><label
+                ><input type="radio" name="q5" value="b" /> B. 활성 Routine.</label
+              >
+            </fieldset>
+            <div class="result" hidden>
+              <strong></strong>
+              <p></p>
+              <p>다음 행동: 설계 요약을 확인한 뒤 구현 승인을 별도로 결정한다.</p>
+            </div>
+          </div>
+          <div class="controls">
+            <button type="button" id="previous">이전</button><span id="position"></span
+            ><button type="button" id="next">다음</button
+            ><button type="button" id="submit">현재 답 제출</button>
+          </div>
+          <output id="overall" aria-live="polite">답변 진행: 0 / 5</output>
+        </section>
+        <section id="approval">
+          <h2>승인 상태</h2>
+          <p>
+            <strong>설계 승인됨.</strong> 승인:
+            <time datetime="2026-08-18T18:05:00+09:00">2026-08-18 18:05 KST</time>, 사용자 “ㄱㄱ”.
+            클래스 기반 설계는 보존한다. 승인 범위는 외부 동작을 유지한 채 runtime class 4개와
+            snapshot 왕복을 제거하는 것이다. 구현 상태는
+            <a href="functional-jogak-schedule-model-alternative-implementation.html"
+              >구현 제어 문서</a
+            >에서 관리한다.
+          </p>
+        </section>
+      </article>
+    </main>
+    <script>
+      const slides = [...document.querySelectorAll('.slide')];
+      let index = 0;
+      function render() {
+        slides.forEach((slide, i) => {
+          slide.hidden = i !== index;
+        });
+        document.getElementById('position').textContent = `${index + 1} / ${slides.length}`;
+        document.getElementById('overall').textContent =
+          `답변 진행: ${slides.filter((s) => s.querySelector('input:checked')).length} / ${slides.length}`;
+      }
+      document.getElementById('previous').onclick = () => {
+        index = Math.max(0, index - 1);
+        render();
+      };
+      document.getElementById('next').onclick = () => {
+        index = Math.min(slides.length - 1, index + 1);
+        render();
+      };
+      document.getElementById('submit').onclick = () => {
+        const slide = slides[index];
+        const answer = slide.querySelector('input:checked');
+        const result = slide.querySelector('.result');
+        result.hidden = false;
+        const ok = answer?.value === slide.dataset.answer;
+        result.querySelector('strong').textContent = ok ? '확립' : '보류';
+        result.querySelector('p').textContent = slide.dataset.explanation;
+        render();
+      };
+      render();
+    </script>
+  </body>
+</html>

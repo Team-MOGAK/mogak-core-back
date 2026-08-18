@@ -24,7 +24,7 @@ import type {
   OccurrenceScheduleResult,
   OwnedJogakResult,
 } from '@core/mogaks/application/type/jogak.result';
-import { MogakPersistenceException } from '../exception/mogakPersistence.exception';
+import { MogakPersistenceException } from '@core/mogaks/domain/exception/mogakPersistence.exception';
 import { JogakExecutionStatus } from '@core/mogaks/domain/vo/jogakExecution.vo';
 import {
   JogakScheduleType,

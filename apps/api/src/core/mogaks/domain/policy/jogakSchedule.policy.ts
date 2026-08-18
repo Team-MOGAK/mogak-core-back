@@ -5,30 +5,14 @@ import {
   type JogakScheduleWeekdayName,
   type ValidatedJogakSchedule,
 } from '../vo/jogakSchedule.vo';
+import { compareDateOnly, isDateOnly, toUtcDate, weekdayFor } from '../vo/jogakScheduleDate.vo';
 
-const weekdayByUtcDay: readonly JogakScheduleWeekdayName[] = [
-  'SUNDAY',
-  'MONDAY',
-  'TUESDAY',
-  'WEDNESDAY',
-  'THURSDAY',
-  'FRIDAY',
-  'SATURDAY',
-];
-
-export function validateJogakSchedule(input: JogakScheduleInput): ValidatedJogakSchedule {
-  if (!isDateOnly(input.effectiveFrom)) throw new RangeError('invalid effectiveFrom date');
-  const effectiveTo = input.effectiveTo === undefined ? null : input.effectiveTo;
-  if (
-    effectiveTo !== null &&
-    (!isDateOnly(effectiveTo) || compareDateOnly(effectiveTo, input.effectiveFrom) < 0)
-  ) {
-    throw new RangeError('invalid effectiveTo date');
-  }
-  const weekdays = input.weekdays ?? [];
+export function createJogakSchedule(input: JogakScheduleInput): ValidatedJogakSchedule {
+  const effectiveTo = input.effectiveTo ?? null;
   if (input.scheduleType === 'ONCE') {
-    if (effectiveTo !== null || weekdays.length > 0)
+    if (effectiveTo !== null || (input.weekdays?.length ?? 0) > 0)
       throw new RangeError('ONCE schedule cannot set end or weekdays');
+    assertDateOnly(input.effectiveFrom, 'effectiveFrom');
     return {
       scheduleType: 'ONCE',
       effectiveFrom: input.effectiveFrom,
@@ -37,16 +21,87 @@ export function validateJogakSchedule(input: JogakScheduleInput): ValidatedJogak
     };
   }
   if (input.scheduleType !== 'WEEKLY') throw new RangeError('unsupported schedule type');
-  if (weekdays.length === 0) throw new RangeError('weekdays are required');
-  if (new Set(weekdays).size !== weekdays.length) throw new RangeError('duplicate weekday');
-  if (!weekdays.every(isWeekday)) throw new RangeError('unsupported weekday');
-  return { scheduleType: 'WEEKLY', effectiveFrom: input.effectiveFrom, effectiveTo, weekdays };
+  assertDateOnly(input.effectiveFrom, 'effectiveFrom');
+  if (
+    effectiveTo !== null &&
+    (!isDateOnly(effectiveTo) || compareDateOnly(effectiveTo, input.effectiveFrom) < 0)
+  ) {
+    throw new RangeError('invalid effectiveTo date');
+  }
+  return {
+    scheduleType: 'WEEKLY',
+    effectiveFrom: input.effectiveFrom,
+    effectiveTo,
+    weekdays: validateWeekdays(input.weekdays ?? []),
+  };
+}
+
+export function validateJogakSchedule(input: JogakScheduleInput): ValidatedJogakSchedule {
+  return createJogakSchedule(input);
 }
 
 export function occursOn(schedule: ValidatedJogakSchedule, scheduledDate: string): boolean {
-  if (!isDateWithin(schedule, scheduledDate)) return false;
-  if (schedule.scheduleType === 'ONCE') return scheduledDate === schedule.effectiveFrom;
-  return schedule.weekdays.includes(weekdayFor(scheduledDate));
+  if (!isActiveOn(schedule, scheduledDate)) return false;
+  return schedule.scheduleType === 'ONCE' || schedule.weekdays.includes(weekdayFor(scheduledDate));
+}
+
+export function isActiveOn(schedule: ValidatedJogakSchedule, date: string): boolean {
+  assertDateOnly(date, 'scheduled date');
+  if (schedule.scheduleType === 'ONCE') return date === schedule.effectiveFrom;
+  return (
+    compareDateOnly(date, schedule.effectiveFrom) >= 0 &&
+    (schedule.effectiveTo === null || compareDateOnly(date, schedule.effectiveTo) <= 0)
+  );
+}
+
+export function currentScheduleIndexOn(
+  schedules: readonly ValidatedJogakSchedule[],
+  date: string,
+): number | undefined {
+  return findLastIndex(schedules, (schedule) => isActiveOn(schedule, date));
+}
+
+export function activeRoutineScheduleIndexOn(
+  schedules: readonly ValidatedJogakSchedule[],
+  date: string,
+): number | undefined {
+  return findLastIndex(
+    schedules,
+    (schedule) => schedule.scheduleType === 'WEEKLY' && isActiveOn(schedule, date),
+  );
+}
+
+export function representativeScheduleIndexOn(
+  schedules: readonly ValidatedJogakSchedule[],
+  date: string,
+): number | undefined {
+  return (
+    activeRoutineScheduleIndexOn(schedules, date) ??
+    currentScheduleIndexOn(schedules, date) ??
+    (schedules.length === 0 ? undefined : schedules.length - 1)
+  );
+}
+
+export function successorScheduleIndexOf(
+  schedules: readonly ValidatedJogakSchedule[],
+  scheduleIndex: number,
+): number | undefined {
+  const schedule = schedules[scheduleIndex];
+  if (schedule === undefined) return undefined;
+  return schedules.findIndex((candidate) => candidate.effectiveFrom > schedule.effectiveFrom);
+}
+
+export function validateWeekdays(values: readonly string[]): readonly JogakScheduleWeekdayName[] {
+  if (values.length === 0) throw new RangeError('weekdays are required');
+  if (new Set(values).size !== values.length) throw new RangeError('duplicate weekday');
+  if (
+    !(values as readonly string[]).every((value) =>
+      (ISO_WEEKDAYS as readonly string[]).includes(value),
+    )
+  ) {
+    throw new RangeError('unsupported weekday');
+  }
+  return [...values] as JogakScheduleWeekdayName[];
 }
 
 export function deriveOccurrenceStatus(
@@ -76,39 +131,19 @@ export function datesInclusive(startDate: string, endDate: string): string[] {
   return dates;
 }
 
-export function isDateOnly(value: string): boolean {
-  try {
-    toUtcDate(value);
-    return true;
-  } catch {
-    return false;
+export { compareDateOnly, isDateOnly } from '../vo/jogakScheduleDate.vo';
+
+function assertDateOnly(value: string, name: string): void {
+  if (!isDateOnly(value)) throw new RangeError(`invalid ${name} date`);
+}
+
+function findLastIndex<T>(
+  values: readonly T[],
+  predicate: (value: T) => boolean,
+): number | undefined {
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    const value = values[index];
+    if (value !== undefined && predicate(value)) return index;
   }
-}
-
-export function compareDateOnly(left: string, right: string): number {
-  return toUtcDate(left).getTime() - toUtcDate(right).getTime();
-}
-
-function isDateWithin(schedule: ValidatedJogakSchedule, date: string): boolean {
-  if (compareDateOnly(date, schedule.effectiveFrom) < 0) return false;
-  return schedule.effectiveTo === null || compareDateOnly(date, schedule.effectiveTo) <= 0;
-}
-
-function isWeekday(value: string): value is JogakScheduleWeekdayName {
-  return (ISO_WEEKDAYS as readonly string[]).includes(value);
-}
-
-function weekdayFor(value: string): JogakScheduleWeekdayName {
-  const weekday = weekdayByUtcDay[toUtcDate(value).getUTCDay()];
-  if (weekday === undefined) throw new RangeError(`invalid weekday for ${value}`);
-  return weekday;
-}
-
-function toUtcDate(value: string): Date {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new RangeError(`invalid date-only value: ${value}`);
-  const date = new Date(`${value}T00:00:00.000Z`);
-  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value) {
-    throw new RangeError(`invalid date-only value: ${value}`);
-  }
-  return date;
+  return undefined;
 }
