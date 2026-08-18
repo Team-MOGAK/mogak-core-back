@@ -22,14 +22,17 @@ describe('User domain rules', () => {
     ['job 누락', '모각러', null, 1, [true], 'PENDING'],
     ['address 누락', '모각러', 1, null, [true], 'PENDING'],
     ['필수 동의 미동의', '모각러', 1, 1, [false], 'PENDING'],
-  ])('%s이면 가입 역할을 %s로 판별한다', (_caseName, nickname, jobId, addressId, consents, role) => {
-    expect(
-      registrationRoleFor({
-        nickname,
-        jobId,
-        addressId,
-        requiredConsentAgreements: consents,
-      }),
-    ).toBe(role);
-  });
+  ])(
+    '%s이면 가입 역할을 %s로 판별한다',
+    (_caseName, nickname, jobId, addressId, consents, role) => {
+      expect(
+        registrationRoleFor({
+          nickname,
+          jobId,
+          addressId,
+          requiredConsentAgreements: consents,
+        }),
+      ).toBe(role);
+    },
+  );
 });
