@@ -12,8 +12,11 @@ import {
   deriveOccurrenceStatus,
   isDateOnly,
   createJogakSchedule,
+  occursOn,
+  currentScheduleIndexOn,
+  representativeScheduleIndexOn,
+  successorScheduleIndexOf,
 } from '../../domain/policy/jogakSchedule.policy';
-import { JogakSchedules, type JogakSchedule } from '../../domain/vo/jogakSchedules.vo';
 import type { JogakExecutionStatus } from '../../domain/vo/jogakExecution.vo';
 import type { JogakScheduleType, ValidatedJogakSchedule } from '../../domain/vo/jogakSchedule.vo';
 import type { MogakRepositoryPort } from '../port/mogak.repository.port';
@@ -34,7 +37,7 @@ export const KST_DATE_PROVIDER = Symbol('KST_DATE_PROVIDER');
 
 type ScheduleRecord = Readonly<{
   scheduleId: number;
-  schedule: JogakSchedule;
+  schedule: ValidatedJogakSchedule;
   jogakId: number;
   mogakId: number;
   mogakTitle: string;
@@ -76,7 +79,7 @@ export class JogaksService implements OwnedOccurrencePort {
       category: categoryOf(created.categoryCode, created.categoryName, created.customCategoryName),
       title: created.title,
       color: created.color,
-      schedule: scheduleResponse(created),
+      schedule: scheduleResponse(schedule),
     };
   }
 
@@ -109,8 +112,13 @@ export class JogaksService implements OwnedOccurrencePort {
     );
     const achievements = (await this.repository.listSuccessCounts([jogakId]))[0]?.achievements ?? 0;
     const today = this.today();
-    const history = scheduleHistory(schedules);
-    const currentOrLatest = selectRecord(schedules, history.representativeOn(today));
+    const currentOrLatest = recordAt(
+      schedules,
+      representativeScheduleIndexOn(
+        schedules.map(({ schedule }) => schedule),
+        today,
+      ),
+    );
     return {
       jogakId: jogak.id,
       mogakId: jogak.mogakId,
@@ -119,12 +127,11 @@ export class JogaksService implements OwnedOccurrencePort {
       title: jogak.title,
       color: jogak.color,
       isRoutine: currentOrLatest?.schedule.scheduleType === 'WEEKLY',
-      days: currentOrLatest === undefined ? [] : currentOrLatest.schedule.toSnapshot().weekdays,
+      days: currentOrLatest === undefined ? [] : [...currentOrLatest.schedule.weekdays],
       startDate: currentOrLatest?.schedule.effectiveFrom ?? null,
-      endDate:
-        currentOrLatest === undefined ? null : currentOrLatest.schedule.toSnapshot().effectiveTo,
+      endDate: currentOrLatest === undefined ? null : currentOrLatest.schedule.effectiveTo,
       achievements,
-      schedules: schedules.map(({ schedule }) => scheduleResponse(schedule.toSnapshot())),
+      schedules: schedules.map(({ schedule }) => scheduleResponse(schedule)),
     };
   }
 
@@ -140,15 +147,16 @@ export class JogaksService implements OwnedOccurrencePort {
       input.schedule === undefined
         ? []
         : groupScheduleRows(await this.repository.listScheduleRowsForOwnedJogak(userId, jogakId));
-    const history = scheduleHistory(scheduleRows);
-    const activeSchedule = selectRecord(scheduleRows, history.currentOn(today));
+    const scheduleValues = scheduleRows.map(({ schedule }) => schedule);
+    const activeScheduleIndex = currentScheduleIndexOn(scheduleValues, today);
+    const activeSchedule = recordAt(scheduleRows, activeScheduleIndex);
     if (input.schedule !== undefined && activeSchedule === undefined) {
       throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
     }
     const successorSchedule =
       input.schedule === undefined
         ? undefined
-        : selectRecord(scheduleRows, history.successorOf(activeSchedule!.schedule));
+        : recordAt(scheduleRows, successorScheduleIndexOf(scheduleValues, activeScheduleIndex!));
     if (
       input.schedule?.scheduleType === 'WEEKLY' &&
       input.schedule.effectiveTo !== undefined &&
@@ -209,7 +217,7 @@ export class JogaksService implements OwnedOccurrencePort {
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
     if (jogak === null) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
-    const occurrenceSchedule = schedules.find(({ schedule }) => schedule.occursOn(scheduledDate));
+    const occurrenceSchedule = schedules.find(({ schedule }) => occursOn(schedule, scheduledDate));
     if (occurrenceSchedule === undefined) {
       throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
     }
@@ -238,7 +246,7 @@ export class JogaksService implements OwnedOccurrencePort {
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
     if (jogak === null) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
-    if (!schedules.some(({ schedule }) => schedule.occursOn(scheduledDate))) {
+    if (!schedules.some(({ schedule }) => occursOn(schedule, scheduledDate))) {
       throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
     }
     return { jogakId: jogak.id, mogakId: jogak.mogakId, title: jogak.title };
@@ -279,7 +287,7 @@ export class JogaksService implements OwnedOccurrencePort {
 
     for (const schedule of schedules) {
       for (const scheduledDate of datesInclusive(startDate, endDate)) {
-        if (!schedule.schedule.occursOn(scheduledDate)) continue;
+        if (!occursOn(schedule.schedule, scheduledDate)) continue;
         const execution =
           executionByNaturalKey.get(executionKey(schedule.jogakId, scheduledDate)) ?? null;
         occurrences.push({
@@ -367,7 +375,7 @@ export class JogaksService implements OwnedOccurrencePort {
 
 function validateSchedule(input: ScheduleCommand): ValidatedJogakSchedule {
   try {
-    return createJogakSchedule(input).toSnapshot();
+    return createJogakSchedule(input);
   } catch (error) {
     if (error instanceof RangeError && error.message === 'weekdays are required') {
       throw new DomainException(DomainErrorCode.ROUTINE_WEEKDAYS_REQUIRED);
@@ -404,10 +412,7 @@ function groupScheduleRows(rows: readonly OccurrenceScheduleResult[]): ScheduleR
       }
       schedules.set(
         row.scheduleId,
-        scheduleRecord(row, categoryName, [
-          ...existing.schedule.toSnapshot().weekdays,
-          row.weekday,
-        ]),
+        scheduleRecord(row, categoryName, [...existing.schedule.weekdays, row.weekday]),
       );
     }
   }
@@ -450,20 +455,17 @@ function scheduleRecord(
   }
 }
 
-function scheduleHistory(records: readonly ScheduleRecord[]): JogakSchedules {
-  return JogakSchedules.create(records.map(({ schedule }) => schedule));
-}
-
-function selectRecord(
+function recordAt(
   records: readonly ScheduleRecord[],
-  schedule: JogakSchedule | undefined,
+  index: number | undefined,
 ): ScheduleRecord | undefined {
-  return schedule === undefined
-    ? undefined
-    : records.find((record) => record.schedule === schedule);
+  return index === undefined ? undefined : records[index];
 }
 
 function scheduleResponse(schedule: ValidatedJogakSchedule): ValidatedJogakSchedule {
+  if (schedule.scheduleType === 'ONCE') {
+    return { ...schedule, weekdays: [] };
+  }
   return { ...schedule, weekdays: [...schedule.weekdays] };
 }
 
