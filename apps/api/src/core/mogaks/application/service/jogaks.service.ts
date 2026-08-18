@@ -153,36 +153,14 @@ export class JogaksService implements OwnedOccurrencePort {
     if (input.schedule !== undefined && activeSchedule === undefined) {
       throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
     }
-    const successorSchedule =
-      input.schedule === undefined
-        ? undefined
-        : recordAt(scheduleRows, successorScheduleIndexOf(scheduleValues, activeScheduleIndex!));
-    if (
-      input.schedule?.scheduleType === 'WEEKLY' &&
-      input.schedule.effectiveTo !== undefined &&
-      successorSchedule !== undefined &&
-      input.schedule.effectiveTo >= successorSchedule.schedule.effectiveFrom
-    ) {
-      throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
-    }
     const schedule =
       input.schedule === undefined
         ? undefined
-        : {
-            scheduleId: activeSchedule!.scheduleId,
-            ...validateSchedule({
-              scheduleType: input.schedule.scheduleType,
-              effectiveFrom: activeSchedule!.schedule.effectiveFrom,
-              weekdays: input.schedule.weekdays,
-              ...(input.schedule.scheduleType === 'WEEKLY' &&
-              input.schedule.effectiveTo === undefined &&
-              successorSchedule !== undefined
-                ? { effectiveTo: previousDate(successorSchedule.schedule.effectiveFrom) }
-                : input.schedule.effectiveTo === undefined
-                  ? {}
-                  : { effectiveTo: input.schedule.effectiveTo }),
-            }),
-          };
+        : replacementSchedule(
+            input.schedule,
+            activeSchedule!,
+            recordAt(scheduleRows, successorScheduleIndexOf(scheduleValues, activeScheduleIndex!)),
+          );
     const updated = await this.repository.patchOwnedJogak({
       userId,
       jogakId,
@@ -467,6 +445,37 @@ function scheduleResponse(schedule: ValidatedJogakSchedule): ValidatedJogakSched
     return { ...schedule, weekdays: [] };
   }
   return { ...schedule, weekdays: [...schedule.weekdays] };
+}
+
+function replacementSchedule(
+  input: NonNullable<UpdateJogakCommand['schedule']>,
+  active: ScheduleRecord,
+  successor: ScheduleRecord | undefined,
+) {
+  if (
+    input.scheduleType === 'WEEKLY' &&
+    input.effectiveTo !== undefined &&
+    successor !== undefined &&
+    input.effectiveTo >= successor.schedule.effectiveFrom
+  ) {
+    throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
+  }
+
+  return {
+    scheduleId: active.scheduleId,
+    ...validateSchedule({
+      scheduleType: input.scheduleType,
+      effectiveFrom: active.schedule.effectiveFrom,
+      weekdays: input.weekdays,
+      ...(input.scheduleType === 'WEEKLY' &&
+      input.effectiveTo === undefined &&
+      successor !== undefined
+        ? { effectiveTo: previousDate(successor.schedule.effectiveFrom) }
+        : input.effectiveTo === undefined
+          ? {}
+          : { effectiveTo: input.effectiveTo }),
+    }),
+  };
 }
 
 function previousDate(date: string): string {
