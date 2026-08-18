@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>조각 일정 함수형 모델 구현 제어</title>
+    <style>
+      body {
+        max-width: 900px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        color: #172033;
+      }
+      header,
+      section {
+        margin: 1rem 0;
+        padding: 1rem;
+        border: 1px solid #d7dee9;
+        border-radius: 8px;
+      }
+      code {
+        background: #f1f5f9;
+        padding: 0.1rem 0.25rem;
+      }
+      .state {
+        color: #9a3412;
+        font-weight: 700;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 0.55rem;
+        border: 1px solid #d7dee9;
+        text-align: left;
+        vertical-align: top;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>조각 일정 함수형 모델 구현 제어</h1>
+      <dl>
+        <dt>목적</dt>
+        <dd>
+          조각 일정 규칙을 순수 함수와 discriminated union으로 유지하며 런타임 클래스를 제거한다.
+        </dd>
+        <dt>사용자</dt>
+        <dd>Jogak 일정 기능을 유지보수하는 백엔드 개발자와 API 사용자.</dd>
+        <dt>문제</dt>
+        <dd>
+          일정 row를 클래스 객체로 재구성한 후 plain DTO로 되돌리는 중간 할당과 복잡도가 있다.
+        </dd>
+        <dt>핵심 흐름</dt>
+        <dd>요청/영속 row → 검증된 plain schedule → 순수 발생·선택 함수 → 기존 배열 DTO.</dd>
+        <dt>기준 설계</dt>
+        <dd>
+          <a href="functional-jogak-schedule-model-alternative-design.html"
+            >승인됨 (2026-08-18 18:05 KST)</a
+          >
+        </dd>
+        <dt>상태</dt>
+        <dd><span class="state">구현 완료</span></dd>
+      </dl>
+    </header>
+    <nav aria-label="구현 제어 탐색">
+      <a href="#baseline-reference">승인 기준</a> · <a href="#current-implementation">구현</a> ·
+      <a href="#issue-register">이슈</a> · <a href="#verification-evidence">검증</a>
+    </nav>
+    <main>
+      <article>
+        <section id="baseline-reference">
+          <h2>승인 기준</h2>
+          <p>
+            ONCE/WEEKLY discriminated union, weekday 검증·복사, 발생·대표·후속 선택 순수 함수로
+            바꾼다. API·DB·repository DTO와 선택·오류 의미는 유지한다.
+          </p>
+        </section>
+        <section id="current-implementation">
+          <h2>현재 구현</h2>
+          <p>
+            <code>ValidatedJogakSchedule</code>을 ONCE/WEEKLY discriminated union으로 바꾸고,
+            생성·요일 검증·발생·이력 선택을 순수 함수로 옮겼다. service는 plain schedule을 직접
+            사용하며 runtime class, <code>instanceof</code>, <code>toSnapshot()</code>, identity
+            기반 재탐색을 제거했다.
+          </p>
+        </section>
+        <section id="implementation-status">
+          <h2>구현 상태</h2>
+          <p>
+            구현 완료 — API·DB·repository DTO와 대표·수정·후속 선택 및 persistence 오류 의미를
+            유지했다.
+          </p>
+        </section>
+        <section id="issue-register">
+          <h2>이슈 등록부</h2>
+          <table>
+            <caption>
+              구현 중 확인된 이슈
+            </caption>
+            <thead>
+              <tr>
+                <th>ID·상태</th>
+                <th>영향</th>
+                <th>조치</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>없음 · 해당 없음</td>
+                <td>구현·전체 검증에서 설계와 다른 동작은 확인되지 않았다.</td>
+                <td>해당 없음.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section id="verification-evidence">
+          <h2>검증 근거</h2>
+          <p>
+            <code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>,
+            <code>git diff --check</code>: 통과. 집중 Jest: 4 suites, 31 tests 통과.
+            <code>node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand</code>:
+            전체 54 suites, 235 tests 통과. <code>pnpm build</code>: 통과.
+          </p>
+        </section>
+        <section id="verification-gaps">
+          <h2>검증 공백</h2>
+          <p>
+            프로덕션 일정 수와 요청 빈도 측정값이 없어 GC 감소 폭은 정량화하지 않았다. 이 변경은
+            측정된 성능 개선이 아니라 객체 변환·할당 감소와 코드 단순화를 목표로 한다.
+          </p>
+        </section>
+        <section id="residual-risks">
+          <h2>잔여 위험</h2>
+          <p>
+            <code>readonly</code>는 런타임 freeze가 아니다. 기존 계약처럼 생성·응답 경계에서 배열
+            복사로 mutation 영향을 차단한다.
+          </p>
+        </section>
+        <section id="implementation-control-state">
+          <h2>구현 제어 상태</h2>
+          <p>기술 상태: 구현 완료(전체 정적·빌드·테스트 게이트 통과). 개발자 운영 이해: 미실시.</p>
+        </section>
+      </article>
+    </main>
+  </body>
+</html>
