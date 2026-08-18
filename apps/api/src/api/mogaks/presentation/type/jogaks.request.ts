@@ -34,7 +34,20 @@ export const createJogakRequestSchema = z
   .strict();
 export type CreateJogakRequest = z.infer<typeof createJogakRequestSchema>;
 export const updateJogakRequestSchema = z
-  .object({ title: requiredTextSchema(1, 100), schedule: scheduleRequestSchema.optional() })
+  .object({
+    title: requiredTextSchema(1, 100).optional(),
+    schedule: z
+      .object({
+        scheduleType: z.string().min(1),
+        effectiveTo: calendarDateSchema.optional(),
+        weekdays: z.array(z.string()),
+      })
+      .strict()
+      .optional(),
+  })
+  .refine((request) => request.title !== undefined || request.schedule !== undefined, {
+    message: 'title or schedule is required',
+  })
   .strict();
 export type UpdateJogakRequest = z.infer<typeof updateJogakRequestSchema>;
 export const mogakJogakParamSchema = z.object({ mogakId: positiveIdSchema }).strict();

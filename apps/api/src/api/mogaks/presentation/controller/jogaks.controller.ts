@@ -5,8 +5,8 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Patch,
   Post,
-  Put,
   Res,
   UseGuards,
 } from '@nestjs/common';
@@ -108,7 +108,7 @@ export class JogaksController {
     return successResponse(await this.jogaks.getDetail(user.userId, params.jogakId));
   }
 
-  @Put('jogaks/:jogakId')
+  @Patch('jogaks/:jogakId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async update(
     @CurrentUser() user: AuthenticatedUser,
@@ -117,10 +117,18 @@ export class JogaksController {
   ) {
     return successResponse(
       await this.jogaks.update(user.userId, params.jogakId, {
-        title: request.title,
+        ...(request.title === undefined ? {} : { title: request.title }),
         ...(request.schedule === undefined
           ? {}
-          : { schedule: explicitScheduleFor(request.schedule) }),
+          : {
+              schedule: {
+                scheduleType: request.schedule.scheduleType as 'ONCE' | 'WEEKLY',
+                ...(request.schedule.effectiveTo === undefined
+                  ? {}
+                  : { effectiveTo: request.schedule.effectiveTo }),
+                weekdays: request.schedule.weekdays,
+              },
+            }),
       }),
     );
   }

@@ -46,22 +46,16 @@ export interface MogakRepositoryPort {
   ): Promise<MogakResult | null>;
   deleteOwnedMogak(userId: number, mogakId: number): Promise<boolean>;
   findOwnedJogak(userId: number, jogakId: number): Promise<OwnedJogakResult | null>;
-  updateOwnedJogakTitle(
-    userId: number,
-    jogakId: number,
-    title: string,
-    now: Date,
-  ): Promise<OwnedJogakResult | null>;
-  deleteOwnedJogak(userId: number, jogakId: number): Promise<boolean>;
-  replaceOwnedJogakSchedule(
+  patchOwnedJogak(
     input: Readonly<{
       userId: number;
       jogakId: number;
-      title: string;
-      schedule: ValidatedJogakSchedule;
+      title?: string;
+      schedule?: Readonly<{ scheduleId: number }> & ValidatedJogakSchedule;
       now: Date;
     }>,
-  ): Promise<OwnedJogakResult | null | 'INVALID_EFFECTIVE_FROM'>;
+  ): Promise<OwnedJogakResult | null>;
+  deleteOwnedJogak(userId: number, jogakId: number): Promise<boolean>;
   countJogaksWithCurrentOrFutureSchedule(mogakId: number, today: string): Promise<number>;
   createJogakWithSchedule(
     input: Readonly<{ mogak: MogakResult; title: string; schedule: ValidatedJogakSchedule }>,
