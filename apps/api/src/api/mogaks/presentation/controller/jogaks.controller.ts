@@ -20,6 +20,7 @@ import { successResponse } from '@api/common/http/apiResponse';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { ZodBody, ZodParams, ZodQuery } from '@api/common/validation/zodParameter.decorator';
 import { JogaksService } from '@core/mogaks/application/service/jogaks.service';
+import type { UpdateJogakCommand } from '@core/mogaks/application/type/jogak.command';
 import type { JogakExecutionStatus } from '@core/mogaks/domain/vo/jogakExecution.vo';
 import {
   createJogakRequestSchema,
@@ -116,20 +117,7 @@ export class JogaksController {
     @ZodBody(updateJogakRequestSchema) request: UpdateJogakRequest,
   ) {
     return successResponse(
-      await this.jogaks.update(user.userId, params.jogakId, {
-        ...(request.title === undefined ? {} : { title: request.title }),
-        ...(request.schedule === undefined
-          ? {}
-          : {
-              schedule: {
-                scheduleType: request.schedule.scheduleType as 'ONCE' | 'WEEKLY',
-                ...(request.schedule.effectiveTo === undefined
-                  ? {}
-                  : { effectiveTo: request.schedule.effectiveTo }),
-                weekdays: request.schedule.weekdays,
-              },
-            }),
-      }),
+      await this.jogaks.update(user.userId, params.jogakId, updateCommandFor(request)),
     );
   }
 
@@ -232,5 +220,22 @@ function explicitScheduleFor(request: ScheduleRequest) {
     effectiveFrom: request.effectiveFrom,
     ...(request.effectiveTo === undefined ? {} : { effectiveTo: request.effectiveTo }),
     ...(request.weekdays === undefined ? {} : { weekdays: request.weekdays }),
+  };
+}
+
+function updateCommandFor(request: UpdateJogakRequest): UpdateJogakCommand {
+  return {
+    ...(request.title === undefined ? {} : { title: request.title }),
+    ...(request.schedule === undefined
+      ? {}
+      : {
+          schedule: {
+            scheduleType: request.schedule.scheduleType as 'ONCE' | 'WEEKLY',
+            ...(request.schedule.effectiveTo === undefined
+              ? {}
+              : { effectiveTo: request.schedule.effectiveTo }),
+            weekdays: request.schedule.weekdays,
+          },
+        }),
   };
 }

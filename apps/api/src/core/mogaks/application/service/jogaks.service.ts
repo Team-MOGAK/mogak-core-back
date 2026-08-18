@@ -155,57 +155,18 @@ export class JogaksService implements OwnedOccurrencePort {
       input.schedule === undefined
         ? []
         : groupScheduleRows(await this.repository.listScheduleRowsForOwnedJogak(userId, jogakId));
-    const activeSchedule = scheduleRows
-      .filter((schedule) =>
-        schedule.scheduleType === 'ONCE'
-          ? schedule.effectiveFrom === today
-          : schedule.effectiveFrom <= today &&
-            (schedule.effectiveTo === null || schedule.effectiveTo >= today),
-      )
-      .sort(
-        (left, right) =>
-          right.effectiveFrom.localeCompare(left.effectiveFrom) ||
-          right.scheduleId - left.scheduleId,
-      )[0];
+    const activeSchedule = activeScheduleOn(scheduleRows, today);
     if (input.schedule !== undefined && activeSchedule === undefined) {
-      throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
-    }
-    const successorSchedule =
-      input.schedule === undefined
-        ? undefined
-        : scheduleRows
-            .filter((schedule) => schedule.effectiveFrom > activeSchedule!.effectiveFrom)
-            .sort(
-              (left, right) =>
-                left.effectiveFrom.localeCompare(right.effectiveFrom) ||
-                left.scheduleId - right.scheduleId,
-            )[0];
-    if (
-      input.schedule?.scheduleType === 'WEEKLY' &&
-      input.schedule.effectiveTo !== undefined &&
-      successorSchedule !== undefined &&
-      input.schedule.effectiveTo >= successorSchedule.effectiveFrom
-    ) {
       throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
     }
     const schedule =
       input.schedule === undefined
         ? undefined
-        : {
-            scheduleId: activeSchedule!.scheduleId,
-            ...validateSchedule({
-              scheduleType: input.schedule.scheduleType,
-              effectiveFrom: activeSchedule!.effectiveFrom,
-              weekdays: input.schedule.weekdays,
-              ...(input.schedule.scheduleType === 'WEEKLY' &&
-              input.schedule.effectiveTo === undefined &&
-              successorSchedule !== undefined
-                ? { effectiveTo: previousDate(successorSchedule.effectiveFrom) }
-                : input.schedule.effectiveTo === undefined
-                  ? {}
-                  : { effectiveTo: input.schedule.effectiveTo }),
-            }),
-          };
+        : replacementSchedule(
+            input.schedule,
+            activeSchedule!,
+            successorOf(scheduleRows, activeSchedule!),
+          );
     const updated = await this.repository.patchOwnedJogak({
       userId,
       jogakId,
@@ -441,6 +402,66 @@ function groupScheduleRows(rows: readonly OccurrenceScheduleResult[]): ScheduleR
     }
   }
   return [...schedules.values()];
+}
+
+function activeScheduleOn(
+  schedules: readonly ScheduleRecord[],
+  today: string,
+): ScheduleRecord | undefined {
+  return schedules
+    .filter((schedule) =>
+      schedule.scheduleType === 'ONCE'
+        ? schedule.effectiveFrom === today
+        : schedule.effectiveFrom <= today &&
+          (schedule.effectiveTo === null || schedule.effectiveTo >= today),
+    )
+    .sort(
+      (left, right) =>
+        right.effectiveFrom.localeCompare(left.effectiveFrom) || right.scheduleId - left.scheduleId,
+    )[0];
+}
+
+function successorOf(
+  schedules: readonly ScheduleRecord[],
+  schedule: ScheduleRecord,
+): ScheduleRecord | undefined {
+  return schedules
+    .filter((candidate) => candidate.effectiveFrom > schedule.effectiveFrom)
+    .sort(
+      (left, right) =>
+        left.effectiveFrom.localeCompare(right.effectiveFrom) || left.scheduleId - right.scheduleId,
+    )[0];
+}
+
+function replacementSchedule(
+  input: NonNullable<UpdateJogakCommand['schedule']>,
+  active: ScheduleRecord,
+  successor: ScheduleRecord | undefined,
+) {
+  if (
+    input.scheduleType === 'WEEKLY' &&
+    input.effectiveTo !== undefined &&
+    successor !== undefined &&
+    input.effectiveTo >= successor.effectiveFrom
+  ) {
+    throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
+  }
+
+  return {
+    scheduleId: active.scheduleId,
+    ...validateSchedule({
+      scheduleType: input.scheduleType,
+      effectiveFrom: active.effectiveFrom,
+      weekdays: input.weekdays,
+      ...(input.scheduleType === 'WEEKLY' &&
+      input.effectiveTo === undefined &&
+      successor !== undefined
+        ? { effectiveTo: previousDate(successor.effectiveFrom) }
+        : input.effectiveTo === undefined
+          ? {}
+          : { effectiveTo: input.effectiveTo }),
+    }),
+  };
 }
 
 function previousDate(date: string): string {
