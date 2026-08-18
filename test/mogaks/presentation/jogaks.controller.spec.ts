@@ -169,7 +169,7 @@ describe('조각 HTTP 계약', () => {
     await request(app.getHttpServer()).put('/api/daily-jogaks/19/success').expect(404);
   });
 
-  it('인증된 조각 상세와 제목 수정과 하드 삭제 경로를 유지한다', async () => {
+  it('인증된 조각 상세와 PATCH 수정과 하드 삭제 경로를 유지한다', async () => {
     jogaks.getDetail.mockResolvedValue({ jogakId: 11, title: '문제 풀이' });
     jogaks.update.mockResolvedValue({ jogakId: 11, title: '수정된 문제 풀이' });
 
@@ -178,25 +178,36 @@ describe('조각 HTTP 계약', () => {
       .expect(200)
       .expect(({ body }) => expect(body.result).toEqual({ jogakId: 11, title: '문제 풀이' }));
     await request(app.getHttpServer())
-      .put('/api/jogaks/11')
+      .patch('/api/jogaks/11')
       .send({
-        title: '수정된 문제 풀이',
         schedule: {
           scheduleType: 'WEEKLY',
-          effectiveFrom: '2026-07-24',
           weekdays: ['THURSDAY', 'FRIDAY'],
         },
       })
       .expect(200)
       .expect(({ body }) => expect(body.result.title).toBe('수정된 문제 풀이'));
     expect(jogaks.update).toHaveBeenCalledWith(7, 11, {
-      title: '수정된 문제 풀이',
       schedule: {
         scheduleType: 'WEEKLY',
-        effectiveFrom: '2026-07-24',
         weekdays: ['THURSDAY', 'FRIDAY'],
       },
     });
+
+    await request(app.getHttpServer())
+      .put('/api/jogaks/11')
+      .send({ title: '수정된 문제 풀이' })
+      .expect(404);
+    await request(app.getHttpServer())
+      .patch('/api/jogaks/11')
+      .send({ schedule: { scheduleType: 'WEEKLY', effectiveFrom: '2026-07-24' } })
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+    await request(app.getHttpServer())
+      .patch('/api/jogaks/11')
+      .send({ schedule: { scheduleType: 'WEEKLY' } })
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
 
     await request(app.getHttpServer()).delete('/api/jogaks/11').expect(200);
     expect(jogaks.delete).toHaveBeenCalledWith(7, 11);

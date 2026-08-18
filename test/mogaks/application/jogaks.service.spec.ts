@@ -17,8 +17,7 @@ function repository(): MogakRepositoryPort {
     insertExecution: testMock(),
     findExecution: testMock(),
     updateExecutionStatus: testMock(),
-    updateOwnedJogakTitle: testMock(),
-    replaceOwnedJogakSchedule: testMock(),
+    patchOwnedJogak: testMock(),
     deleteOwnedJogak: testMock(),
   } as unknown as MogakRepositoryPort;
 }
@@ -276,7 +275,7 @@ describe('조각 서비스', () => {
 
   it('실행 스냅샷을 덮어쓰지 않고 현재 조각 제목만 수정한다', async () => {
     const mogaks = repository();
-    jest.mocked(mogaks.updateOwnedJogakTitle).mockResolvedValue({
+    jest.mocked(mogaks.patchOwnedJogak).mockResolvedValue({
       ...ownedJogak,
       title: '수정된 문제 풀이',
     });
@@ -286,11 +285,8 @@ describe('조각 서비스', () => {
       jogakId: 11,
       title: '수정된 문제 풀이',
     });
-    expect(mogaks.updateOwnedJogakTitle).toHaveBeenCalledWith(
-      7,
-      11,
-      '수정된 문제 풀이',
-      expect.any(Date),
+    expect(mogaks.patchOwnedJogak).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, jogakId: 11, title: '수정된 문제 풀이' }),
     );
   });
 
@@ -345,36 +341,157 @@ describe('조각 서비스', () => {
     );
   });
 
-  it('기존 실행 스냅샷을 덮어쓰지 않고 미래 일정을 교체한다', async () => {
+  it('후속 일정이 있으면 KST 오늘 활성인 주간 일정의 생략된 종료일을 전날로 보정한다', async () => {
     const mogaks = repository();
-    jest.mocked(mogaks.replaceOwnedJogakSchedule).mockResolvedValue({
+    jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    jest.mocked(mogaks.listScheduleRowsForOwnedJogak).mockResolvedValue([
+      {
+        scheduleId: 5,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'WEEKLY',
+        effectiveFrom: '2026-07-20',
+        effectiveTo: null,
+        weekday: 'MONDAY',
+      },
+      {
+        scheduleId: 6,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'WEEKLY',
+        effectiveFrom: '2026-08-01',
+        effectiveTo: null,
+        weekday: 'THURSDAY',
+      },
+    ]);
+    jest.mocked(mogaks.patchOwnedJogak).mockResolvedValue({
       ...ownedJogak,
-      title: '수정된 문제 풀이',
     });
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
     await expect(
       service.update(7, 11, {
-        title: '수정된 문제 풀이',
         schedule: {
           scheduleType: 'WEEKLY',
-          effectiveFrom: '2026-07-24',
           weekdays: ['THURSDAY', 'FRIDAY'],
         },
       }),
-    ).resolves.toMatchObject({ jogakId: 11, title: '수정된 문제 풀이' });
-    expect(mogaks.replaceOwnedJogakSchedule).toHaveBeenCalledWith(
+    ).resolves.toMatchObject({ jogakId: 11, title: '문제 풀이' });
+    expect(mogaks.patchOwnedJogak).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 7,
         jogakId: 11,
-        title: '수정된 문제 풀이',
         schedule: {
+          scheduleId: 5,
           scheduleType: 'WEEKLY',
-          effectiveFrom: '2026-07-24',
-          effectiveTo: null,
+          effectiveFrom: '2026-07-20',
+          effectiveTo: '2026-07-31',
           weekdays: ['THURSDAY', 'FRIDAY'],
         },
       }),
     );
+  });
+
+  it('후속 일정 시작일 이후의 명시적 종료일은 J009으로 거부한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    jest.mocked(mogaks.listScheduleRowsForOwnedJogak).mockResolvedValue([
+      {
+        scheduleId: 5,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'WEEKLY',
+        effectiveFrom: '2026-07-20',
+        effectiveTo: null,
+        weekday: 'MONDAY',
+      },
+      {
+        scheduleId: 6,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'WEEKLY',
+        effectiveFrom: '2026-08-01',
+        effectiveTo: null,
+        weekday: 'THURSDAY',
+      },
+    ]);
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await expect(
+      service.update(7, 11, {
+        schedule: {
+          scheduleType: 'WEEKLY',
+          effectiveTo: '2026-08-01',
+          weekdays: ['THURSDAY'],
+        },
+      }),
+    ).rejects.toEqual(new DomainException(DomainErrorCode.INVALID_SCHEDULE));
+    expect(mogaks.patchOwnedJogak).not.toHaveBeenCalled();
+  });
+
+  it('요일과 무관하게 KST 오늘의 한 번 일정을 수정 대상으로 선택한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    jest.mocked(mogaks.listScheduleRowsForOwnedJogak).mockResolvedValue([
+      {
+        scheduleId: 9,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'ONCE',
+        effectiveFrom: '2026-07-23',
+        effectiveTo: null,
+        weekday: null,
+      },
+    ]);
+    jest.mocked(mogaks.patchOwnedJogak).mockResolvedValue(ownedJogak);
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await service.update(7, 11, { schedule: { scheduleType: 'ONCE', weekdays: [] } });
+
+    expect(mogaks.patchOwnedJogak).toHaveBeenCalledWith(
+      expect.objectContaining({ schedule: expect.objectContaining({ scheduleId: 9 }) }),
+    );
+  });
+
+  it('KST 오늘 활성 일정이 없으면 J009으로 거부한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    jest.mocked(mogaks.listScheduleRowsForOwnedJogak).mockResolvedValue([]);
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await expect(
+      service.update(7, 11, { schedule: { scheduleType: 'ONCE', weekdays: [] } }),
+    ).rejects.toEqual(new DomainException(DomainErrorCode.INVALID_SCHEDULE));
+    expect(mogaks.patchOwnedJogak).not.toHaveBeenCalled();
   });
 });

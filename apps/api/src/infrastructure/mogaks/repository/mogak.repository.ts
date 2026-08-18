@@ -35,15 +35,10 @@ type CreateModaratInput = Parameters<MogakRepositoryPort['createModarat']>[0];
 type UpdateModaratInput = Parameters<MogakRepositoryPort['updateOwnedModarat']>[0];
 type CreateMogakInput = Parameters<MogakRepositoryPort['createMogak']>[0];
 type UpdateMogakInput = Parameters<MogakRepositoryPort['updateOwnedMogak']>[0];
-type ReplaceOwnedJogakScheduleInput = Parameters<
-  MogakRepositoryPort['replaceOwnedJogakSchedule']
->[0];
+type PatchOwnedJogakInput = Parameters<MogakRepositoryPort['patchOwnedJogak']>[0];
 type CreateJogakWithScheduleInput = Parameters<MogakRepositoryPort['createJogakWithSchedule']>[0];
 type OccurrenceScheduleQuery = Parameters<MogakRepositoryPort['listOccurrenceScheduleRows']>[0];
 type InsertExecutionInput = Parameters<MogakRepositoryPort['insertExecution']>[0];
-type ReplaceOwnedJogakScheduleResult = Awaited<
-  ReturnType<MogakRepositoryPort['replaceOwnedJogakSchedule']>
->;
 type DeletionTransaction = Pick<Database, 'delete' | 'select'>;
 
 @Injectable()
@@ -220,20 +215,47 @@ export class MogakRepository implements MogakRepositoryPort {
     return jogak ?? null;
   }
 
-  async updateOwnedJogakTitle(
-    userId: number,
-    jogakId: number,
-    title: string,
-    now: Date,
-  ): Promise<OwnedJogakResult | null> {
-    const owned = await this.findOwnedJogak(userId, jogakId);
+  async patchOwnedJogak(input: PatchOwnedJogakInput): Promise<OwnedJogakResult | null> {
+    const owned = await this.findOwnedJogak(input.userId, input.jogakId);
     if (owned === null) return null;
-    const [updated] = await this.db
-      .update(jogaks)
-      .set({ title, updatedAt: now })
-      .where(and(eq(jogaks.id, jogakId), eq(jogaks.mogakId, owned.mogakId)))
-      .returning({ id: jogaks.id });
-    return updated === undefined ? null : { ...owned, title };
+
+    return this.db.transaction(async (tx) => {
+      const [updatedJogak] = await tx
+        .update(jogaks)
+        .set({ ...(input.title === undefined ? {} : { title: input.title }), updatedAt: input.now })
+        .where(and(eq(jogaks.id, input.jogakId), eq(jogaks.mogakId, owned.mogakId)))
+        .returning({ id: jogaks.id });
+      if (updatedJogak === undefined) return null;
+      if (input.schedule !== undefined) {
+        const schedule = input.schedule;
+        const [updatedSchedule] = await tx
+          .update(jogakSchedules)
+          .set({
+            scheduleType: schedule.scheduleType,
+            effectiveTo: schedule.effectiveTo,
+          })
+          .where(
+            and(
+              eq(jogakSchedules.id, schedule.scheduleId),
+              eq(jogakSchedules.jogakId, input.jogakId),
+            ),
+          )
+          .returning({ id: jogakSchedules.id });
+        if (updatedSchedule === undefined) return null;
+        await tx
+          .delete(jogakScheduleWeekdays)
+          .where(eq(jogakScheduleWeekdays.scheduleId, schedule.scheduleId));
+        if (schedule.weekdays.length > 0) {
+          await tx.insert(jogakScheduleWeekdays).values(
+            schedule.weekdays.map((weekday) => ({
+              scheduleId: schedule.scheduleId,
+              weekday,
+            })),
+          );
+        }
+      }
+      return { ...owned, ...(input.title === undefined ? {} : { title: input.title }) };
+    });
   }
 
   async deleteOwnedJogak(userId: number, jogakId: number): Promise<boolean> {
@@ -263,7 +285,10 @@ export class MogakRepository implements MogakRepositoryPort {
     return rows.map((row) => row.id);
   }
 
-  private async deleteMogakTree(tx: DeletionTransaction, mogakIds: readonly number[]): Promise<void> {
+  private async deleteMogakTree(
+    tx: DeletionTransaction,
+    mogakIds: readonly number[],
+  ): Promise<void> {
     if (mogakIds.length === 0) return;
     const rows = await tx
       .select({ id: jogaks.id })
@@ -276,7 +301,10 @@ export class MogakRepository implements MogakRepositoryPort {
     await tx.delete(mogaks).where(inArray(mogaks.id, [...mogakIds]));
   }
 
-  private async deleteJogakTree(tx: DeletionTransaction, jogakIds: readonly number[]): Promise<void> {
+  private async deleteJogakTree(
+    tx: DeletionTransaction,
+    jogakIds: readonly number[],
+  ): Promise<void> {
     if (jogakIds.length === 0) return;
     const schedules = await tx
       .select({ id: jogakSchedules.id })
@@ -291,82 +319,6 @@ export class MogakRepository implements MogakRepositoryPort {
     }
     await tx.delete(jogakExecutions).where(inArray(jogakExecutions.jogakId, [...jogakIds]));
     await tx.delete(jogaks).where(inArray(jogaks.id, [...jogakIds]));
-  }
-
-  async replaceOwnedJogakSchedule(
-    input: ReplaceOwnedJogakScheduleInput,
-  ): Promise<ReplaceOwnedJogakScheduleResult> {
-    const owned = await this.findOwnedJogak(input.userId, input.jogakId);
-    if (owned === null) return null;
-
-    return this.db.transaction(async (tx) => {
-      const schedules = await tx
-        .select({
-          id: jogakSchedules.id,
-          effectiveFrom: jogakSchedules.effectiveFrom,
-          effectiveTo: jogakSchedules.effectiveTo,
-        })
-        .from(jogakSchedules)
-        .where(eq(jogakSchedules.jogakId, input.jogakId));
-      if (schedules.some((schedule) => schedule.effectiveFrom === input.schedule.effectiveFrom)) {
-        return 'INVALID_EFFECTIVE_FROM';
-      }
-
-      const active = schedules
-        .filter(
-          (schedule) =>
-            schedule.effectiveFrom < input.schedule.effectiveFrom &&
-            (schedule.effectiveTo === null || schedule.effectiveTo >= input.schedule.effectiveFrom),
-        )
-        .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0];
-      const successor = schedules
-        .filter((schedule) => schedule.effectiveFrom > input.schedule.effectiveFrom)
-        .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom))[0];
-      if (
-        successor !== undefined &&
-        input.schedule.effectiveTo !== null &&
-        input.schedule.effectiveTo >= successor.effectiveFrom
-      ) {
-        return 'INVALID_EFFECTIVE_FROM';
-      }
-
-      const effectiveTo =
-        input.schedule.scheduleType === 'ONCE'
-          ? null
-          : (input.schedule.effectiveTo ??
-            (successor === undefined ? null : previousDate(successor.effectiveFrom)));
-
-      if (active !== undefined) {
-        await tx
-          .update(jogakSchedules)
-          .set({ effectiveTo: previousDate(input.schedule.effectiveFrom) })
-          .where(eq(jogakSchedules.id, active.id));
-      }
-      await tx
-        .update(jogaks)
-        .set({ title: input.title, updatedAt: input.now })
-        .where(and(eq(jogaks.id, input.jogakId), eq(jogaks.mogakId, owned.mogakId)));
-      const [createdSchedule] = await tx
-        .insert(jogakSchedules)
-        .values({
-          jogakId: input.jogakId,
-          scheduleType: input.schedule.scheduleType,
-          effectiveFrom: input.schedule.effectiveFrom,
-          effectiveTo,
-        })
-        .returning({ id: jogakSchedules.id });
-      if (createdSchedule === undefined)
-        throw new MogakPersistenceException('Jogak schedule insert did not return a row');
-      if (input.schedule.weekdays.length > 0) {
-        await tx.insert(jogakScheduleWeekdays).values(
-          input.schedule.weekdays.map((weekday) => ({
-            scheduleId: createdSchedule.id,
-            weekday,
-          })),
-        );
-      }
-      return { ...owned, title: input.title };
-    });
   }
 
   async countJogaksWithCurrentOrFutureSchedule(mogakId: number, today: string): Promise<number> {
@@ -670,10 +622,4 @@ function selectExecutionFields() {
     status: jogakExecutions.status,
     jogakTitleSnapshot: jogakExecutions.jogakTitleSnapshot,
   };
-}
-
-function previousDate(value: string): string {
-  const date = new Date(`${value}T00:00:00.000Z`);
-  date.setUTCDate(date.getUTCDate() - 1);
-  return date.toISOString().slice(0, 10);
 }

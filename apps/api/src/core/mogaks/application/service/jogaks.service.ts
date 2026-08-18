@@ -144,20 +144,75 @@ export class JogaksService implements OwnedOccurrencePort {
   }
 
   async update(userId: number, jogakId: number, input: UpdateJogakCommand) {
-    const title = requiredTrimmed(input.title);
-    const updated =
+    const today = this.today();
+    if (
+      input.schedule !== undefined &&
+      (await this.repository.findOwnedJogak(userId, jogakId)) === null
+    ) {
+      throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
+    }
+    const scheduleRows =
       input.schedule === undefined
-        ? await this.repository.updateOwnedJogakTitle(userId, jogakId, title, new Date())
-        : await this.repository.replaceOwnedJogakSchedule({
-            userId,
-            jogakId,
-            title,
-            schedule: validateSchedule(input.schedule),
-            now: new Date(),
-          });
-    if (updated === 'INVALID_EFFECTIVE_FROM') {
+        ? []
+        : groupScheduleRows(await this.repository.listScheduleRowsForOwnedJogak(userId, jogakId));
+    const activeSchedule = scheduleRows
+      .filter((schedule) =>
+        schedule.scheduleType === 'ONCE'
+          ? schedule.effectiveFrom === today
+          : schedule.effectiveFrom <= today &&
+            (schedule.effectiveTo === null || schedule.effectiveTo >= today),
+      )
+      .sort(
+        (left, right) =>
+          right.effectiveFrom.localeCompare(left.effectiveFrom) ||
+          right.scheduleId - left.scheduleId,
+      )[0];
+    if (input.schedule !== undefined && activeSchedule === undefined) {
       throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
     }
+    const successorSchedule =
+      input.schedule === undefined
+        ? undefined
+        : scheduleRows
+            .filter((schedule) => schedule.effectiveFrom > activeSchedule!.effectiveFrom)
+            .sort(
+              (left, right) =>
+                left.effectiveFrom.localeCompare(right.effectiveFrom) ||
+                left.scheduleId - right.scheduleId,
+            )[0];
+    if (
+      input.schedule?.scheduleType === 'WEEKLY' &&
+      input.schedule.effectiveTo !== undefined &&
+      successorSchedule !== undefined &&
+      input.schedule.effectiveTo >= successorSchedule.effectiveFrom
+    ) {
+      throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
+    }
+    const schedule =
+      input.schedule === undefined
+        ? undefined
+        : {
+            scheduleId: activeSchedule!.scheduleId,
+            ...validateSchedule({
+              scheduleType: input.schedule.scheduleType,
+              effectiveFrom: activeSchedule!.effectiveFrom,
+              weekdays: input.schedule.weekdays,
+              ...(input.schedule.scheduleType === 'WEEKLY' &&
+              input.schedule.effectiveTo === undefined &&
+              successorSchedule !== undefined
+                ? { effectiveTo: previousDate(successorSchedule.effectiveFrom) }
+                : input.schedule.effectiveTo === undefined
+                  ? {}
+                  : { effectiveTo: input.schedule.effectiveTo }),
+            }),
+          };
+    const updated = await this.repository.patchOwnedJogak({
+      userId,
+      jogakId,
+      ...(input.title === undefined ? {} : { title: requiredTrimmed(input.title) }),
+      ...(schedule === undefined ? {} : { schedule }),
+      now: new Date(),
+    });
     if (updated === null) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
     return {
       jogakId: updated.id,
@@ -386,6 +441,12 @@ function groupScheduleRows(rows: readonly OccurrenceScheduleResult[]): ScheduleR
     }
   }
   return [...schedules.values()];
+}
+
+function previousDate(date: string): string {
+  const previous = new Date(`${date}T00:00:00.000Z`);
+  previous.setUTCDate(previous.getUTCDate() - 1);
+  return previous.toISOString().slice(0, 10);
 }
 
 function toExecutionResponse(
