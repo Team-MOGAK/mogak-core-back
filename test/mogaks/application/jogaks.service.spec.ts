@@ -1,4 +1,5 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
+import { MogakPersistenceException } from '@core/mogaks/domain/exception/mogakPersistence.exception';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 import type { MogakRepositoryPort } from '@core/mogaks/application/port/mogak.repository.port';
@@ -170,6 +171,78 @@ describe('조각 서비스', () => {
     );
   });
 
+  it('중복 persistence row에 weekday가 있으면 ONCE 일정을 fail-fast 처리한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
+      {
+        scheduleId: 5,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'ONCE',
+        effectiveFrom: '2026-07-23',
+        effectiveTo: null,
+        weekday: null,
+      },
+      {
+        scheduleId: 5,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'ONCE',
+        effectiveFrom: '2026-07-23',
+        effectiveTo: null,
+        weekday: 'MONDAY',
+      },
+    ]);
+    jest.mocked(mogaks.listExecutionsForJogaks).mockResolvedValue([]);
+    jest.mocked(mogaks.listSuccessCounts).mockResolvedValue([]);
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await expect(service.listDay(7, '2026-07-23')).rejects.toBeInstanceOf(
+      MogakPersistenceException,
+    );
+  });
+
+  it('유효하지 않은 WEEKLY persistence row는 원인을 보존한 MogakPersistenceException으로 번역한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
+      {
+        scheduleId: 5,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'WEEKLY',
+        effectiveFrom: '2026-07-20',
+        effectiveTo: null,
+        weekday: null,
+      },
+    ]);
+    jest.mocked(mogaks.listExecutionsForJogaks).mockResolvedValue([]);
+    jest.mocked(mogaks.listSuccessCounts).mockResolvedValue([]);
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await expect(service.listDay(7, '2026-07-23')).rejects.toMatchObject({
+      name: 'MogakPersistenceException',
+      cause: expect.any(RangeError),
+    });
+  });
+
   it('동시 삽입 충돌 뒤 기존 실행을 멱등하게 반환한다', async () => {
     const mogaks = repository();
     jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
@@ -328,6 +401,52 @@ describe('조각 서비스', () => {
           weekdays: ['MONDAY'],
         },
       ],
+    });
+  });
+
+  it('조각 상세 대표 일정은 과거 Once보다 오늘 활성인 루틴을 우선한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.findOwnedJogak).mockResolvedValue(ownedJogak);
+    jest.mocked(mogaks.listScheduleRowsForOwnedJogak).mockResolvedValue([
+      {
+        scheduleId: 4,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'ONCE',
+        effectiveFrom: '2026-07-22',
+        effectiveTo: null,
+        weekday: null,
+      },
+      {
+        scheduleId: 5,
+        jogakId: 11,
+        mogakId: 3,
+        mogakTitle: '여름 목표',
+        jogakTitle: '문제 풀이',
+        color: 'blue',
+        categoryCode: 'CERTIFICATION',
+        categoryName: '자격증',
+        customCategoryName: null,
+        scheduleType: 'WEEKLY',
+        effectiveFrom: '2026-07-20',
+        effectiveTo: null,
+        weekday: 'THURSDAY',
+      },
+    ]);
+    jest.mocked(mogaks.listSuccessCounts).mockResolvedValue([]);
+    const service = new JogaksService(mogaks, () => '2026-07-23');
+
+    await expect(service.getDetail(7, 11)).resolves.toMatchObject({
+      isRoutine: true,
+      days: ['THURSDAY'],
+      startDate: '2026-07-20',
+      endDate: null,
     });
   });
 

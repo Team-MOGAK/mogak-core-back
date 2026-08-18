@@ -1,5 +1,6 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { requiredTrimmed } from '@core/common/validation/requiredText';
+import { MogakPersistenceException } from '../../domain/exception/mogakPersistence.exception';
 import {
   decideJogakExecutionTransition,
   snapshotJogakTitle,
@@ -10,9 +11,9 @@ import {
   datesInclusive as scheduleDatesInclusive,
   deriveOccurrenceStatus,
   isDateOnly,
-  occursOn,
-  validateJogakSchedule,
+  createJogakSchedule,
 } from '../../domain/policy/jogakSchedule.policy';
+import { JogakSchedules, type JogakSchedule } from '../../domain/vo/jogakSchedules.vo';
 import type { JogakExecutionStatus } from '../../domain/vo/jogakExecution.vo';
 import type { JogakScheduleType, ValidatedJogakSchedule } from '../../domain/vo/jogakSchedule.vo';
 import type { MogakRepositoryPort } from '../port/mogak.repository.port';
@@ -31,17 +32,17 @@ import type {
 
 export const KST_DATE_PROVIDER = Symbol('KST_DATE_PROVIDER');
 
-type ScheduleRecord = ValidatedJogakSchedule &
-  Readonly<{
-    scheduleId: number;
-    jogakId: number;
-    mogakId: number;
-    mogakTitle: string;
-    jogakTitle: string;
-    color: string | null;
-    categoryCode: string | null;
-    categoryName: string;
-  }>;
+type ScheduleRecord = Readonly<{
+  scheduleId: number;
+  schedule: JogakSchedule;
+  jogakId: number;
+  mogakId: number;
+  mogakTitle: string;
+  jogakTitle: string;
+  color: string | null;
+  categoryCode: string | null;
+  categoryName: string;
+}>;
 
 type ExecutionResponse = ReturnType<typeof toExecutionResponse>;
 
@@ -75,12 +76,7 @@ export class JogaksService implements OwnedOccurrencePort {
       category: categoryOf(created.categoryCode, created.categoryName, created.customCategoryName),
       title: created.title,
       color: created.color,
-      schedule: {
-        scheduleType: created.scheduleType,
-        effectiveFrom: created.effectiveFrom,
-        effectiveTo: created.effectiveTo,
-        weekdays: created.weekdays,
-      },
+      schedule: scheduleResponse(created),
     };
   }
 
@@ -113,15 +109,8 @@ export class JogaksService implements OwnedOccurrencePort {
     );
     const achievements = (await this.repository.listSuccessCounts([jogakId]))[0]?.achievements ?? 0;
     const today = this.today();
-    const currentOrLatest =
-      schedules
-        .filter(
-          (schedule) =>
-            schedule.effectiveFrom <= today &&
-            (schedule.effectiveTo === null || schedule.effectiveTo >= today),
-        )
-        .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0] ??
-      schedules.sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom))[0];
+    const history = scheduleHistory(schedules);
+    const currentOrLatest = selectRecord(schedules, history.representativeOn(today));
     return {
       jogakId: jogak.id,
       mogakId: jogak.mogakId,
@@ -129,17 +118,13 @@ export class JogaksService implements OwnedOccurrencePort {
       category: categoryOf(jogak.categoryCode, jogak.categoryName, jogak.customCategoryName),
       title: jogak.title,
       color: jogak.color,
-      isRoutine: currentOrLatest?.scheduleType === 'WEEKLY',
-      days: currentOrLatest?.weekdays ?? [],
-      startDate: currentOrLatest?.effectiveFrom ?? null,
-      endDate: currentOrLatest?.effectiveTo ?? null,
+      isRoutine: currentOrLatest?.schedule.scheduleType === 'WEEKLY',
+      days: currentOrLatest === undefined ? [] : currentOrLatest.schedule.toSnapshot().weekdays,
+      startDate: currentOrLatest?.schedule.effectiveFrom ?? null,
+      endDate:
+        currentOrLatest === undefined ? null : currentOrLatest.schedule.toSnapshot().effectiveTo,
       achievements,
-      schedules: schedules.map((schedule) => ({
-        scheduleType: schedule.scheduleType,
-        effectiveFrom: schedule.effectiveFrom,
-        effectiveTo: schedule.effectiveTo,
-        weekdays: schedule.weekdays,
-      })),
+      schedules: schedules.map(({ schedule }) => scheduleResponse(schedule.toSnapshot())),
     };
   }
 
@@ -155,36 +140,20 @@ export class JogaksService implements OwnedOccurrencePort {
       input.schedule === undefined
         ? []
         : groupScheduleRows(await this.repository.listScheduleRowsForOwnedJogak(userId, jogakId));
-    const activeSchedule = scheduleRows
-      .filter((schedule) =>
-        schedule.scheduleType === 'ONCE'
-          ? schedule.effectiveFrom === today
-          : schedule.effectiveFrom <= today &&
-            (schedule.effectiveTo === null || schedule.effectiveTo >= today),
-      )
-      .sort(
-        (left, right) =>
-          right.effectiveFrom.localeCompare(left.effectiveFrom) ||
-          right.scheduleId - left.scheduleId,
-      )[0];
+    const history = scheduleHistory(scheduleRows);
+    const activeSchedule = selectRecord(scheduleRows, history.currentOn(today));
     if (input.schedule !== undefined && activeSchedule === undefined) {
       throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
     }
     const successorSchedule =
       input.schedule === undefined
         ? undefined
-        : scheduleRows
-            .filter((schedule) => schedule.effectiveFrom > activeSchedule!.effectiveFrom)
-            .sort(
-              (left, right) =>
-                left.effectiveFrom.localeCompare(right.effectiveFrom) ||
-                left.scheduleId - right.scheduleId,
-            )[0];
+        : selectRecord(scheduleRows, history.successorOf(activeSchedule!.schedule));
     if (
       input.schedule?.scheduleType === 'WEEKLY' &&
       input.schedule.effectiveTo !== undefined &&
       successorSchedule !== undefined &&
-      input.schedule.effectiveTo >= successorSchedule.effectiveFrom
+      input.schedule.effectiveTo >= successorSchedule.schedule.effectiveFrom
     ) {
       throw new DomainException(DomainErrorCode.INVALID_SCHEDULE);
     }
@@ -195,12 +164,12 @@ export class JogaksService implements OwnedOccurrencePort {
             scheduleId: activeSchedule!.scheduleId,
             ...validateSchedule({
               scheduleType: input.schedule.scheduleType,
-              effectiveFrom: activeSchedule!.effectiveFrom,
+              effectiveFrom: activeSchedule!.schedule.effectiveFrom,
               weekdays: input.schedule.weekdays,
               ...(input.schedule.scheduleType === 'WEEKLY' &&
               input.schedule.effectiveTo === undefined &&
               successorSchedule !== undefined
-                ? { effectiveTo: previousDate(successorSchedule.effectiveFrom) }
+                ? { effectiveTo: previousDate(successorSchedule.schedule.effectiveFrom) }
                 : input.schedule.effectiveTo === undefined
                   ? {}
                   : { effectiveTo: input.schedule.effectiveTo }),
@@ -240,11 +209,11 @@ export class JogaksService implements OwnedOccurrencePort {
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
     if (jogak === null) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
-    const occurrenceSchedule = schedules.find((schedule) => occursOn(schedule, scheduledDate));
+    const occurrenceSchedule = schedules.find(({ schedule }) => schedule.occursOn(scheduledDate));
     if (occurrenceSchedule === undefined) {
       throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
     }
-    const isRoutine = occurrenceSchedule.scheduleType === 'WEEKLY';
+    const isRoutine = occurrenceSchedule.schedule.scheduleType === 'WEEKLY';
 
     const inserted = await this.repository.insertExecution({
       jogakId,
@@ -269,7 +238,7 @@ export class JogaksService implements OwnedOccurrencePort {
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
     if (jogak === null) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
-    if (!schedules.some((schedule) => occursOn(schedule, scheduledDate))) {
+    if (!schedules.some(({ schedule }) => schedule.occursOn(scheduledDate))) {
       throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
     }
     return { jogakId: jogak.id, mogakId: jogak.mogakId, title: jogak.title };
@@ -310,7 +279,7 @@ export class JogaksService implements OwnedOccurrencePort {
 
     for (const schedule of schedules) {
       for (const scheduledDate of datesInclusive(startDate, endDate)) {
-        if (!occursOn(schedule, scheduledDate)) continue;
+        if (!schedule.schedule.occursOn(scheduledDate)) continue;
         const execution =
           executionByNaturalKey.get(executionKey(schedule.jogakId, scheduledDate)) ?? null;
         occurrences.push({
@@ -320,7 +289,7 @@ export class JogaksService implements OwnedOccurrencePort {
           category: { code: schedule.categoryCode, name: schedule.categoryName },
           title: execution?.jogakTitleSnapshot ?? schedule.jogakTitle,
           color: schedule.color,
-          isRoutine: schedule.scheduleType === 'WEEKLY',
+          isRoutine: schedule.schedule.scheduleType === 'WEEKLY',
           status: deriveOccurrenceStatus(execution?.status ?? null, scheduledDate, today),
           achievements: successCounts.get(schedule.jogakId) ?? 0,
         });
@@ -398,7 +367,7 @@ export class JogaksService implements OwnedOccurrencePort {
 
 function validateSchedule(input: ScheduleCommand): ValidatedJogakSchedule {
   try {
-    return validateJogakSchedule(input);
+    return createJogakSchedule(input).toSnapshot();
   } catch (error) {
     if (error instanceof RangeError && error.message === 'weekdays are required') {
       throw new DomainException(DomainErrorCode.ROUTINE_WEEKDAYS_REQUIRED);
@@ -411,36 +380,91 @@ function groupScheduleRows(rows: readonly OccurrenceScheduleResult[]): ScheduleR
   const schedules = new Map<number, ScheduleRecord>();
   for (const row of rows) {
     const categoryName = row.categoryName ?? row.customCategoryName;
-    if (categoryName === null) throw new Error('Mogak category was not populated');
+    if (categoryName === null) {
+      throw new MogakPersistenceException('Mogak category was not populated');
+    }
     const existing = schedules.get(row.scheduleId);
     if (existing === undefined) {
-      if (row.scheduleType !== 'ONCE' && row.scheduleType !== 'WEEKLY') {
-        throw new Error(`Unsupported persisted schedule type: ${row.scheduleType}`);
+      if (row.scheduleType === 'ONCE' && row.weekday !== null) {
+        throw new MogakPersistenceException(
+          `Invalid persisted ONCE schedule ${row.scheduleId}: weekday is present`,
+        );
       }
-      schedules.set(row.scheduleId, {
-        scheduleId: row.scheduleId,
-        jogakId: row.jogakId,
-        mogakId: row.mogakId,
-        mogakTitle: row.mogakTitle,
-        jogakTitle: row.jogakTitle,
-        color: row.color,
-        categoryCode: row.categoryCode,
-        categoryName,
-        scheduleType: row.scheduleType,
-        effectiveFrom: row.effectiveFrom,
-        effectiveTo: row.effectiveTo,
-        weekdays: row.weekday === null ? [] : [row.weekday],
-      });
+      schedules.set(
+        row.scheduleId,
+        scheduleRecord(row, categoryName, row.weekday === null ? [] : [row.weekday]),
+      );
       continue;
     }
     if (row.weekday !== null) {
-      schedules.set(row.scheduleId, {
-        ...existing,
-        weekdays: [...existing.weekdays, row.weekday],
-      });
+      if (row.scheduleType === 'ONCE') {
+        throw new MogakPersistenceException(
+          `Invalid persisted ONCE schedule ${row.scheduleId}: weekday is present`,
+        );
+      }
+      schedules.set(
+        row.scheduleId,
+        scheduleRecord(row, categoryName, [
+          ...existing.schedule.toSnapshot().weekdays,
+          row.weekday,
+        ]),
+      );
     }
   }
-  return [...schedules.values()];
+  return [...schedules.values()].sort(
+    (left, right) =>
+      left.schedule.effectiveFrom.localeCompare(right.schedule.effectiveFrom) ||
+      left.scheduleId - right.scheduleId,
+  );
+}
+
+function scheduleRecord(
+  row: OccurrenceScheduleResult,
+  categoryName: string,
+  weekdays: readonly string[],
+): ScheduleRecord {
+  try {
+    return {
+      scheduleId: row.scheduleId,
+      schedule: createJogakSchedule({
+        scheduleType: row.scheduleType,
+        effectiveFrom: row.effectiveFrom,
+        ...(row.effectiveTo === null ? {} : { effectiveTo: row.effectiveTo }),
+        ...(row.scheduleType === 'WEEKLY' ? { weekdays } : {}),
+      }),
+      jogakId: row.jogakId,
+      mogakId: row.mogakId,
+      mogakTitle: row.mogakTitle,
+      jogakTitle: row.jogakTitle,
+      color: row.color,
+      categoryCode: row.categoryCode,
+      categoryName,
+    };
+  } catch (error) {
+    throw new MogakPersistenceException(
+      `Invalid persisted Jogak schedule ${row.scheduleId}: ${String(error)}`,
+      {
+        cause: error,
+      },
+    );
+  }
+}
+
+function scheduleHistory(records: readonly ScheduleRecord[]): JogakSchedules {
+  return JogakSchedules.create(records.map(({ schedule }) => schedule));
+}
+
+function selectRecord(
+  records: readonly ScheduleRecord[],
+  schedule: JogakSchedule | undefined,
+): ScheduleRecord | undefined {
+  return schedule === undefined
+    ? undefined
+    : records.find((record) => record.schedule === schedule);
+}
+
+function scheduleResponse(schedule: ValidatedJogakSchedule): ValidatedJogakSchedule {
+  return { ...schedule, weekdays: [...schedule.weekdays] };
 }
 
 function previousDate(date: string): string {

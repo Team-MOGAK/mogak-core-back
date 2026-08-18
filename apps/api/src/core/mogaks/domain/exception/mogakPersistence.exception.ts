@@ -1,11 +1,11 @@
-/** Drizzle adapter가 영속성 결과를 해석할 수 없을 때 내보내는 실패다. */
+/** Persistence data or results violate the Mogak domain's expected shape. */
 export class MogakPersistenceException extends Error {
   static unsupportedValue(field: string, value: string): MogakPersistenceException {
     return new MogakPersistenceException(`Unsupported persisted ${field}: ${value}`);
   }
 
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'MogakPersistenceException';
   }
 }
