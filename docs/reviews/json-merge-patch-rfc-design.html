@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>수정 API JSON Merge Patch RFC 설계</title>
+    <style>
+      body {
+        max-width: 1080px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        color: #172033;
+      }
+      header,
+      section,
+      aside,
+      figure {
+        margin: 1rem 0;
+        padding: 1rem;
+        border: 1px solid #d7dee9;
+        border-radius: 8px;
+      }
+      nav a {
+        margin-right: 0.7rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 0.55rem;
+        border: 1px solid #d7dee9;
+        text-align: left;
+        vertical-align: top;
+      }
+      code {
+        background: #f1f5f9;
+        padding: 0.1rem 0.25rem;
+      }
+      .state {
+        font-weight: 700;
+        color: #9a3412;
+      }
+      .slide[hidden],
+      .result[hidden] {
+        display: none;
+      }
+      .result {
+        margin-top: 0.7rem;
+        padding: 0.7rem;
+        background: #f1f5f9;
+      }
+      button {
+        padding: 0.4rem 0.7rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>수정 API JSON Merge Patch RFC 설계</h1>
+      <dl>
+        <dt>목적</dt>
+        <dd>
+          수정 API의 HTTP 메서드·부분 수정·호환 규칙을 RFC로 정해 모바일과 서버가 변경 범위를 예측
+          가능하게 한다.
+        </dd>
+        <dt>사용자</dt>
+        <dd>MOGAK 모바일 클라이언트 개발자, NestJS API 유지보수 개발자, API 문서·배포 담당자</dd>
+        <dt>문제</dt>
+        <dd>
+          부분 수정 의미의 PUT, Merge Patch 계약이 없는 PATCH, 단일 필드·multipart 명령 API가 섞여
+          누락·null·배열·동시 수정 의미가 일관되지 않다.
+        </dd>
+        <dt>핵심 흐름</dt>
+        <dd>
+          API 분류 → 표준 PATCH 계약 적용 → 같은 배포에서 구형 PUT 제거 → canonical media type 강제
+        </dd>
+        <dt>강도</dt>
+        <dd>Standard — 공개 HTTP 계약과 모바일 호환 경계를 바꾼다.</dd>
+        <dt>단계</dt>
+        <dd class="state">설계 승인됨</dd>
+        <dt>생성·갱신</dt>
+        <dd><time datetime="2026-08-19T00:00:00+09:00">2026-08-19 KST</time></dd>
+        <dt>추적</dt>
+        <dd>GitHub issue #6</dd>
+      </dl>
+      <nav aria-label="설계 탐색">
+        <a href="#model">표준 모델</a><a href="#inventory">갭·적용표</a><a href="#rules">규칙</a
+        ><a href="#rollout">전환</a><a href="#verification">검증</a><a href="#control">이해 점검</a
+        ><a href="#approval">승인</a>
+      </nav>
+    </header>
+    <main>
+      <article>
+        <section id="model">
+          <h2>목표와 표준 모델</h2>
+          <p>
+            <mark
+              >독립적으로 선택 가능한 JSON 리소스 필드의 일부 수정은 <code>PATCH</code>와
+              <code>application/merge-patch+json</code>을 정본 계약으로 쓴다.</mark
+            >
+            RFC 7396 문서 병합을 DB 객체에 기계적으로 적용하지 않는다. 요청을 패치 의도로 해석하고
+            소유권·현재 상태·전체 도메인 불변식을 검증한 뒤 한 트랜잭션으로 저장한다.
+          </p>
+          <figure>
+            <figcaption>PATCH 처리 경계</figcaption>
+            <pre><code>PATCH + merge-patch Content-Type → strict 패치 스키마 → 인증·소유권·If-Match → 현재 상태 → 도메인 검증 → 원자적 저장 + version 증가 → ETag/최신 표현</code></pre>
+            <p>
+              즉, 미디어 타입과 입력을 먼저 확인하고, 인증된 소유자의 상태에서만 패치를
+              계산·검증한다.
+            </p>
+          </figure>
+          <p>
+            <strong>비목표:</strong> issue #6이 제외한 Jogak 동일 시작일 버그 자체, 실행·일정 이력
+            재작성, 모든 API의 일괄 PATCH 전환, multipart 이미지의 JSON화, 최소 지원 모바일 버전의
+            임의 결정.
+          </p>
+        </section>
+        <section id="inventory">
+          <h2>현재 갭과 목표 계약</h2>
+          <table>
+            <caption>
+              코드 조사 기준 수정 API 분류
+            </caption>
+            <thead>
+              <tr>
+                <th>경로</th>
+                <th>현재 계약·갭</th>
+                <th>결정</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>PUT /api/modarats/:id</code></td>
+                <td>
+                  <code>title</code>·<code>color</code> 모두 필수지만, 사용자는 두 필드 중 일부만
+                  독립적으로 편집할 수 있다.
+                </td>
+                <td>
+                  <strong>PATCH 전환</strong>. 같은 배포에서 기존 PUT route를 제거한다.
+                  <code>title</code>과 <code>color</code>를 독립 scalar로 PATCH하고, 누락 필드는
+                  보존한다.
+                </td>
+              </tr>
+              <tr>
+                <td><code>PUT /api/mogaks/:id</code></td>
+                <td>
+                  title 필수, category·color 생략 시 보존이 아니라 재해석·null reset될 수 있다. 실제
+                  UI가 일부 속성만 바꾸면 의도치 않은 값 손실 위험이 있다.
+                </td>
+                <td>
+                  <strong>PATCH 전환</strong>. 같은 배포에서 기존 PUT route를 제거한다.
+                  <code>title</code>·<code>color</code>는 독립 scalar, <code>category</code>는
+                  <code>{code,name?}</code> 전체를 보내는 원자적 중첩 객체로 한다.
+                </td>
+              </tr>
+              <tr>
+                <td><code>PATCH /api/jogaks/:id</code></td>
+                <td>
+                  title 또는 전체 schedule; start는 요청 불가. schedule은 단순 중첩 병합이 아니라
+                  일정 이력 도메인 전이다.
+                </td>
+                <td>
+                  PATCH 유지하되 <em>도메인 PATCH 예외</em>로 문서화. whole weekdays 교체·불변
+                  start·후속 일정 경계를 고정한다.
+                </td>
+              </tr>
+              <tr>
+                <td><code>PUT /api/posts/:id</code>, <code>PUT /comments/:id</code></td>
+                <td>변경 가능한 필드는 contents 하나이며 필수다.</td>
+                <td>PUT 유지. PATCH 이득이 없다.</td>
+              </tr>
+              <tr>
+                <td><code>PUT /api/users/profile/nickname</code>, <code>/job</code></td>
+                <td>독립 scalar 하위 리소스의 완전한 교체다.</td>
+                <td>PUT 예외로 유지. 통합 profile PATCH는 후속 후보만 둔다.</td>
+              </tr>
+              <tr>
+                <td><code>PUT /api/users/profile/image</code></td>
+                <td>multipart; 누락 파일은 삭제다.</td>
+                <td>비 JSON 예외로 PUT 유지. 의도치 않은 삭제·저장소 보상을 별도 검증한다.</td>
+              </tr>
+              <tr>
+                <td><code>PUT /api/users/consents</code></td>
+                <td>선택 항목을 upsert하며 생략은 빈 배열이 된다. 전체 컬렉션 교체가 아니다.</td>
+                <td>
+                  PATCH 전환 금지. 집합 전체 교체 PUT 또는 명시적 batch command 중 하나를 별도
+                  결정한다.
+                </td>
+              </tr>
+              <tr>
+                <td><code>PATCH /api/users/marketing-consent</code></td>
+                <td>두 boolean 중 하나 이상; omission은 변경 없음, null 거부.</td>
+                <td>
+                  첫 RFC 7396 기준 구현 후보. canonical media type과 empty patch 정책을 보강한다.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <aside>
+            <strong>공통 갭:</strong> CORS와 Zod strict 입력은 있으나
+            <code>application/merge-patch+json</code> 강제, <code>Accept-Patch</code>,
+            ETag/If-Match/version, 412/415/428 오류, legacy 전환 지표가 없다.
+          </aside>
+        </section>
+        <section id="rules">
+          <h2>제안 규칙과 불변식</h2>
+          <table>
+            <caption>
+              Merge Patch 프로필
+            </caption>
+            <thead>
+              <tr>
+                <th>항목</th>
+                <th>결정·테스트 기준</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>미디어 타입</td>
+                <td>
+                  정본 PATCH는 <code>application/merge-patch+json</code> 및
+                  <code>Accept-Patch</code>. 배포 즉시 <code>application/json</code>을 포함한 다른
+                  PATCH media type은 415로 거부한다. 비교는 소문자화된 media type만 사용하고
+                  <code>; charset=utf-8</code> 같은 parameter는 허용한다.
+                </td>
+              </tr>
+              <tr>
+                <td>경계 구현</td>
+                <td>
+                  각 controller에서 method·헤더 문자열을 직접 비교하지 않는다.
+                  <code>@MergePatch()</code> 복합 decorator가 PATCH route와 정책 metadata를
+                  선언하고, 공통 guard가 media type을 검증하며, interceptor가
+                  <code>Accept-Patch</code>를 응답에 붙인다. 이전 PUT 경로는 중앙 registry 기반
+                  tombstone handler로 <code>405 Method Not Allowed</code>와
+                  <code>Allow: PATCH</code>를 응답한다.
+                </td>
+              </tr>
+              <tr>
+                <td>누락·빈 객체</td>
+                <td>
+                  누락은 변경 없음, 빈 객체는 400. 모든 PATCH는 최소 한 개의 허용 변경 필드를
+                  요구한다.
+                </td>
+              </tr>
+              <tr>
+                <td>null</td>
+                <td>
+                  기본 거부. 명시 nullable로 선언한 필드만 제거 의미를 가진다. 현재 RFC 대상은 null
+                  제거를 열지 않아 400 <code>INVALID_PARAMETER</code>.
+                </td>
+              </tr>
+              <tr>
+                <td>중첩·배열</td>
+                <td>
+                  <code>schedule</code>은 원자적 도메인 교체; RFC 대상 배열은 전체 교체이며 요소
+                  단위 merge 금지. consent 배열은 PATCH 대상이 아니다.
+                </td>
+              </tr>
+              <tr>
+                <td>불변·서버 소유</td>
+                <td>
+                  id, owner, timestamps, 실행 이력, Jogak <code>effectiveFrom</code>은 무시하지 않고
+                  400으로 거부한다.
+                </td>
+              </tr>
+              <tr>
+                <td>동시 수정</td>
+                <td>
+                  PATCH 대상에 version과 ETag를 노출하고 <code>If-Match</code>를 필수 전환한다.
+                  오래된 값 또는 조건부 update 0건은 412이다.
+                </td>
+              </tr>
+              <tr>
+                <td>오류·관측</td>
+                <td>
+                  400 형식/불변, 401/403, 404, 412 stale, 415 media type, 428 If-Match 누락.
+                  route·media type·rejection·conflict를 구조화 계수로 남긴다.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            <strong>이 결론이 실패한다면:</strong> 모든 PUT을 PATCH로 일괄 변경해 단일
+            scalar·multipart·동의 집합의 의도를 흐리고 호환 비용만 늘리는 경우다. 그래서 PUT이 진짜
+            전체 교체인 곳은 남긴다.
+          </p>
+        </section>
+        <section id="rollout">
+          <h2>호환·배포와 후속 분할</h2>
+          <ol>
+            <li>
+              RFC/OpenAPI에 위 분류·예시·오류를 확정하고 PATCH 대상에 version/ETag를 추가한다.
+            </li>
+            <li>
+              서버가 canonical PATCH만 지원하도록 배포한다. Modarat·Mogak의 이전 PUT은 중앙
+              tombstone 정책으로 <code>405</code>와 <code>Allow: PATCH</code>를 응답하고,
+              canonical이 아닌 PATCH media type은 415로 즉시 실패한다.
+            </li>
+            <li>
+              첫 구현은 marketing-consent, Modarat PATCH, Mogak PATCH, Jogak canonical화 순서다.
+              consent collection 의미 재설계는 별도 승인 작업이다.
+            </li>
+            <li>
+              모바일 최소 버전·활성 호출 기준·Deprecation/Sunset 헤더는 사용하지 않는다. 이 변경은
+              서버와 클라이언트를 같은 릴리스 단위로 즉시 전환한다.
+            </li>
+            <li>
+              배포 전 모바일 요청을 PATCH와 canonical media type으로 바꾸고, 문서·계약 테스트를 같은
+              변경 단위에서 갱신한다.
+            </li>
+          </ol>
+          <p>
+            <strong>결정/위험:</strong> 하위 호환·점진 전환은 하지 않는다. 구형 모바일이 독립
+            배포되어 새 서버에 접근하면 수정 요청이 즉시 실패한다. 따라서 서버 배포 전 해당
+            클라이언트의 요청 method와 Content-Type을 함께 바꾸는 것이 필수다.
+          </p>
+        </section>
+        <section id="verification">
+          <h2>검증 계획</h2>
+          <ol>
+            <li>
+              계약: 대소문자·charset parameter를 포함한 canonical Content-Type, 비정본 415, 이전
+              PUT의 405/Allow, 빈 PATCH, unknown, null, 불변, 전체 배열·중첩 객체를 route별
+              검증한다.
+            </li>
+            <li>동시성: 같은 ETag의 두 PATCH는 하나만 성공하고 다른 하나가 412인지 확인한다.</li>
+            <li>회귀: 유지 PUT의 scalar/multipart/동의 검증과 소유권·멱등성을 확인한다.</li>
+            <li>관측: 405·415/428/412을 route별 집계하고 민감 본문 미기록을 검증한다.</li>
+            <li>문서: OpenAPI와 모바일 가이드의 null·배열·ETag 설명을 계약 테스트와 대조한다.</li>
+          </ol>
+        </section>
+        <section id="control">
+          <h2>설계 이해 점검</h2>
+          <p>
+            <strong>design-control-state:</strong> 미실시. Mogak 부분 수정 경계(Q1), 배열(Q2),
+            동시성(Q3), 제거 조건(Q4), 불변/null(Q5), consent 예외(Q6), Modarat 부분 수정 경계(Q7),
+            공통 경계(Q8)를 다룬다. 권한은 기존 guard·소유권 경계를 유지하며, API 배포 외 효과는
+            전환 계획으로 다룬다.
+          </p>
+          <div id="progress">1 / 8 · 답변 0개</div>
+          <form>
+            <fieldset class="slide">
+              <legend>
+                Q1. <code>PUT /api/users/consents</code>를 PATCH로 전환하지 않는 이유는?
+              </legend>
+              <label
+                ><input type="radio" name="q1" value="a" /> 현재가 전체 컬렉션 교체가 아닌 선택 항목
+                upsert라 배열 merge로 의미를 설명할 수 없기 때문</label
+              ><br /><label
+                ><input type="radio" name="q1" value="b" /> PATCH는 서버가 처리할 수 없기
+                때문</label
+              >
+              <div class="result" hidden>
+                <p class="status"></p>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" hidden>
+              <legend>Q2. Jogak <code>schedule.weekdays</code>를 보내면?</legend>
+              <label
+                ><input type="radio" name="q2" value="a" /> 기존 요일에 보낸 원소만 더한다</label
+              ><br /><label
+                ><input type="radio" name="q2" value="b" /> 검증된 전체 배열로 원자적으로
+                교체한다</label
+              >
+              <div class="result" hidden>
+                <p class="status"></p>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" hidden>
+              <legend>Q3. 같은 ETag로 두 PATCH가 오면?</legend>
+              <label><input type="radio" name="q3" value="a" /> 둘 다 성공한다</label><br /><label
+                ><input type="radio" name="q3" value="b" /> 하나만 성공하고 다른 하나는 412다</label
+              >
+              <div class="result" hidden>
+                <p class="status"></p>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" hidden>
+              <legend>Q4. 이 설계에서 기존 PUT은 언제 제거할까?</legend>
+              <label
+                ><input type="radio" name="q4" value="a" /> 서버와 모바일 PATCH 변경을 같은 배포
+                단위로 내보낼 때</label
+              ><br /><label
+                ><input type="radio" name="q4" value="b" /> 활성 호출 지표를 몇 주 관찰한 뒤</label
+              >
+              <div class="result" hidden>
+                <p class="status"></p>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" hidden>
+              <legend>Q5. 불허 null 또는 <code>effectiveFrom</code>이 PATCH 본문에 있으면?</legend>
+              <label><input type="radio" name="q5" value="a" /> 무시한다</label><br /><label
+                ><input type="radio" name="q5" value="b" /> 400으로 거부한다</label
+              >
+              <div class="result" hidden>
+                <p class="status"></p>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" hidden>
+              <legend>Q6. Mogak에서 color만 바꾸는 요청은 어떻게 처리해야 할까?</legend>
+              <label
+                ><input type="radio" name="q6" value="a" /> 기존 PUT에 title·category도 항상 다시
+                보낸다</label
+              ><br /><label
+                ><input type="radio" name="q6" value="b" /> PATCH에 color만 보내고, 나머지 변경 가능
+                필드는 보존한다</label
+              >
+              <div class="result" hidden>
+                <p class="status"></p>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" hidden>
+              <legend>Q7. Modarat에서 color만 바꾸는 요청은 어떻게 처리해야 할까?</legend>
+              <label
+                ><input type="radio" name="q7" value="a" /> title도 함께 다시 보내는 PUT만
+                사용한다</label
+              ><br /><label
+                ><input type="radio" name="q7" value="b" /> PATCH에 color만 보내고 title은
+                보존한다</label
+              >
+              <div class="result" hidden>
+                <p class="status"></p>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" hidden>
+              <legend>Q8. Merge PATCH의 Content-Type은 어디에서 검증해야 할까?</legend>
+              <label
+                ><input type="radio" name="q8" value="a" /> 각 controller가 헤더 문자열을 직접
+                비교한다</label
+              ><br /><label
+                ><input type="radio" name="q8" value="b" /> decorator metadata를 읽는 공통 guard에서
+                media type과 parameter를 해석한다</label
+              >
+              <div class="result" hidden>
+                <p class="status"></p>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+          </form>
+          <button type="button" id="previous">이전</button
+          ><button type="button" id="next">다음</button
+          ><button type="button" id="submit">제출</button
+          ><output id="overall" aria-live="polite"
+            >로컬 결과는 Codex에 자동 전달되지 않습니다.</output
+          >
+        </section>
+        <section id="approval">
+          <h2>설계 승인 상태</h2>
+          <p>
+            <strong>approval-state:</strong> 설계 승인됨 (2026-08-19 21:04 KST). 승인 범위는 API
+            분류, Merge Patch 프로필, PATCH 대상 ETag 기반 낙관적 잠금, 같은 배포에서 PUT
+            제거·canonical media type 강제, 첫 적용 후보와 검증 기준이다.
+          </p>
+          <p>
+            이 문서는
+            <a href="jogak-same-start-schedule-edit-design.html">Jogak 동일 시작일 일정 편집 설계</a
+            >와 목적·핵심 흐름이 달라 별도 RFC 기준 문서다. 승인 전에는 구현 코드·테스트 계약을
+            변경하지 않는다.
+          </p>
+        </section>
+      </article>
+    </main>
+    <script>
+      (() => {
+        const q = [...document.querySelectorAll('.slide')],
+          a = ['a', 'b', 'b', 'a', 'b', 'b', 'b', 'b'];
+        let i = 0;
+        const show = () => {
+          q.forEach((x, n) => (x.hidden = n !== i));
+          progress.textContent = `${i + 1} / ${q.length} · 답변 ${q.filter((_, n) => document.querySelector(`input[name=q${n + 1}]:checked`)).length}개`;
+        };
+        previous.onclick = () => {
+          i = Math.max(0, i - 1);
+          show();
+        };
+        next.onclick = () => {
+          i = Math.min(q.length - 1, i + 1);
+          show();
+        };
+        submit.onclick = () => {
+          q.forEach((x, n) => {
+            const v = document.querySelector(`input[name=q${n + 1}]:checked`)?.value,
+              r = x.querySelector('.result'),
+              ok = v === a[n];
+            r.hidden = false;
+            x.querySelector('.status').textContent = ok ? '확립' : '보류';
+            x.querySelector('.explanation').textContent = ok
+              ? '선택한 동작이 RFC 설계와 일치합니다.'
+              : '해당 API의 표현·배열·동시성 경계를 다시 확인하세요.';
+            x.querySelector('.next').textContent = '이해 점검은 구현 승인이 아닙니다.';
+          });
+          overall.textContent = '로컬 결과는 Codex에 자동 전달되지 않습니다.';
+          show();
+        };
+        show();
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>수정 API JSON Merge Patch RFC 구현 제어</title>
+    <style>
+      body {
+        max-width: 920px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        color: #172033;
+      }
+      header,
+      section {
+        margin: 1rem 0;
+        padding: 1rem;
+        border: 1px solid #d7dee9;
+        border-radius: 8px;
+      }
+      code {
+        background: #f1f5f9;
+        padding: 0.1rem 0.25rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 0.5rem;
+        border: 1px solid #d7dee9;
+        text-align: left;
+        vertical-align: top;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>수정 API JSON Merge Patch RFC 구현 제어</h1>
+      <dl>
+        <dt>목적</dt>
+        <dd>승인된 수정 API Merge Patch RFC의 실제 구현·검증 상태를 제어한다.</dd>
+        <dt>사용자</dt>
+        <dd>MOGAK API·모바일 개발자와 배포 담당자</dd>
+        <dt>문제</dt>
+        <dd>부분 수정 API의 method와 Content-Type을 공통 경계로 일관되게 강제해야 한다.</dd>
+        <dt>핵심 흐름</dt>
+        <dd>공통 정책 → PATCH endpoint → tombstone PUT → 계약 테스트 → 배포 확인</dd>
+        <dt>기준 설계</dt>
+        <dd>
+          <a href="json-merge-patch-rfc-design.html">JSON Merge Patch RFC 설계</a>, 승인 2026-08-19
+          21:04 KST
+        </dd>
+        <dt>단계</dt>
+        <dd>구현 준비</dd>
+      </dl>
+    </header>
+    <main>
+      <article>
+        <section id="baseline">
+          <h2>승인 기준선</h2>
+          <p>
+            Modarat·Mogak은 PATCH로 즉시 전환한다. canonical
+            <code>application/merge-patch+json</code>만 허용한다. 공통 decorator/guard/interceptor가
+            media type과 <code>Accept-Patch</code>를 처리하며, 이전 PUT은 tombstone으로
+            <code>405</code> 및 <code>Allow: PATCH</code>를 반환한다. Jogak·marketing-consent도 같은
+            media type 정책을 적용한다.
+          </p>
+        </section>
+        <section id="current">
+          <h2>현재 구현</h2>
+          <p><code>@MergePatch()</code> 복합 decorator·공통 Content-Type guard·응답 interceptor를 추가했다. Modarat·Mogak 수정은 PATCH로 전환해 생략 필드를 보존하며, Jogak·marketing-consent도 canonical media type 정책을 사용한다. 중앙 retired-PUT middleware는 Modarat·Mogak에만 <code>405</code>·<code>Allow: PATCH</code>를 반환한다. CORS는 tombstone보다 먼저 적용한다.</p>
+        </section>
+        <section id="issues">
+          <h2>이슈 등록</h2>
+          <table>
+            <caption>
+              구현 이슈
+            </caption>
+            <thead>
+              <tr>
+                <th>상태</th>
+                <th>관찰·영향</th>
+                <th>다음 행동</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>열림</td><td>version/CAS와 <code>0004_patch_versions.sql</code>은 구현됐지만, Drizzle meta snapshot 생성은 기존 journal과 현재 schema의 광범위한 불일치 때문에 관련 없는 rename/create를 제안한다.</td><td>migration metadata 기준선을 별도 읽기 전용 감사로 정합시킨 뒤에만 <code>0004_snapshot.json</code>을 생성한다. 현재 수동 SQL/journal 상태로 migration을 배포하지 않는다.</td></tr>
+              <tr><td>해결됨</td><td>초기 독립 검토에서 category 응답 round-trip, 415의 Accept-Patch, retired PUT CORS 누락을 발견했다.</td><td>category의 code 우선 round-trip 허용, guard 거부 시 Accept-Patch 설정, CORS 선등록으로 보완하고 계약 테스트로 확인했다.</td></tr>
+            </tbody>
+          </table>
+        </section>
+        <section id="verification">
+          <h2>검증 증거·공백</h2>
+          <p>focused presentation tests 3 suites/21 tests와 version 포함 focused tests 7 suites/48 tests가 통과했고, 변경 파일 ESLint와 <code>git diff --check</code>도 통과했다.</p><p>공백: 전체 <code>pnpm typecheck</code>는 기존 <code>refactor/**</code>·<code>test/database/setup.ts</code>의 중복 전역 오류 때문에 이 변경과 무관하게 실패한다. 실제 PostgreSQL CAS 병렬 테스트와 안전한 Drizzle snapshot은 열림 이슈와 함께 미실행이다.</p>
+        </section>
+        <section id="state">
+          <h2>구현 제어 상태</h2>
+          <p><strong>implementation-control-state:</strong> 운영 제어 보류. ETag/If-Match CAS는 구현·focused 검증됐지만 migration metadata 정합성 blocker가 남아 있다. 구현 이해 점검: 미실시.</p>
+        </section>
+        <section id="review"><h2>자체 변경 리뷰</h2><p><strong>리뷰 상태:</strong> 변경 요청. 범위는 PATCH 전환·version CAS·migration이다.</p><table><caption>발견 사항</caption><thead><tr><th>ID</th><th>심각도·상태</th><th>관찰·영향</th><th>필요 조치</th></tr></thead><tbody><tr><td>R1</td><td>Blocker · open</td><td><code>drizzle/meta/_journal.json</code>은 <code>0004_patch_versions</code>를 등록하지만 같은 migration snapshot이 없다. 생성기는 기존 메타데이터와 현재 schema의 광범위한 차이로 관련 없는 DDL을 제안한다.</td><td>migration metadata 기준선을 감사·정합시키고 생성된 snapshot과 실제 0004 DDL을 대조한다. 그 전에는 migration 배포 금지.</td></tr><tr><td>R2</td><td>Non-blocking risk · open</td><td><code>upsertUserConsents</code>가 변경 항목이 marketing/advertisement가 아니어도 aggregate version을 증가시킨다. 안전하지만 관계없는 동의 수정이 marketing PATCH의 ETag를 무효화한다.</td><td>대상 consent code를 조회해 marketing 계열을 실제로 변경할 때만 version을 증가시킬지 결정·테스트한다.</td></tr></tbody></table><p>검증: focused tests 7 suites/48 tests 통과(로컬 sandbox에서는 port bind가 거부되어 승인된 환경에서 재실행). 전체 typecheck와 실제 PostgreSQL migration/CAS 병렬 검증은 R1 때문에 공백이다.</p><p><strong>리뷰 판단:</strong> blocker 있음. 코드의 PATCH·CAS 경로는 검토 중 발견된 stale ETag·rollback·CORS 결함을 보완했으나, migration artifact 정합성 없이는 배포할 수 없다.</p></section>
+      </article>
+    </main>
+  </body>
+</html>
