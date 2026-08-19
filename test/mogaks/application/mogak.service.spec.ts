@@ -13,6 +13,8 @@ function repository(): MogakRepositoryPort {
     createMogak: testMock(),
     deleteOwnedModarat: testMock(),
     findOwnedMogak: testMock(),
+    updateOwnedModarat: testMock(),
+    updateOwnedMogak: testMock(),
   } as unknown as MogakRepositoryPort;
 }
 
@@ -125,5 +127,43 @@ describe('모각 서비스', () => {
     const service = new MogakService(mogaks);
 
     await expect(service.resolveOwnedMogak(7, 9)).resolves.toEqual({ id: 9 });
+  });
+
+  it('모다랏 PATCH는 보낸 필드만 저장소에 전달한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.updateOwnedModarat).mockResolvedValue({
+      id: 3,
+      title: '여름 목표',
+      color: '#475FFD',
+    });
+
+    await new MogakService(mogaks).updateModarat(7, 3, { color: '#475FFD' });
+
+    expect(mogaks.updateOwnedModarat).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, modaratId: 3, color: '#475FFD' }),
+    );
+    expect(jest.mocked(mogaks.updateOwnedModarat).mock.calls[0]?.[0]).not.toHaveProperty('title');
+  });
+
+  it('모각 PATCH는 category를 생략하면 기존 category 값을 저장소에서 보존한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.updateOwnedMogak).mockResolvedValue({
+      id: 9,
+      modaratId: 3,
+      title: '수정된 제목',
+      color: '#475FFD',
+      categoryCode: 'CERTIFICATION',
+      categoryName: '자격증',
+      customCategoryName: null,
+    });
+
+    await new MogakService(mogaks).updateMogak(7, 9, { title: '수정된 제목' });
+
+    expect(mogaks.updateOwnedMogak).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, mogakId: 9, title: '수정된 제목' }),
+    );
+    const command = jest.mocked(mogaks.updateOwnedMogak).mock.calls[0]?.[0];
+    expect(command).not.toHaveProperty('categoryId');
+    expect(command).not.toHaveProperty('customCategoryName');
   });
 });

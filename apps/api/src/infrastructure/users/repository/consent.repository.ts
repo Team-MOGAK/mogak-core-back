@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import type { ConsentRepositoryPort } from '@core/users/application/port/consent.repository.port';
 import type {
@@ -11,9 +11,10 @@ import type {
   MarketingConsentResult,
 } from '@core/users/application/type/consent.result';
 import { UserPersistenceException } from '@core/users/domain/exception/userPersistence.exception';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
-import { consentItems, userConsents } from '../../database/schema';
+import { consentItems, userConsents, users } from '../../database/schema';
 
 @Injectable()
 export class ConsentRepository implements ConsentRepositoryPort {
@@ -58,6 +59,20 @@ export class ConsentRepository implements ConsentRepositoryPort {
     now: Date,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
+      const consentItemIds = [...new Set(commands.map((command) => command.consentItemId))];
+      const marketingItems =
+        consentItemIds.length === 0
+          ? []
+          : await tx
+              .select({ id: consentItems.id })
+              .from(consentItems)
+              .where(
+                and(
+                  inArray(consentItems.id, consentItemIds),
+                  inArray(consentItems.code, ['MARKETING', 'ADVERTISEMENT']),
+                ),
+              );
+
       for (const command of commands) {
         await tx
           .insert(userConsents)
@@ -78,6 +93,15 @@ export class ConsentRepository implements ConsentRepositoryPort {
             },
           });
       }
+      if (marketingItems.length > 0) {
+        await tx
+          .update(users)
+          .set({
+            marketingConsentVersion: sql`${users.marketingConsentVersion} + 1`,
+            updatedAt: now,
+          })
+          .where(eq(users.id, userId));
+      }
     });
   }
 
@@ -90,15 +114,21 @@ export class ConsentRepository implements ConsentRepositoryPort {
         and(eq(userConsents.consentItemId, consentItems.id), eq(userConsents.userId, userId)),
       )
       .where(inArray(consentItems.code, ['MARKETING', 'ADVERTISEMENT']));
+    const user = await this.db.query.users.findFirst({
+      columns: { marketingConsentVersion: true },
+      where: eq(users.id, userId),
+    });
     return {
       marketingAgreed: rows.find((row) => row.code === 'MARKETING')?.agreed ?? false,
       advertisementAgreed: rows.find((row) => row.code === 'ADVERTISEMENT')?.agreed ?? false,
+      version: user?.marketingConsentVersion ?? 1,
     };
   }
 
   async updateMarketingConsents(
     userId: number,
     command: UpdateMarketingConsentCommand,
+    expectedVersion: number,
     now: Date,
   ): Promise<MarketingConsentResult> {
     const codes = Object.entries(command)
@@ -114,17 +144,50 @@ export class ConsentRepository implements ConsentRepositoryPort {
     if (items.length !== codes.length || items.some((item) => !item.active)) {
       throw new UserPersistenceException('Marketing consent item is not active');
     }
-    await this.upsertUserConsents(
-      userId,
-      items.map((item) => ({
-        consentItemId: item.id,
-        agreed:
+    return this.db.transaction(async (tx) => {
+      const [updatedUser] = await tx
+        .update(users)
+        .set({ marketingConsentVersion: sql`${users.marketingConsentVersion} + 1`, updatedAt: now })
+        .where(and(eq(users.id, userId), eq(users.marketingConsentVersion, expectedVersion)))
+        .returning({ version: users.marketingConsentVersion });
+      if (updatedUser === undefined) throw new DomainException(DomainErrorCode.PRECONDITION_FAILED);
+      for (const item of items) {
+        const agreed =
           item.code === 'MARKETING'
             ? command.marketingAgreed === true
-            : command.advertisementAgreed === true,
-      })),
-      now,
-    );
-    return this.getMarketingConsents(userId);
+            : command.advertisementAgreed === true;
+        await tx
+          .insert(userConsents)
+          .values({
+            userId,
+            consentItemId: item.id,
+            agreed,
+            agreedAt: agreed ? now : null,
+            withdrawnAt: agreed ? null : now,
+          })
+          .onConflictDoUpdate({
+            target: [userConsents.userId, userConsents.consentItemId],
+            set: {
+              agreed,
+              agreedAt: agreed ? now : null,
+              withdrawnAt: agreed ? null : now,
+              updatedAt: now,
+            },
+          });
+      }
+      const all = await tx
+        .select({ code: consentItems.code, agreed: userConsents.agreed })
+        .from(consentItems)
+        .leftJoin(
+          userConsents,
+          and(eq(userConsents.consentItemId, consentItems.id), eq(userConsents.userId, userId)),
+        )
+        .where(inArray(consentItems.code, ['MARKETING', 'ADVERTISEMENT']));
+      return {
+        marketingAgreed: all.find((row) => row.code === 'MARKETING')?.agreed ?? false,
+        advertisementAgreed: all.find((row) => row.code === 'ADVERTISEMENT')?.agreed ?? false,
+        version: updatedUser.version,
+      };
+    });
   }
 }

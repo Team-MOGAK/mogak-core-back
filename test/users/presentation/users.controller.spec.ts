@@ -156,6 +156,8 @@ describe('사용자 HTTP 계약', () => {
   it('비어 있는 마케팅 수정 요청을 잘못된 파라미터로 거부한다', async () => {
     await request(app.getHttpServer())
       .patch('/api/users/marketing-consent')
+      .set('Content-Type', 'application/merge-patch+json')
+      .set('If-Match', '"1"')
       .send({})
       .expect(400)
       .expect(({ body }) => expect(body.code).toBe('Z005'));

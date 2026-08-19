@@ -12,4 +12,5 @@ export type ConsentItemState = ConsentItemResult & Readonly<{ active: boolean }>
 export type MarketingConsentResult = Readonly<{
   marketingAgreed: boolean;
   advertisementAgreed: boolean;
+  version?: number;
 }>;

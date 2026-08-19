@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { and, count, eq, gte, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
@@ -49,7 +49,7 @@ export class MogakRepository implements MogakRepositoryPort {
     const [created] = await this.db
       .insert(modarats)
       .values({ userId: input.userId, title: input.title, color: input.color })
-      .returning({ id: modarats.id, title: modarats.title, color: modarats.color });
+      .returning({ id: modarats.id, title: modarats.title, color: modarats.color, version: modarats.version });
     if (created === undefined)
       throw new MogakPersistenceException('Modarat insert did not return a row');
     return created;
@@ -57,7 +57,7 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async findOwnedModarat(userId: number, modaratId: number): Promise<ModaratResult | null> {
     const modarat = await this.db.query.modarats.findFirst({
-      columns: { id: true, title: true, color: true },
+      columns: { id: true, title: true, color: true, version: true },
       where: and(eq(modarats.id, modaratId), eq(modarats.userId, userId)),
     });
     return modarat ?? null;
@@ -65,7 +65,7 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async listModarats(userId: number): Promise<ModaratResult[]> {
     const rows = await this.db
-      .select({ id: modarats.id, title: modarats.title, color: modarats.color })
+      .select({ id: modarats.id, title: modarats.title, color: modarats.color, version: modarats.version })
       .from(modarats)
       .where(eq(modarats.userId, userId));
     return rows;
@@ -74,9 +74,14 @@ export class MogakRepository implements MogakRepositoryPort {
   async updateOwnedModarat(input: UpdateModaratInput): Promise<ModaratResult | null> {
     const [updated] = await this.db
       .update(modarats)
-      .set({ title: input.title, color: input.color, updatedAt: input.now })
-      .where(and(eq(modarats.id, input.modaratId), eq(modarats.userId, input.userId)))
-      .returning({ id: modarats.id, title: modarats.title, color: modarats.color });
+      .set({
+        ...(input.title === undefined ? {} : { title: input.title }),
+        ...(input.color === undefined ? {} : { color: input.color }),
+        version: sql`${modarats.version} + 1`,
+        updatedAt: input.now,
+      })
+      .where(and(eq(modarats.id, input.modaratId), eq(modarats.userId, input.userId), eq(modarats.version, input.expectedVersion)))
+      .returning({ id: modarats.id, title: modarats.title, color: modarats.color, version: modarats.version });
     return updated ?? null;
   }
 
@@ -138,6 +143,7 @@ export class MogakRepository implements MogakRepositoryPort {
         color: mogaks.color,
         categoryId: mogaks.categoryId,
         customCategoryName: mogaks.customCategoryName,
+        version: mogaks.version,
       });
     if (created === undefined)
       throw new MogakPersistenceException('Mogak insert did not return a row');
@@ -178,13 +184,16 @@ export class MogakRepository implements MogakRepositoryPort {
     const [updated] = await this.db
       .update(mogaks)
       .set({
-        title: input.title,
-        color: input.color,
-        categoryId: input.categoryId,
-        customCategoryName: input.customCategoryName,
+        ...(input.title === undefined ? {} : { title: input.title }),
+        ...(input.color === undefined ? {} : { color: input.color }),
+        ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
+        ...(input.customCategoryName === undefined
+          ? {}
+          : { customCategoryName: input.customCategoryName }),
+        version: sql`${mogaks.version} + 1`,
         updatedAt: input.now,
       })
-      .where(and(eq(mogaks.id, input.mogakId), eq(mogaks.modaratId, owned.modaratId)))
+      .where(and(eq(mogaks.id, input.mogakId), eq(mogaks.modaratId, owned.modaratId), eq(mogaks.version, input.expectedVersion)))
       .returning({ id: mogaks.id });
     if (updated === undefined) return null;
     return this.findOwnedMogak(input.userId, input.mogakId);
@@ -222,8 +231,8 @@ export class MogakRepository implements MogakRepositoryPort {
     return this.db.transaction(async (tx) => {
       const [updatedJogak] = await tx
         .update(jogaks)
-        .set({ ...(input.title === undefined ? {} : { title: input.title }), updatedAt: input.now })
-        .where(and(eq(jogaks.id, input.jogakId), eq(jogaks.mogakId, owned.mogakId)))
+        .set({ ...(input.title === undefined ? {} : { title: input.title }), version: sql`${jogaks.version} + 1`, updatedAt: input.now })
+        .where(and(eq(jogaks.id, input.jogakId), eq(jogaks.mogakId, owned.mogakId), eq(jogaks.version, input.expectedVersion)))
         .returning({ id: jogaks.id });
       if (updatedJogak === undefined) return null;
       if (input.schedule !== undefined) {
@@ -241,7 +250,9 @@ export class MogakRepository implements MogakRepositoryPort {
             ),
           )
           .returning({ id: jogakSchedules.id });
-        if (updatedSchedule === undefined) return null;
+        if (updatedSchedule === undefined) {
+          throw new MogakPersistenceException('Jogak schedule update did not return a row');
+        }
         await tx
           .delete(jogakScheduleWeekdays)
           .where(eq(jogakScheduleWeekdays.scheduleId, schedule.scheduleId));
@@ -254,7 +265,11 @@ export class MogakRepository implements MogakRepositoryPort {
           );
         }
       }
-      return { ...owned, ...(input.title === undefined ? {} : { title: input.title }) };
+      return {
+        ...owned,
+        ...(input.title === undefined ? {} : { title: input.title }),
+        version: input.expectedVersion + 1,
+      };
     });
   }
 
@@ -580,6 +595,7 @@ function selectMogakFields() {
     categoryCode: mogakCategories.code,
     categoryName: mogakCategories.name,
     customCategoryName: mogaks.customCategoryName,
+    version: mogaks.version,
   };
 }
 
@@ -593,6 +609,7 @@ function selectOwnedJogakFields() {
     categoryCode: mogakCategories.code,
     categoryName: mogakCategories.name,
     customCategoryName: mogaks.customCategoryName,
+    version: jogaks.version,
   };
 }
 

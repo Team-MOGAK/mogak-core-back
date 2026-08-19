@@ -45,7 +45,7 @@ describe('모다랏과 모각 HTTP 계약', () => {
       })
       .compile();
     app = moduleRef.createNestApplication();
-    configureApp(app);
+    configureApp(app, { corsAllowedOrigins: ['https://mobile.mogak.test'] });
     await app.init();
   });
 
@@ -137,5 +137,100 @@ describe('모다랏과 모각 HTTP 계약', () => {
           { name: '#FF2F2F' },
         ]),
       );
+  });
+
+  it('모다랏 PATCH는 canonical media type과 생략 필드 보존 명령을 사용한다', async () => {
+    mogaks.updateModarat.mockResolvedValue({ id: 3, title: '여름 목표', color: '#475FFD', version: 2 });
+
+    await request(app.getHttpServer())
+      .patch('/api/modarats/3')
+      .set('Content-Type', 'Application/Merge-Patch+Json; charset=utf-8')
+      .set('If-Match', '"1"')
+      .send({ color: '#475FFD' })
+      .expect(200)
+      .expect('Accept-Patch', 'application/merge-patch+json')
+      .expect('ETag', '"2"');
+
+    expect(mogaks.updateModarat).toHaveBeenCalledWith(7, 3, { color: '#475FFD' }, 1);
+  });
+
+  it('모각 PATCH는 canonical media type만 받고 이전 PUT은 PATCH 안내와 함께 거부한다', async () => {
+    await request(app.getHttpServer())
+      .patch('/api/mogaks/9')
+      .send({ title: '수정' })
+      .expect(415)
+      .expect('Accept-Patch', 'application/merge-patch+json')
+      .expect(({ body }) => expect(body.code).toBe('Z007'));
+
+    await request(app.getHttpServer())
+      .patch('/api/mogaks/9')
+      .set('Content-Type', 'application/merge-patch+json')
+      .send({ title: '수정' })
+      .expect(428);
+
+    await request(app.getHttpServer())
+      .patch('/api/mogaks/9')
+      .set('Content-Type', 'application/merge-patch+json')
+      .set('If-Match', '"999999999999999999999"')
+      .send({ title: '수정' })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .put('/api/mogaks/9')
+      .set('Origin', 'https://mobile.mogak.test')
+      .send({ title: '수정' })
+      .expect(405)
+      .expect('Allow', 'PATCH')
+      .expect('Access-Control-Allow-Origin', 'https://mobile.mogak.test');
+
+    await request(app.getHttpServer())
+      .options('/api/mogaks/9')
+      .set('Origin', 'https://mobile.mogak.test')
+      .set('Access-Control-Request-Method', 'PATCH')
+      .set('Access-Control-Request-Headers', 'content-type, if-match')
+      .expect(204)
+      .expect('Access-Control-Allow-Headers', /If-Match/i)
+      .expect('Access-Control-Expose-Headers', /ETag/i);
+
+    await request(app.getHttpServer())
+      .put('/api/posts/9')
+      .send({ contents: '유지되는 PUT' })
+      .expect(404);
+  });
+
+  it('모각 PATCH는 category 전체 객체만 변경 명령으로 변환한다', async () => {
+    mogaks.updateMogak.mockResolvedValue({
+      id: 9,
+      title: '정보처리기사',
+      color: '#475FFD',
+      category: { code: 'CERTIFICATION', name: '자격증' },
+    });
+
+    await request(app.getHttpServer())
+      .patch('/api/mogaks/9')
+      .set('Content-Type', 'application/merge-patch+json')
+      .set('If-Match', '"1"')
+      .send({ category: { code: 'CERTIFICATION' } })
+      .expect(200);
+
+    expect(mogaks.updateMogak).toHaveBeenCalledWith(7, 9, { categoryCode: 'CERTIFICATION' }, 1);
+  });
+
+  it('모각 PATCH category는 응답 표현을 그대로 받아 code를 정본으로 변환한다', async () => {
+    mogaks.updateMogak.mockResolvedValue({
+      id: 9,
+      title: '정보처리기사',
+      color: '#475FFD',
+      category: { code: 'CERTIFICATION', name: '자격증' },
+    });
+
+    await request(app.getHttpServer())
+      .patch('/api/mogaks/9')
+      .set('Content-Type', 'application/merge-patch+json')
+      .set('If-Match', '"1"')
+      .send({ category: { code: 'CERTIFICATION', name: '자격증' } })
+      .expect(200);
+
+    expect(mogaks.updateMogak).toHaveBeenCalledWith(7, 9, { categoryCode: 'CERTIFICATION' }, 1);
   });
 });

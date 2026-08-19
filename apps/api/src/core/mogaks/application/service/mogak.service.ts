@@ -2,7 +2,12 @@ import { DomainErrorCode, DomainException } from '@core/common/error/domainExcep
 import { requiredTrimmed } from '@core/common/validation/requiredText';
 import { selectMogakCategory, validateMogakCapacity } from '../../domain/policy/mogak.policy';
 import type { MogakRepositoryPort } from '../port/mogak.repository.port';
-import type { CreateMogakCommand, ModaratCommand, UpdateMogakCommand } from '../type/mogak.command';
+import type {
+  CreateMogakCommand,
+  ModaratCommand,
+  PatchModaratCommand,
+  PatchMogakCommand,
+} from '../type/mogak.command';
 import type { MogakResult, ModaratResult } from '../type/mogak.result';
 import type { OwnedMogakPort } from '../port/ownedMogak.port';
 
@@ -35,16 +40,23 @@ export class MogakService implements OwnedMogakPort {
   async updateModarat(
     userId: number,
     modaratId: number,
-    input: ModaratCommand,
+    input: PatchModaratCommand,
+    expectedVersion = 1,
   ): Promise<ModaratResult> {
     const updated = await this.repository.updateOwnedModarat({
       userId,
       modaratId,
-      title: requiredTrimmed(input.title),
-      color: requiredTrimmed(input.color),
+      expectedVersion,
+      ...(input.title === undefined ? {} : { title: requiredTrimmed(input.title) }),
+      ...(input.color === undefined ? {} : { color: requiredTrimmed(input.color) }),
       now: new Date(),
     });
-    if (updated === null) throw new DomainException(DomainErrorCode.MODARAT_NOT_FOUND);
+    if (updated === null) {
+      if ((await this.repository.findOwnedModarat(userId, modaratId)) !== null) {
+        throw new DomainException(DomainErrorCode.PRECONDITION_FAILED);
+      }
+      throw new DomainException(DomainErrorCode.MODARAT_NOT_FOUND);
+    }
     return updated;
   }
 
@@ -77,18 +89,27 @@ export class MogakService implements OwnedMogakPort {
     return { mogaks: mogaks.map(toMogakResponse), size: mogaks.length };
   }
 
-  async updateMogak(userId: number, mogakId: number, input: UpdateMogakCommand) {
-    const category = await this.resolveCategory(input);
+  async updateMogak(userId: number, mogakId: number, input: PatchMogakCommand, expectedVersion = 1) {
+    const hasCategoryPatch =
+      input.categoryCode !== undefined || input.customCategoryName !== undefined;
+    const category = hasCategoryPatch ? await this.resolveCategory(input) : undefined;
     const updated = await this.repository.updateOwnedMogak({
       userId,
       mogakId,
-      title: requiredTrimmed(input.title),
-      color: optionalTrim(input.color) ?? null,
-      categoryId: category.categoryId,
-      customCategoryName: category.customCategoryName,
+      expectedVersion,
+      ...(input.title === undefined ? {} : { title: requiredTrimmed(input.title) }),
+      ...(input.color === undefined ? {} : { color: optionalTrim(input.color) ?? null }),
+      ...(category === undefined
+        ? {}
+        : { categoryId: category.categoryId, customCategoryName: category.customCategoryName }),
       now: new Date(),
     });
-    if (updated === null) throw new DomainException(DomainErrorCode.MOGAK_NOT_FOUND);
+    if (updated === null) {
+      if ((await this.repository.findOwnedMogak(userId, mogakId)) !== null) {
+        throw new DomainException(DomainErrorCode.PRECONDITION_FAILED);
+      }
+      throw new DomainException(DomainErrorCode.MOGAK_NOT_FOUND);
+    }
     return toMogakResponse(updated);
   }
 
@@ -145,6 +166,7 @@ function toMogakResponse(record: MogakResult) {
     id: record.id,
     title: record.title,
     color: record.color,
+    version: record.version,
     category: { code: record.categoryCode, name },
   };
 }

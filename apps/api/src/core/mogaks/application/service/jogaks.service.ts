@@ -135,7 +135,7 @@ export class JogaksService implements OwnedOccurrencePort {
     };
   }
 
-  async update(userId: number, jogakId: number, input: UpdateJogakCommand) {
+  async update(userId: number, jogakId: number, input: UpdateJogakCommand, expectedVersion = 1) {
     const today = this.today();
     if (
       input.schedule !== undefined &&
@@ -164,11 +164,17 @@ export class JogaksService implements OwnedOccurrencePort {
     const updated = await this.repository.patchOwnedJogak({
       userId,
       jogakId,
+      expectedVersion,
       ...(input.title === undefined ? {} : { title: requiredTrimmed(input.title) }),
       ...(schedule === undefined ? {} : { schedule }),
       now: new Date(),
     });
-    if (updated === null) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
+    if (updated === null) {
+      if ((await this.repository.findOwnedJogak(userId, jogakId)) !== null) {
+        throw new DomainException(DomainErrorCode.PRECONDITION_FAILED);
+      }
+      throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
+    }
     return {
       jogakId: updated.id,
       mogakId: updated.mogakId,
@@ -176,6 +182,7 @@ export class JogaksService implements OwnedOccurrencePort {
       category: categoryOf(updated.categoryCode, updated.categoryName, updated.customCategoryName),
       title: updated.title,
       color: updated.color,
+      version: updated.version,
     };
   }
 

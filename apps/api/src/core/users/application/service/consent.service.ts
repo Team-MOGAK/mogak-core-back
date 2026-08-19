@@ -51,11 +51,12 @@ export class ConsentService {
   async updateMarketing(
     userId: number,
     command: UpdateMarketingConsentCommand,
+    expectedVersion: number,
   ): Promise<MarketingConsentResult> {
     if (command.marketingAgreed === undefined && command.advertisementAgreed === undefined) {
       throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
     }
-    return this.repository.updateMarketingConsents(userId, command, new Date());
+    return this.repository.updateMarketingConsents(userId, command, expectedVersion, new Date());
   }
 
   private throwForValidationIssue(issue: ConsentValidationIssue): never {
