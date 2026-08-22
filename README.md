@@ -99,10 +99,10 @@ pnpm typecheck
 pnpm build
 pnpm test --runInBand
 pnpm test:e2e --runInBand
-pnpm test:db --runInBand
+pnpm test:integration --runInBand
 ```
 
-`test:db`는 `.env`의 연결 정보를 바탕으로 `MOGAK_TEST_DB` 전용 데이터베이스에 migration을 적용한 뒤 실행합니다. 테스트 데이터베이스 이름은 반드시 `_test`로 끝나야 합니다. 로컬 Docker Compose를 처음 기동하면 테스트 DB도 함께 생성됩니다.
+`test:integration`은 `.env`의 연결 정보를 바탕으로 `mogak_test` 전용 데이터베이스에서 실행합니다. 테스트 데이터베이스 이름은 반드시 `_test`로 끝나야 합니다. 로컬 Docker Compose를 처음 기동하면 테스트 DB도 함께 생성됩니다.
 
 ## 문서
 

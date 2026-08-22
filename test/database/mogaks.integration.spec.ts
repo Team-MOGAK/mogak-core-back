@@ -68,7 +68,6 @@ describe('모각 PostgreSQL 통합', () => {
       0,
     );
     await expect(db.select().from(posts).where(eq(posts.id, post.id))).resolves.toHaveLength(1);
-    await db.delete(users).where(eq(users.id, fixture.userId));
   });
 
   it('같은 실행 발생을 동시에 삽입해도 하나만 저장한다', async () => {
@@ -90,8 +89,6 @@ describe('모각 PostgreSQL 통합', () => {
     await expect(rowCount(jogakExecutions, jogakExecutions.jogakId, fixture.jogakId)).resolves.toBe(
       1,
     );
-
-    await db.delete(users).where(eq(users.id, fixture.userId));
   });
 
   it('조각 제목이 바뀐 뒤에도 실행 제목 스냅샷을 유지한다', async () => {
@@ -117,8 +114,6 @@ describe('모각 PostgreSQL 통합', () => {
         ),
       );
     expect(execution?.title).toBe('문제 풀이');
-
-    await db.delete(users).where(eq(users.id, fixture.userId));
   });
 
   it('과거 한 번 일정 여덟 개는 미래 조각 생성을 막지 않는다', async () => {
@@ -159,8 +154,6 @@ describe('모각 PostgreSQL 통합', () => {
         },
       }),
     ).resolves.toMatchObject({ title: '미래 루틴' });
-
-    await db.delete(users).where(eq(users.id, fixture.userId));
   });
 
   it('KST 오늘 활성인 일정만 수정하고 후속 일정 행은 보존한다', async () => {
@@ -220,8 +213,6 @@ describe('모각 PostgreSQL 통합', () => {
       size: 1,
       jogaks: [{ jogakId: fixture.jogakId, scheduledDate: '2026-08-06' }],
     });
-
-    await db.delete(users).where(eq(users.id, fixture.userId));
   });
 
   it('KST 오늘 활성인 일정을 한 번 일정으로 바꾸면 시작일을 보존한다', async () => {
@@ -230,10 +221,19 @@ describe('모각 PostgreSQL 통합', () => {
       effectiveFrom: '2026-07-01',
       weekdays: ['WEDNESDAY'],
     });
-    await db.insert(jogakSchedules).values({
-      jogakId: fixture.jogakId,
-      scheduleType: 'WEEKLY',
-      effectiveFrom: '2026-08-01',
+    const [futureSchedule] = await db
+      .insert(jogakSchedules)
+      .values({
+        jogakId: fixture.jogakId,
+        scheduleType: 'WEEKLY',
+        effectiveFrom: '2026-08-01',
+      })
+      .returning({ id: jogakSchedules.id });
+    if (futureSchedule === undefined)
+      throw new Error('future schedule fixture did not return a row');
+    await db.insert(jogakScheduleWeekdays).values({
+      scheduleId: futureSchedule.id,
+      weekday: 'FRIDAY',
     });
     const service = new JogaksService(
       new MogakRepository(db as unknown as Database),
@@ -272,8 +272,6 @@ describe('모각 PostgreSQL 통합', () => {
       effectiveTo: null,
       weekdays: [],
     });
-
-    await db.delete(users).where(eq(users.id, fixture.userId));
   });
 
   it('같은 시작일의 반복 일정은 행 ID를 보존하고 요일을 교체한다', async () => {
@@ -321,8 +319,7 @@ describe('모각 PostgreSQL 통합', () => {
         .from(jogakScheduleWeekdays)
         .where(eq(jogakScheduleWeekdays.scheduleId, before.id))
         .orderBy(asc(jogakScheduleWeekdays.weekday)),
-    ).resolves.toEqual([{ weekday: 'MONDAY' }, { weekday: 'FRIDAY' }]);
-    await db.delete(users).where(eq(users.id, fixture.userId));
+    ).resolves.toEqual([{ weekday: 'FRIDAY' }, { weekday: 'MONDAY' }]);
   });
 
   it('같은 시작일의 반복 일정을 한 번 일정으로 바꾸면 종료일과 요일을 지운다', async () => {
@@ -358,7 +355,6 @@ describe('모각 PostgreSQL 통합', () => {
         .from(jogakScheduleWeekdays)
         .where(eq(jogakScheduleWeekdays.scheduleId, schedule.id)),
     ).resolves.toHaveLength(0);
-    await db.delete(users).where(eq(users.id, fixture.userId));
   });
 
   it('같은 시작일 일정 수정은 기존 실행 기록을 보존한다', async () => {
@@ -399,7 +395,6 @@ describe('모각 PostgreSQL 통합', () => {
         .from(jogakExecutions)
         .where(eq(jogakExecutions.id, execution.id)),
     ).resolves.toEqual([{ id: execution.id, title: '문제 풀이' }]);
-    await db.delete(users).where(eq(users.id, fixture.userId));
   });
 });
 

@@ -4,9 +4,9 @@ import { createDefaultEsmPreset } from 'ts-jest';
 const config: Config = {
   ...createDefaultEsmPreset({ tsconfig: '<rootDir>/tsconfig.spec.json' }),
   testEnvironment: 'node',
+  roots: ['<rootDir>/apps/api/src', '<rootDir>/test'],
   testMatch: ['<rootDir>/test/**/*.spec.ts'],
   testPathIgnorePatterns: ['<rootDir>/test/database/.*\\.integration\\.spec\\.ts'],
-  modulePathIgnorePatterns: ['<rootDir>/.worktrees/'],
   moduleNameMapper: {
     '^@api/(.*)$': '<rootDir>/apps/api/src/api/$1',
     '^@core/(.*)$': '<rootDir>/apps/api/src/core/$1',

@@ -18,10 +18,16 @@ if (suppliedDatabaseUrl === undefined) {
 const config: Config = {
   ...createDefaultEsmPreset({ tsconfig: '<rootDir>/tsconfig.spec.json' }),
   testEnvironment: 'node',
+  roots: ['<rootDir>/apps/api/src', '<rootDir>/test'],
   testMatch: ['<rootDir>/test/database/**/*.integration.spec.ts'],
-  modulePathIgnorePatterns: ['<rootDir>/.worktrees/'],
-  globalSetup: '<rootDir>/test/database/globalSetup.ts',
-  setupFiles: ['<rootDir>/test/database/setup.ts'],
+  moduleNameMapper: {
+    '^@api/(.*)$': '<rootDir>/apps/api/src/api/$1',
+    '^@core/(.*)$': '<rootDir>/apps/api/src/core/$1',
+    '^@infra/(.*)$': '<rootDir>/apps/api/src/infrastructure/$1',
+    '^@composition/(.*)$': '<rootDir>/apps/api/src/composition/$1',
+  },
+  setupFilesAfterEnv: ['<rootDir>/test/database/setup.ts'],
+  maxWorkers: 1,
   restoreMocks: true,
 };
 

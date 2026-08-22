@@ -29,7 +29,7 @@ const plan = [
   [pnpm, ['db:migrate'], 'mogak_test'],
   [pnpm, ['test', '--runInBand']],
   [pnpm, ['test:e2e', '--runInBand']],
-  [pnpm, ['test:db', '--runInBand']],
+  [pnpm, ['test:integration', '--runInBand']],
   ['node', ['dist/main.js']],
   ['node', ['scripts/local-api-scenario.mjs']],
 ];
@@ -58,7 +58,7 @@ await run(pnpm, ['build'], environment);
 await run(pnpm, ['db:migrate'], testEnvironment);
 await run(pnpm, ['test', '--runInBand'], testEnvironment);
 await run(pnpm, ['test:e2e', '--runInBand'], testEnvironment);
-await run(pnpm, ['test:db', '--runInBand'], testEnvironment);
+await run(pnpm, ['test:integration', '--runInBand'], testEnvironment);
 await verifyApiScenario(testEnvironment);
 
 function withDatabaseName(databaseUrl, databaseName) {

@@ -31,33 +31,26 @@ afterAll(async () => {
 describe('게시글 PostgreSQL 통합', () => {
   it('작성자를 삭제하면 게시글과 모든 종속 행을 하드 삭제한다', async () => {
     const fixture = await createPostFixture();
-    try {
-      await insertPostDependents(fixture);
-      await db.delete(users).where(eq(users.id, fixture.userId));
+    await insertPostDependents(fixture);
 
-      await expect(postRows(fixture.postId)).resolves.toHaveLength(0);
-      await expect(postImageRows(fixture.postId)).resolves.toHaveLength(0);
-      await expect(postCommentRows(fixture.postId)).resolves.toHaveLength(0);
-      await expect(postLikeRows(fixture.postId)).resolves.toHaveLength(0);
-      await expect(executionRows(fixture.executionId)).resolves.toHaveLength(0);
-    } finally {
-      await db.delete(users).where(eq(users.id, fixture.userId));
-    }
+    await db.delete(users).where(eq(users.id, fixture.userId));
+
+    await expect(postRows(fixture.postId)).resolves.toHaveLength(0);
+    await expect(postImageRows(fixture.postId)).resolves.toHaveLength(0);
+    await expect(postCommentRows(fixture.postId)).resolves.toHaveLength(0);
+    await expect(postLikeRows(fixture.postId)).resolves.toHaveLength(0);
+    await expect(executionRows(fixture.executionId)).resolves.toHaveLength(0);
   });
 
   it('실행은 유지하고 게시글 종속 행만 하드 삭제한다', async () => {
     const fixture = await createPostFixture();
-    try {
-      await insertPostDependents(fixture);
-      await db.delete(posts).where(eq(posts.id, fixture.postId));
+    await insertPostDependents(fixture);
+    await db.delete(posts).where(eq(posts.id, fixture.postId));
 
-      await expect(postImageRows(fixture.postId)).resolves.toHaveLength(0);
-      await expect(postCommentRows(fixture.postId)).resolves.toHaveLength(0);
-      await expect(postLikeRows(fixture.postId)).resolves.toHaveLength(0);
-      await expect(executionRows(fixture.executionId)).resolves.toHaveLength(1);
-    } finally {
-      await db.delete(users).where(eq(users.id, fixture.userId));
-    }
+    await expect(postImageRows(fixture.postId)).resolves.toHaveLength(0);
+    await expect(postCommentRows(fixture.postId)).resolves.toHaveLength(0);
+    await expect(postLikeRows(fixture.postId)).resolves.toHaveLength(0);
+    await expect(executionRows(fixture.executionId)).resolves.toHaveLength(1);
   });
 
   it('같은 실행의 게시글을 동시에 삽입해도 하나만 저장한다', async () => {
@@ -73,13 +66,9 @@ describe('게시글 PostgreSQL 통합', () => {
         .onConflictDoNothing({ target: posts.jogakExecutionId })
         .returning({ id: posts.id });
 
-    try {
-      const results = await Promise.all([insert(), insert()]);
-      expect(results.filter((result) => result.length === 1)).toHaveLength(1);
-      await expect(postsForExecution(fixture.executionId)).resolves.toHaveLength(1);
-    } finally {
-      await db.delete(users).where(eq(users.id, fixture.userId));
-    }
+    const results = await Promise.all([insert(), insert()]);
+    expect(results.filter((result) => result.length === 1)).toHaveLength(1);
+    await expect(postsForExecution(fixture.executionId)).resolves.toHaveLength(1);
   });
 
   it('같은 사용자가 동시에 좋아요해도 하나만 저장한다', async () => {
@@ -91,13 +80,9 @@ describe('게시글 PostgreSQL 통합', () => {
         .onConflictDoNothing({ target: [postLikes.postId, postLikes.userId] })
         .returning({ id: postLikes.id });
 
-    try {
-      const results = await Promise.all([insert(), insert()]);
-      expect(results.filter((result) => result.length === 1)).toHaveLength(1);
-      await expect(postLikeRows(fixture.postId)).resolves.toHaveLength(1);
-    } finally {
-      await db.delete(users).where(eq(users.id, fixture.userId));
-    }
+    const results = await Promise.all([insert(), insert()]);
+    expect(results.filter((result) => result.length === 1)).toHaveLength(1);
+    await expect(postLikeRows(fixture.postId)).resolves.toHaveLength(1);
   });
 });
 
