@@ -74,10 +74,7 @@ export class ModaratMogakController {
     @ZodBody(moderatPatchRequestSchema) request: ModaratPatchRequest,
   ) {
     return successResponse(
-      await this.mogakService.updateModarat(user.userId, params.modaratId, {
-        ...(request.title === undefined ? {} : { title: request.title }),
-        ...(request.color === undefined ? {} : { color: request.color }),
-      }),
+      await this.mogakService.updateModarat(user.userId, params.modaratId, request),
     );
   }
 
@@ -129,17 +126,7 @@ export class ModaratMogakController {
     @ZodBody(mogakPatchRequestSchema) request: MogakPatchRequest,
   ) {
     return successResponse(
-      await this.mogakService.updateMogak(user.userId, params.mogakId, {
-        ...(request.title === undefined ? {} : { title: request.title }),
-        ...(request.color === undefined ? {} : { color: request.color }),
-        ...(request.category === undefined
-          ? {}
-          : request.category.code === undefined
-            ? request.category.name === undefined
-              ? {}
-              : { customCategoryName: request.category.name }
-            : { categoryCode: request.category.code }),
-      }),
+      await this.mogakService.updateMogak(user.userId, params.mogakId, request),
     );
   }
 

@@ -115,22 +115,7 @@ export class JogaksController {
     @ZodParams(jogakIdParamSchema) params: JogakIdParams,
     @ZodBody(updateJogakRequestSchema) request: UpdateJogakRequest,
   ) {
-    return successResponse(
-      await this.jogaks.update(user.userId, params.jogakId, {
-        ...(request.title === undefined ? {} : { title: request.title }),
-        ...(request.schedule === undefined
-          ? {}
-          : {
-              schedule: {
-                scheduleType: request.schedule.scheduleType as 'ONCE' | 'WEEKLY',
-                ...(request.schedule.effectiveTo === undefined
-                  ? {}
-                  : { effectiveTo: request.schedule.effectiveTo }),
-                weekdays: request.schedule.weekdays,
-              },
-            }),
-      }),
-    );
+    return successResponse(await this.jogaks.update(user.userId, params.jogakId, request));
   }
 
   @Delete('jogaks/:jogakId')

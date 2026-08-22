@@ -83,9 +83,8 @@ export class MogakService implements OwnedMogakPort {
   }
 
   async updateMogak(userId: number, mogakId: number, input: PatchMogakCommand) {
-    const hasCategoryPatch =
-      input.categoryCode !== undefined || input.customCategoryName !== undefined;
-    const category = hasCategoryPatch ? await this.resolveCategory(input) : undefined;
+    const category =
+      input.category === undefined ? undefined : await this.resolvePatchCategory(input.category);
     const updated = await this.repository.updateOwnedMogak({
       userId,
       mogakId,
@@ -137,6 +136,12 @@ export class MogakService implements OwnedMogakPort {
       return { categoryId: category.id, customCategoryName: null };
     }
     return { categoryId: null, customCategoryName: selection.name };
+  }
+
+  private resolvePatchCategory(input: NonNullable<PatchMogakCommand['category']>) {
+    return this.resolveCategory(
+      input.type === 'SYSTEM' ? { categoryCode: input.code } : { customCategoryName: input.name },
+    );
   }
 }
 

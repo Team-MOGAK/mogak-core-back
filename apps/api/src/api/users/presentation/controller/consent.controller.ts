@@ -51,14 +51,7 @@ export class ConsentController {
     @ZodBody(updateMarketingConsentRequestSchema) request: UpdateMarketingConsentRequest,
   ) {
     return successResponse<MarketingConsentResponse>(
-      await this.consents.updateMarketing(current.userId, {
-        ...(request.marketingAgreed === undefined
-          ? {}
-          : { marketingAgreed: request.marketingAgreed }),
-        ...(request.advertisementAgreed === undefined
-          ? {}
-          : { advertisementAgreed: request.advertisementAgreed }),
-      }),
+      await this.consents.updateMarketing(current.userId, request),
     );
   }
 }

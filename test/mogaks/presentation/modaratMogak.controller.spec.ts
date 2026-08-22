@@ -183,7 +183,7 @@ describe('모다랏과 모각 HTTP 계약', () => {
       .expect(404);
   });
 
-  it('모각 PATCH는 category 전체 객체만 변경 명령으로 변환한다', async () => {
+  it('모각 PATCH는 SYSTEM 카테고리 객체를 변경 명령으로 전달한다', async () => {
     mogaks.updateMogak.mockResolvedValue({
       id: 9,
       title: '정보처리기사',
@@ -191,29 +191,44 @@ describe('모다랏과 모각 HTTP 계약', () => {
       category: { code: 'CERTIFICATION', name: '자격증' },
     });
 
+    await request(app.getHttpServer())
+      .patch('/api/mogaks/9')
+      .set('Content-Type', 'application/merge-patch+json')
+      .send({ category: { type: 'SYSTEM', code: 'CERTIFICATION' } })
+      .expect(200);
+
+    expect(mogaks.updateMogak).toHaveBeenCalledWith(7, 9, {
+      category: { type: 'SYSTEM', code: 'CERTIFICATION' },
+    });
+  });
+
+  it('모각 PATCH는 CUSTOM 카테고리 객체를 변경 명령으로 전달한다', async () => {
+    mogaks.updateMogak.mockResolvedValue({
+      id: 9,
+      title: '정보처리기사',
+      color: '#475FFD',
+      category: { code: 'CERTIFICATION', name: '자격증' },
+    });
+
+    await request(app.getHttpServer())
+      .patch('/api/mogaks/9')
+      .set('Content-Type', 'application/merge-patch+json')
+      .send({ category: { type: 'CUSTOM', name: '코딩 테스트' } })
+      .expect(200);
+
+    expect(mogaks.updateMogak).toHaveBeenCalledWith(7, 9, {
+      category: { type: 'CUSTOM', name: '코딩 테스트' },
+    });
+  });
+
+  it('모각 PATCH는 type 없는 이전 category 표현을 거부한다', async () => {
     await request(app.getHttpServer())
       .patch('/api/mogaks/9')
       .set('Content-Type', 'application/merge-patch+json')
       .send({ category: { code: 'CERTIFICATION' } })
-      .expect(200);
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
 
-    expect(mogaks.updateMogak).toHaveBeenCalledWith(7, 9, { categoryCode: 'CERTIFICATION' });
-  });
-
-  it('모각 PATCH category는 응답 표현을 그대로 받아 code를 정본으로 변환한다', async () => {
-    mogaks.updateMogak.mockResolvedValue({
-      id: 9,
-      title: '정보처리기사',
-      color: '#475FFD',
-      category: { code: 'CERTIFICATION', name: '자격증' },
-    });
-
-    await request(app.getHttpServer())
-      .patch('/api/mogaks/9')
-      .set('Content-Type', 'application/merge-patch+json')
-      .send({ category: { code: 'CERTIFICATION', name: '자격증' } })
-      .expect(200);
-
-    expect(mogaks.updateMogak).toHaveBeenCalledWith(7, 9, { categoryCode: 'CERTIFICATION' });
+    expect(mogaks.updateMogak).not.toHaveBeenCalled();
   });
 });

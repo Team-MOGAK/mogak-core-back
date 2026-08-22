@@ -166,4 +166,35 @@ describe('모각 서비스', () => {
     expect(command).not.toHaveProperty('categoryId');
     expect(command).not.toHaveProperty('customCategoryName');
   });
+
+  it('모각 PATCH의 tagged category를 저장 모델로 해석한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.findActiveCategoryByCode).mockResolvedValue({
+      id: 1,
+      code: 'CERTIFICATION',
+      name: '자격증',
+    });
+    jest.mocked(mogaks.updateOwnedMogak).mockResolvedValue({
+      id: 9,
+      modaratId: 3,
+      title: '수정된 제목',
+      color: '#475FFD',
+      categoryCode: 'CERTIFICATION',
+      categoryName: '자격증',
+      customCategoryName: null,
+    });
+    const service = new MogakService(mogaks);
+
+    await service.updateMogak(7, 9, { category: { type: 'SYSTEM', code: 'CERTIFICATION' } });
+    await service.updateMogak(7, 9, { category: { type: 'CUSTOM', name: '코딩 테스트' } });
+
+    expect(mogaks.updateOwnedMogak).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ categoryId: 1, customCategoryName: null }),
+    );
+    expect(mogaks.updateOwnedMogak).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ categoryId: null, customCategoryName: '코딩 테스트' }),
+    );
+  });
 });

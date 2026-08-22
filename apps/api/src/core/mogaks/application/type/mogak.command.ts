@@ -1,5 +1,7 @@
+import type { MergePatch } from '@core/common/type/mergePatch';
+
 export type ModaratCommand = Readonly<{ title: string; color: string }>;
-export type PatchModaratCommand = Partial<ModaratCommand>;
+export type PatchModaratCommand = MergePatch<ModaratCommand>;
 export type CreateMogakCommand = Readonly<{
   modaratId: number;
   title: string;
@@ -7,5 +9,8 @@ export type CreateMogakCommand = Readonly<{
   customCategoryName?: string;
   color?: string;
 }>;
-export type UpdateMogakCommand = Omit<CreateMogakCommand, 'modaratId'>;
-export type PatchMogakCommand = Partial<UpdateMogakCommand>;
+export type MogakCategoryPatch =
+  Readonly<{ type: 'SYSTEM'; code: string }> | Readonly<{ type: 'CUSTOM'; name: string }>;
+export type PatchMogakCommand = MergePatch<
+  Readonly<{ title: string; color: string; category: MogakCategoryPatch }>
+>;
