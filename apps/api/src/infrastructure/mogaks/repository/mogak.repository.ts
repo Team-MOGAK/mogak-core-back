@@ -75,8 +75,8 @@ export class MogakRepository implements MogakRepositoryPort {
     const [updated] = await this.db
       .update(modarats)
       .set({
-        ...(input.title === undefined ? {} : { title: input.title }),
-        ...(input.color === undefined ? {} : { color: input.color }),
+        title: input.title,
+        color: input.color,
         updatedAt: input.now,
       })
       .where(and(eq(modarats.id, input.modaratId), eq(modarats.userId, input.userId)))
@@ -182,12 +182,10 @@ export class MogakRepository implements MogakRepositoryPort {
     const [updated] = await this.db
       .update(mogaks)
       .set({
-        ...(input.title === undefined ? {} : { title: input.title }),
-        ...(input.color === undefined ? {} : { color: input.color }),
-        ...(input.categoryId === undefined ? {} : { categoryId: input.categoryId }),
-        ...(input.customCategoryName === undefined
-          ? {}
-          : { customCategoryName: input.customCategoryName }),
+        title: input.title,
+        color: input.color,
+        categoryId: input.categoryId,
+        customCategoryName: input.customCategoryName,
         updatedAt: input.now,
       })
       .where(and(eq(mogaks.id, input.mogakId), eq(mogaks.modaratId, owned.modaratId)))

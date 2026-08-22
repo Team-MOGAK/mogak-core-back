@@ -152,7 +152,7 @@ describe('모다랏과 모각 HTTP 계약', () => {
     expect(mogaks.updateModarat).toHaveBeenCalledWith(7, 3, { color: '#475FFD' });
   });
 
-  it('모각 PATCH는 canonical media type만 받고 이전 PUT은 PATCH 안내와 함께 거부한다', async () => {
+  it('모각 PATCH는 canonical media type만 받고 이전 PUT 경로는 등록하지 않는다', async () => {
     await request(app.getHttpServer())
       .patch('/api/mogaks/9')
       .send({ title: '수정' })
@@ -164,8 +164,7 @@ describe('모다랏과 모각 HTTP 계약', () => {
       .put('/api/mogaks/9')
       .set('Origin', 'https://mobile.mogak.test')
       .send({ title: '수정' })
-      .expect(405)
-      .expect('Allow', 'PATCH')
+      .expect(404)
       .expect('Access-Control-Allow-Origin', 'https://mobile.mogak.test');
 
     await request(app.getHttpServer())

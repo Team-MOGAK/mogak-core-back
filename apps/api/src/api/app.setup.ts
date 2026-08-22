@@ -2,7 +2,6 @@ import type { INestApplication } from '@nestjs/common';
 
 import { GlobalExceptionFilter } from './common/http/globalException.filter';
 import { MERGE_PATCH_MEDIA_TYPE } from './common/http/mergePatch.decorator';
-import { rejectRetiredPutRoutes } from './common/http/retiredPut.middleware';
 
 type ExpressApplication = {
   set(setting: 'trust proxy', value: number): void;
@@ -32,8 +31,6 @@ export function configureApp(
       credentials: false,
     });
   }
-
-  app.use(rejectRetiredPutRoutes);
 
   app.useGlobalFilters(new GlobalExceptionFilter());
 }

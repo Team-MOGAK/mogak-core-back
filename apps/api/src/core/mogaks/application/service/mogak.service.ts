@@ -1,5 +1,5 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
-import { requiredTrimmed } from '@core/common/validation/requiredText';
+import { patchText, requiredTrimmed } from '@core/common/validation/requiredText';
 import { selectMogakCategory, validateMogakCapacity } from '../../domain/policy/mogak.policy';
 import type { MogakRepositoryPort } from '../port/mogak.repository.port';
 import type {
@@ -45,8 +45,8 @@ export class MogakService implements OwnedMogakPort {
     const updated = await this.repository.updateOwnedModarat({
       userId,
       modaratId,
-      ...(input.title === undefined ? {} : { title: requiredTrimmed(input.title) }),
-      ...(input.color === undefined ? {} : { color: requiredTrimmed(input.color) }),
+      title: patchText(input.title),
+      color: patchText(input.color),
       now: new Date(),
     });
     if (updated === null) throw new DomainException(DomainErrorCode.MODARAT_NOT_FOUND);
@@ -88,11 +88,10 @@ export class MogakService implements OwnedMogakPort {
     const updated = await this.repository.updateOwnedMogak({
       userId,
       mogakId,
-      ...(input.title === undefined ? {} : { title: requiredTrimmed(input.title) }),
-      ...(input.color === undefined ? {} : { color: optionalTrim(input.color) ?? null }),
-      ...(category === undefined
-        ? {}
-        : { categoryId: category.categoryId, customCategoryName: category.customCategoryName }),
+      title: patchText(input.title),
+      color: nullableOptionalTrim(input.color),
+      categoryId: category?.categoryId,
+      customCategoryName: category?.customCategoryName,
       now: new Date(),
     });
     if (updated === null) throw new DomainException(DomainErrorCode.MOGAK_NOT_FOUND);
@@ -149,6 +148,10 @@ function optionalTrim(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
   return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function nullableOptionalTrim(value: string | undefined): string | null | undefined {
+  return value === undefined ? undefined : (optionalTrim(value) ?? null);
 }
 
 function toMogakResponse(record: MogakResult) {

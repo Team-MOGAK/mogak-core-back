@@ -1,5 +1,6 @@
 import type { JogakExecutionStatus } from '../../domain/vo/jogakExecution.vo';
 import type { ValidatedJogakSchedule } from '../../domain/vo/jogakSchedule.vo';
+import type { MergePatch } from '@core/common/type/mergePatch';
 import type { ModaratCommand, PatchModaratCommand } from '../type/mogak.command';
 import type { MogakCategoryResult, MogakResult, ModaratResult } from '../type/mogak.result';
 import type {
@@ -34,15 +35,15 @@ export interface MogakRepositoryPort {
   listMogaksForOwnedModarat(userId: number, modaratId: number): Promise<MogakResult[]>;
   findOwnedMogak(userId: number, mogakId: number): Promise<MogakResult | null>;
   updateOwnedMogak(
-    input: Readonly<{
-      userId: number;
-      mogakId: number;
-      title?: string;
-      color?: string | null;
-      categoryId?: number | null;
-      customCategoryName?: string | null;
-      now: Date;
-    }>,
+    input: Readonly<{ userId: number; mogakId: number; now: Date }> &
+      MergePatch<
+        Readonly<{
+          title: string;
+          color: string | null;
+          categoryId: number | null;
+          customCategoryName: string | null;
+        }>
+      >,
   ): Promise<MogakResult | null>;
   deleteOwnedMogak(userId: number, mogakId: number): Promise<boolean>;
   findOwnedJogak(userId: number, jogakId: number): Promise<OwnedJogakResult | null>;

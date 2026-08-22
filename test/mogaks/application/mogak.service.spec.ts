@@ -129,7 +129,7 @@ describe('모각 서비스', () => {
     await expect(service.resolveOwnedMogak(7, 9)).resolves.toEqual({ id: 9 });
   });
 
-  it('모다랏 PATCH는 보낸 필드만 저장소에 전달한다', async () => {
+  it('모다랏 PATCH는 생략 필드를 undefined로 저장소에 전달한다', async () => {
     const mogaks = repository();
     jest.mocked(mogaks.updateOwnedModarat).mockResolvedValue({
       id: 3,
@@ -142,10 +142,13 @@ describe('모각 서비스', () => {
     expect(mogaks.updateOwnedModarat).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 7, modaratId: 3, color: '#475FFD' }),
     );
-    expect(jest.mocked(mogaks.updateOwnedModarat).mock.calls[0]?.[0]).not.toHaveProperty('title');
+    expect(jest.mocked(mogaks.updateOwnedModarat).mock.calls[0]?.[0]).toHaveProperty(
+      'title',
+      undefined,
+    );
   });
 
-  it('모각 PATCH는 category를 생략하면 기존 category 값을 저장소에서 보존한다', async () => {
+  it('모각 PATCH는 category 생략을 undefined로 저장소에 전달한다', async () => {
     const mogaks = repository();
     jest.mocked(mogaks.updateOwnedMogak).mockResolvedValue({
       id: 9,
@@ -163,8 +166,8 @@ describe('모각 서비스', () => {
       expect.objectContaining({ userId: 7, mogakId: 9, title: '수정된 제목' }),
     );
     const command = jest.mocked(mogaks.updateOwnedMogak).mock.calls[0]?.[0];
-    expect(command).not.toHaveProperty('categoryId');
-    expect(command).not.toHaveProperty('customCategoryName');
+    expect(command).toHaveProperty('categoryId', undefined);
+    expect(command).toHaveProperty('customCategoryName', undefined);
   });
 
   it('모각 PATCH의 tagged category를 저장 모델로 해석한다', async () => {
