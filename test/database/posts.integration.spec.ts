@@ -15,6 +15,7 @@ import {
   posts,
   users,
 } from '@infra/database/schema';
+import { AuthRepository } from '@infra/auth/repository/auth.repository';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {
@@ -33,7 +34,9 @@ describe('게시글 PostgreSQL 통합', () => {
     const fixture = await createPostFixture();
     await insertPostDependents(fixture);
 
-    await db.delete(users).where(eq(users.id, fixture.userId));
+    await expect(
+      new AuthRepository(db as never).deleteUser(fixture.userId),
+    ).resolves.toBe(true);
 
     await expect(postRows(fixture.postId)).resolves.toHaveLength(0);
     await expect(postImageRows(fixture.postId)).resolves.toHaveLength(0);
