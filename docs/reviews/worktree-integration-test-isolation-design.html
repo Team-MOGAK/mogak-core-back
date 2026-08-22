@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>워크트리 통합 테스트 격리 설계</title>
+    <style>
+      :root { color-scheme: light; font-family: ui-sans-serif, system-ui, sans-serif; color: #172033; background: #f6f8fc; }
+      body { max-width: 920px; margin: 40px auto; padding: 0 20px 48px; }
+      article { background: white; border: 1px solid #dde3ef; border-radius: 14px; padding: 30px; box-shadow: 0 4px 20px #1720330d; }
+      h1 { margin-top: 0; } h2 { margin-top: 32px; font-size: 1.2rem; }
+      code { background: #eef2f8; padding: 2px 5px; border-radius: 4px; }
+      .issue { border-left: 4px solid #d9485f; padding-left: 14px; }
+      .proposal { border-left: 4px solid #2563eb; padding-left: 14px; }
+      .check { background: #f4f8ff; border-radius: 10px; padding: 18px; }
+      button { border: 0; border-radius: 7px; background: #2563eb; color: white; padding: 9px 13px; font: inherit; cursor: pointer; }
+      #result { display: none; margin-top: 12px; padding: 12px; border-radius: 7px; background: #eaf7ee; color: #17603a; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p>자기 변경 리뷰 · 저장소: mogak-core-back · 브랜치: refactor/json-merge-patch-rfc · 기준: 628661a 이후 미커밋 변경 · 2026-08-22 · 상태: 재검토 필요</p>
+    </header>
+    <nav aria-label="문서 목차"><a href="#design">설계</a> · <a href="#review">리뷰</a></nav>
+    <main>
+    <article id="design">
+      <h1>워크트리 통합 테스트 격리 설계</h1>
+      <p><strong>목적:</strong> 어느 Git 워크트리에서도 <code>pnpm test:integration --runInBand</code>가 다른 작업 디렉터리나 개발 DB를 건드리지 않고 재현 가능하게 실행되게 한다.</p>
+
+      <h2>현재 관찰</h2>
+      <div class="issue">
+        <p><code>jest.db.config.ts</code>가 일반 <code>DATABASE_URL</code>을 읽어 DB 이름만 <code>mogak_test</code>로 바꾼다. 별도 테스트 연결을 명시할 수 없고, 동일 DB를 모든 워크트리가 공유한다.</p>
+        <p>Jest는 루트 전체를 탐색한다. 루트 아래의 다른 저장소 사본(<code>refactor/</code>)도 발견해 haste 충돌과 TypeScript 전역 선언 중복을 낸다. 현재의 <code>.worktrees/</code> 예외는 그 경로 밖 사본을 막지 못한다.</p>
+        <p>migration 실패는 테스트 본문 전에 발생한다. Drizzle의 상위 오류만으로는 DB 연결 불가와 스키마 권한 오류를 구분할 수 없으므로, 실제 PostgreSQL 연결 상태를 먼저 확인해야 한다.</p>
+      </div>
+
+      <h2>확정 설계: 단일 테스트 DB의 안전한 재사용</h2>
+      <div class="proposal">
+        <ol>
+          <li>Jest의 <code>roots</code>를 <code>apps/api/src</code>와 <code>test</code>로 제한한다. 중첩 저장소/워크트리 이름에 의존하지 않는다.</li>
+          <li>기존처럼 개발 DB URL에서 <code>mogak_test</code>를 유도한다. DB 이름이 <code>_test</code>로 끝나는 안전 장치는 유지한다.</li>
+          <li>Compose 초기화 스크립트는 기존처럼 <code>mogak_test</code>를 생성한다. DB 테스트를 실행하기 전 PostgreSQL이 <code>.env</code>의 포트에서 실행 중이어야 한다.</li>
+        </ol>
+      </div>
+      <p>새 환경 변수나 런타임 의존성 없이 기존 PostgreSQL/Compose 운영 방식을 유지한다. DB 통합 테스트를 동시에 실행하지 않는 현재 작업 방식에 맞춘다.</p>
+
+      <h2>의도적으로 제외한 범위</h2>
+      <p>워크트리별 <code>TEST_DATABASE_URL</code>과 Testcontainers는 도입하지 않는다. 여러 워크트리에서 DB 테스트를 병렬 실행할 필요가 생길 때 별도 변경으로 검토한다.</p>
+
+      <section id="migration-design">
+        <h2>추가 설계: Drizzle 스키마 정합 migration</h2>
+        <p><strong>새 관찰:</strong> DB 테스트가 실제 실행된 뒤, migration이 만든 <code>users.id</code>와 런타임 Drizzle 스키마가 요구하는 <code>users.user_id</code>의 불일치가 확인됐다. 테스트 DB를 비워도 기존 migration만으로는 현재 스키마가 만들어지지 않는다.</p>
+        <div class="proposal">
+          <ol>
+            <li><code>mogak_test</code>만 연결을 종료하고 drop/create한다. <code>mogak_local</code>과 다른 DB에는 쓰지 않는다.</li>
+            <li><code>drizzle-kit push</code>로 현재 runtime Drizzle schema를 빈 <code>mogak_test</code>에 적용한다.</li>
+            <li>테스트 DB bootstrap은 로컬 환경 준비 단계로 분리한다. <code>test:integration</code>은 준비된 테스트 DB에서 Jest만 실행한다.</li>
+            <li>통합 테스트를 실행해 준비된 schema와 런타임 schema의 정합을 검증한다.</li>
+          </ol>
+        </div>
+        <p><strong>제외:</strong> 운영/개발 migration 파일을 수정하거나 기존 DB schema를 rename하지 않는다. <code>mogak_test</code> 외 DB는 초기화하지 않는다.</p>
+      </section>
+
+      <h2>변경 범위와 수용 기준</h2>
+      <ul>
+        <li><code>jest.config.ts</code>, <code>jest.db.config.ts</code>, TypeScript/ESLint 설정, Compose 초기화, README 및 설정 테스트를 수정한다.</li>
+        <li>루트에 임의의 중첩 프로젝트가 있어도 Jest 충돌 없이 DB 테스트를 수집한다.</li>
+        <li>Compose PostgreSQL이 실행 중일 때 <code>mogak_test</code>에서 migration을 적용할 수 있다.</li>
+        <li>일반 <code>DATABASE_URL</code>가 <code>_test</code>가 아닌 DB를 가리킬 때 그 DB에는 쓰지 않는다.</li>
+      </ul>
+
+      <section id="review">
+        <h2>구현 리뷰</h2>
+        <p><strong>실제 흐름:</strong> Jest·TypeScript·ESLint는 각각 소스와 테스트로 탐색 범위를 한정한다. DB 테스트는 기존처럼 <code>mogak_test</code>만 대상으로 migration을 적용하며, PostgreSQL이 지정 포트에서 실행 중이어야 한다.</p>
+        <table>
+          <caption>발견 사항과 상태</caption>
+          <thead><tr><th>ID</th><th>판정</th><th>상태</th><th>근거 및 최소 대응</th></tr></thead>
+          <tbody>
+            <tr><td>R-001</td><td>Non-blocking risk</td><td>open</td><td>Drizzle의 migration 상위 오류만으로는 연결 불가와 권한 오류를 구분하기 어렵다. PostgreSQL 기동 및 <code>DATABASE_URL</code> 포트를 먼저 확인해야 한다.</td></tr>
+            <tr><td>R-002</td><td>탐색 범위 회귀</td><td>fixed</td><td>Jest <code>roots</code>, TypeScript <code>include</code>, ESLint 명시 경로로 중첩 프로젝트 수집을 차단했다.</td></tr>
+            <tr><td>R-003</td><td>Blocker</td><td>accepted</td><td>현재 migration이 생성하는 DB 컬럼이 런타임 schema와 다르다. 테스트 DB만 초기화한 뒤 runtime Drizzle schema를 push하는 것으로 분리한다.</td></tr>
+          </tbody>
+        </table>
+        <h3>검증 증거와 공백</h3>
+        <ul>
+          <li><code>pnpm typecheck</code>, <code>pnpm lint</code>, <code>pnpm format:check</code> 통과.</li>
+          <li>일반 Jest 및 DB Jest의 <code>--listTests</code>에서 루트 <code>refactor/</code>가 수집되지 않음을 확인.</li>
+          <li>실제 <code>test:integration --runInBand</code>는 migration 상위 오류로 중단됐다. 5432·5436·15432 포트가 모두 연결 거부여서 PostgreSQL 기동 후 최종 재검증이 필요하다.</li>
+        </ul>
+        <aside><strong>리뷰 판단:</strong> 테스트 DB bootstrap 변경의 승인과 검증이 필요하다. 운영/개발 DB migration 정합은 별도 후속 과제다.</aside>
+      </section>
+
+      <h2>이해 확인</h2>
+      <div class="check">
+        <p><strong>질문:</strong> 이 설계가 보장하는 것은 무엇인가요?</p>
+        <label><input type="radio" name="answer" value="wrong" /> 서로 다른 워크트리의 DB 테스트 병렬 격리</label><br />
+        <label><input type="radio" name="answer" value="right" /> 중첩 프로젝트를 무시한 테스트 탐색과 실행 중인 단일 테스트 DB 사용</label><br />
+        <label><input type="radio" name="answer" value="wrong" /> 개발 DB에 테스트 migration을 적용하는 것</label><br /><br />
+        <button type="button" id="submit">확인</button>
+        <p id="result" role="status"></p>
+      </div>
+    </article>
+    </main>
+    <script>
+      document.getElementById('submit').addEventListener('click', () => {
+        const answer = document.querySelector('input[name="answer"]:checked');
+        const result = document.getElementById('result');
+        result.style.display = 'block';
+        result.textContent = answer?.value === 'right'
+          ? '맞습니다. roots 제한은 중첩 프로젝트 탐색 오류를 막고, DB 테스트는 실행 중인 테스트 DB에만 적용됩니다. 다음 단계는 설계 승인입니다.'
+          : '다시 확인해 주세요. 이 설계는 병렬 DB 테스트 격리를 다루지 않으며, 개발 DB에는 migration을 적용하지 않습니다.';
+      });
+    </script>
+  </body>
+</html>

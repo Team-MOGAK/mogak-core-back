@@ -1,8 +1,13 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
-import { requiredTrimmed } from '@core/common/validation/requiredText';
+import { patchText, requiredTrimmed } from '@core/common/validation/requiredText';
 import { selectMogakCategory, validateMogakCapacity } from '../../domain/policy/mogak.policy';
 import type { MogakRepositoryPort } from '../port/mogak.repository.port';
-import type { CreateMogakCommand, ModaratCommand, UpdateMogakCommand } from '../type/mogak.command';
+import type {
+  CreateMogakCommand,
+  ModaratCommand,
+  PatchModaratCommand,
+  PatchMogakCommand,
+} from '../type/mogak.command';
 import type { MogakResult, ModaratResult } from '../type/mogak.result';
 import type { OwnedMogakPort } from '../port/ownedMogak.port';
 
@@ -35,13 +40,13 @@ export class MogakService implements OwnedMogakPort {
   async updateModarat(
     userId: number,
     modaratId: number,
-    input: ModaratCommand,
+    input: PatchModaratCommand,
   ): Promise<ModaratResult> {
     const updated = await this.repository.updateOwnedModarat({
       userId,
       modaratId,
-      title: requiredTrimmed(input.title),
-      color: requiredTrimmed(input.color),
+      title: patchText(input.title),
+      color: patchText(input.color),
       now: new Date(),
     });
     if (updated === null) throw new DomainException(DomainErrorCode.MODARAT_NOT_FOUND);
@@ -77,15 +82,16 @@ export class MogakService implements OwnedMogakPort {
     return { mogaks: mogaks.map(toMogakResponse), size: mogaks.length };
   }
 
-  async updateMogak(userId: number, mogakId: number, input: UpdateMogakCommand) {
-    const category = await this.resolveCategory(input);
+  async updateMogak(userId: number, mogakId: number, input: PatchMogakCommand) {
+    const category =
+      input.category === undefined ? undefined : await this.resolvePatchCategory(input.category);
     const updated = await this.repository.updateOwnedMogak({
       userId,
       mogakId,
-      title: requiredTrimmed(input.title),
-      color: optionalTrim(input.color) ?? null,
-      categoryId: category.categoryId,
-      customCategoryName: category.customCategoryName,
+      title: patchText(input.title),
+      color: nullableOptionalTrim(input.color),
+      categoryId: category?.categoryId,
+      customCategoryName: category?.customCategoryName,
       now: new Date(),
     });
     if (updated === null) throw new DomainException(DomainErrorCode.MOGAK_NOT_FOUND);
@@ -130,12 +136,22 @@ export class MogakService implements OwnedMogakPort {
     }
     return { categoryId: null, customCategoryName: selection.name };
   }
+
+  private resolvePatchCategory(input: NonNullable<PatchMogakCommand['category']>) {
+    return this.resolveCategory(
+      input.type === 'SYSTEM' ? { categoryCode: input.code } : { customCategoryName: input.name },
+    );
+  }
 }
 
 function optionalTrim(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   const trimmed = value.trim();
   return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function nullableOptionalTrim(value: string | undefined): string | null | undefined {
+  return value === undefined ? undefined : (optionalTrim(value) ?? null);
 }
 
 function toMogakResponse(record: MogakResult) {

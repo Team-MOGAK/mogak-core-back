@@ -179,6 +179,7 @@ describe('조각 HTTP 계약', () => {
       .expect(({ body }) => expect(body.result).toEqual({ jogakId: 11, title: '문제 풀이' }));
     await request(app.getHttpServer())
       .patch('/api/jogaks/11')
+      .set('Content-Type', 'application/merge-patch+json')
       .send({
         schedule: {
           scheduleType: 'WEEKLY',
@@ -200,12 +201,20 @@ describe('조각 HTTP 계약', () => {
       .expect(404);
     await request(app.getHttpServer())
       .patch('/api/jogaks/11')
+      .set('Content-Type', 'application/merge-patch+json')
       .send({ schedule: { scheduleType: 'WEEKLY', effectiveFrom: '2026-07-24' } })
       .expect(400)
       .expect(({ body }) => expect(body.code).toBe('Z005'));
     await request(app.getHttpServer())
       .patch('/api/jogaks/11')
+      .set('Content-Type', 'application/merge-patch+json')
       .send({ schedule: { scheduleType: 'WEEKLY' } })
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+    await request(app.getHttpServer())
+      .patch('/api/jogaks/11')
+      .set('Content-Type', 'application/merge-patch+json')
+      .send({ schedule: { scheduleType: 'MONTHLY', weekdays: [] } })
       .expect(400)
       .expect(({ body }) => expect(body.code).toBe('Z005'));
 

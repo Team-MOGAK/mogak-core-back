@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>수정 API JSON Merge Patch RFC 구현 제어</title>
+    <style>
+      body {
+        max-width: 920px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        font:
+          16px/1.6 system-ui,
+          sans-serif;
+        color: #172033;
+      }
+      header,
+      section {
+        margin: 1rem 0;
+        padding: 1rem;
+        border: 1px solid #d7dee9;
+        border-radius: 8px;
+      }
+      code {
+        background: #f1f5f9;
+        padding: 0.1rem 0.25rem;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        padding: 0.5rem;
+        border: 1px solid #d7dee9;
+        text-align: left;
+        vertical-align: top;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>수정 API JSON Merge Patch RFC 구현 제어</h1>
+      <dl>
+        <dt>목적</dt>
+        <dd>승인된 수정 API Merge Patch RFC의 실제 구현·검증 상태를 제어한다.</dd>
+        <dt>사용자</dt>
+        <dd>MOGAK API·모바일 개발자와 배포 담당자</dd>
+        <dt>문제</dt>
+        <dd>부분 수정 API의 method와 Content-Type을 공통 경계로 일관되게 강제해야 한다.</dd>
+        <dt>핵심 흐름</dt>
+        <dd>공통 정책 → PATCH endpoint → tombstone PUT → 계약 테스트 → 배포 확인</dd>
+        <dt>기준 설계</dt>
+        <dd>
+          <a href="json-merge-patch-rfc-design.html">JSON Merge Patch RFC 설계</a>, 승인 2026-08-19
+          21:04 KST
+        </dd>
+        <dt>단계</dt>
+        <dd>구현 준비</dd>
+      </dl>
+    </header>
+    <main>
+      <article>
+        <section id="baseline">
+          <h2>승인 기준선</h2>
+          <p>
+            Modarat·Mogak은 PATCH로 즉시 전환한다. canonical
+            <code>application/merge-patch+json</code>만 허용한다. 공통 decorator/guard/interceptor가
+            media type과 <code>Accept-Patch</code>를 처리하며, 이전 PUT은 tombstone으로
+            <code>405</code> 및 <code>Allow: PATCH</code>를 반환한다. Jogak·marketing-consent도 같은
+            media type 정책을 적용한다.
+          </p>
+        </section>
+        <section id="current">
+          <h2>현재 구현</h2>
+          <p><code>@MergePatch()</code> 복합 decorator·공통 Content-Type guard·응답 interceptor를 추가했다. Modarat·Mogak 수정은 PATCH로 전환해 생략 필드를 보존하며, Jogak·marketing-consent도 canonical media type 정책을 사용한다. 중앙 retired-PUT middleware는 Modarat·Mogak에만 <code>405</code>·<code>Allow: PATCH</code>를 반환한다. CORS는 tombstone보다 먼저 적용한다.</p>
+        </section>
+        <section id="issues">
+          <h2>이슈 등록</h2>
+          <table>
+            <caption>
+              구현 이슈
+            </caption>
+            <thead>
+              <tr>
+                <th>상태</th>
+                <th>관찰·영향</th>
+                <th>다음 행동</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>해결됨</td><td>초기 구현이 JSON Merge Patch와 무관한 version/CAS·ETag·If-Match와 그 migration을 함께 도입했다.</td><td>2026-08-22 범위 축소 승인에 따라 해당 코드와 migration을 제거하고, media type 계약만 유지한다.</td></tr>
+              <tr><td>해결됨</td><td>초기 독립 검토에서 category 응답 round-trip, 415의 Accept-Patch, retired PUT CORS 누락을 발견했다.</td><td>category의 code 우선 round-trip 허용, guard 거부 시 Accept-Patch 설정, CORS 선등록으로 보완하고 계약 테스트로 확인했다.</td></tr>
+            </tbody>
+          </table>
+        </section>
+        <section id="verification">
+          <h2>검증 증거·공백</h2>
+          <p>범위 축소 뒤 Merge Patch presentation·application 테스트와 변경 파일 검사로 계약을 재검증한다.</p><p>공백: 전체 <code>pnpm typecheck</code>는 기존 <code>refactor/**</code>·<code>test/database/setup.ts</code>의 중복 전역 오류 때문에 이 변경과 무관하게 실패한다.</p>
+        </section>
+        <section id="state">
+          <h2>구현 제어 상태</h2>
+          <p><strong>implementation-control-state:</strong> 리뷰 완료. JSON Merge Patch의 media type·패치 스키마·retired PUT 계약만 남기고 focused 검증을 갱신했다. 구현 이해 점검: 미실시.</p>
+        </section>
+        <section id="review"><h2>자체 변경 리뷰</h2><p><strong>리뷰 상태:</strong> 검토 완료. 범위는 PATCH 전환·canonical media type·retired PUT이다.</p><p><strong>판단:</strong> concrete finding 없음. <code>MergePatchContentTypeGuard</code>는 media type과 parameter를 정규화해 415를 반환하고, interceptor는 성공 응답에 <code>Accept-Patch</code>를 추가한다. Modarat·Mogak의 retired PUT은 중앙 middleware가 405와 <code>Allow: PATCH</code>로 제한하며, 다른 PUT route는 매칭하지 않는다. PATCH 스키마는 빈 본문·unknown·null을 거부하고, optional 필드만 application 명령으로 전달한다.</p><p><strong>검증:</strong> 2026-08-22 focused Jest 7 suites/48 tests 통과, 변경 파일 Prettier·ESLint와 <code>git diff --check</code> 통과. <strong>공백:</strong> 전체 <code>pnpm typecheck</code>는 기존 <code>refactor/**</code>·<code>test/database/setup.ts</code> 중복 전역 오류 때문에 이 변경과 무관하게 실패한다.</p></section>
+      </article>
+    </main>
+  </body>
+</html>

@@ -24,20 +24,15 @@ describe('소셜 PostgreSQL 통합', () => {
         .values({ followerId: first, followingId: second })
         .onConflictDoNothing({ target: [follows.followerId, follows.followingId] })
         .returning({ id: follows.id });
-    try {
-      const results = await Promise.all([insert(), insert()]);
-      expect(results.filter((result) => result.length === 1)).toHaveLength(1);
-      await db.insert(follows).values({ followerId: second, followingId: first });
-      await expect(
-        db.select().from(follows).where(eq(follows.followerId, first)),
-      ).resolves.toHaveLength(1);
-      await expect(
-        db.select().from(follows).where(eq(follows.followingId, first)),
-      ).resolves.toHaveLength(1);
-    } finally {
-      await db.delete(users).where(eq(users.id, first));
-      await db.delete(users).where(eq(users.id, second));
-    }
+    const results = await Promise.all([insert(), insert()]);
+    expect(results.filter((result) => result.length === 1)).toHaveLength(1);
+    await db.insert(follows).values({ followerId: second, followingId: first });
+    await expect(
+      db.select().from(follows).where(eq(follows.followerId, first)),
+    ).resolves.toHaveLength(1);
+    await expect(
+      db.select().from(follows).where(eq(follows.followingId, first)),
+    ).resolves.toHaveLength(1);
   });
 });
 

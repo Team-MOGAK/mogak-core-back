@@ -5,7 +5,6 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
-  Patch,
   Post,
   Res,
   UseGuards,
@@ -17,6 +16,7 @@ import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.
 import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decorator';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 import { successResponse } from '@api/common/http/apiResponse';
+import { MergePatch } from '@api/common/http/mergePatch.decorator';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { ZodBody, ZodParams, ZodQuery } from '@api/common/validation/zodParameter.decorator';
 import { JogaksService } from '@core/mogaks/application/service/jogaks.service';
@@ -108,29 +108,14 @@ export class JogaksController {
     return successResponse(await this.jogaks.getDetail(user.userId, params.jogakId));
   }
 
-  @Patch('jogaks/:jogakId')
+  @MergePatch('jogaks/:jogakId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async update(
     @CurrentUser() user: AuthenticatedUser,
     @ZodParams(jogakIdParamSchema) params: JogakIdParams,
     @ZodBody(updateJogakRequestSchema) request: UpdateJogakRequest,
   ) {
-    return successResponse(
-      await this.jogaks.update(user.userId, params.jogakId, {
-        ...(request.title === undefined ? {} : { title: request.title }),
-        ...(request.schedule === undefined
-          ? {}
-          : {
-              schedule: {
-                scheduleType: request.schedule.scheduleType as 'ONCE' | 'WEEKLY',
-                ...(request.schedule.effectiveTo === undefined
-                  ? {}
-                  : { effectiveTo: request.schedule.effectiveTo }),
-                weekdays: request.schedule.weekdays,
-              },
-            }),
-      }),
-    );
+    return successResponse(await this.jogaks.update(user.userId, params.jogakId, request));
   }
 
   @Delete('jogaks/:jogakId')

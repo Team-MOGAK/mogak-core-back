@@ -13,6 +13,8 @@ function repository(): MogakRepositoryPort {
     createMogak: testMock(),
     deleteOwnedModarat: testMock(),
     findOwnedMogak: testMock(),
+    updateOwnedModarat: testMock(),
+    updateOwnedMogak: testMock(),
   } as unknown as MogakRepositoryPort;
 }
 
@@ -125,5 +127,77 @@ describe('모각 서비스', () => {
     const service = new MogakService(mogaks);
 
     await expect(service.resolveOwnedMogak(7, 9)).resolves.toEqual({ id: 9 });
+  });
+
+  it('모다랏 PATCH는 생략 필드를 undefined로 저장소에 전달한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.updateOwnedModarat).mockResolvedValue({
+      id: 3,
+      title: '여름 목표',
+      color: '#475FFD',
+    });
+
+    await new MogakService(mogaks).updateModarat(7, 3, { color: '#475FFD' });
+
+    expect(mogaks.updateOwnedModarat).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, modaratId: 3, color: '#475FFD' }),
+    );
+    expect(jest.mocked(mogaks.updateOwnedModarat).mock.calls[0]?.[0]).toHaveProperty(
+      'title',
+      undefined,
+    );
+  });
+
+  it('모각 PATCH는 category 생략을 undefined로 저장소에 전달한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.updateOwnedMogak).mockResolvedValue({
+      id: 9,
+      modaratId: 3,
+      title: '수정된 제목',
+      color: '#475FFD',
+      categoryCode: 'CERTIFICATION',
+      categoryName: '자격증',
+      customCategoryName: null,
+    });
+
+    await new MogakService(mogaks).updateMogak(7, 9, { title: '수정된 제목' });
+
+    expect(mogaks.updateOwnedMogak).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, mogakId: 9, title: '수정된 제목' }),
+    );
+    const command = jest.mocked(mogaks.updateOwnedMogak).mock.calls[0]?.[0];
+    expect(command).toHaveProperty('categoryId', undefined);
+    expect(command).toHaveProperty('customCategoryName', undefined);
+  });
+
+  it('모각 PATCH의 tagged category를 저장 모델로 해석한다', async () => {
+    const mogaks = repository();
+    jest.mocked(mogaks.findActiveCategoryByCode).mockResolvedValue({
+      id: 1,
+      code: 'CERTIFICATION',
+      name: '자격증',
+    });
+    jest.mocked(mogaks.updateOwnedMogak).mockResolvedValue({
+      id: 9,
+      modaratId: 3,
+      title: '수정된 제목',
+      color: '#475FFD',
+      categoryCode: 'CERTIFICATION',
+      categoryName: '자격증',
+      customCategoryName: null,
+    });
+    const service = new MogakService(mogaks);
+
+    await service.updateMogak(7, 9, { category: { type: 'SYSTEM', code: 'CERTIFICATION' } });
+    await service.updateMogak(7, 9, { category: { type: 'CUSTOM', name: '코딩 테스트' } });
+
+    expect(mogaks.updateOwnedMogak).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ categoryId: 1, customCategoryName: null }),
+    );
+    expect(mogaks.updateOwnedMogak).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ categoryId: null, customCategoryName: '코딩 테스트' }),
+    );
   });
 });

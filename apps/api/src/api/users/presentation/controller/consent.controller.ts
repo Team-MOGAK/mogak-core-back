@@ -1,19 +1,11 @@
-import {
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Inject,
-  Patch,
-  Put,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, HttpCode, HttpStatus, Inject, Put, UseGuards } from '@nestjs/common';
 
 import type { AuthenticatedPrincipal } from '@core/auth/application/type/authenticatedPrincipal';
 import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
 import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decorator';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 import { successResponse } from '@api/common/http/apiResponse';
+import { MergePatch } from '@api/common/http/mergePatch.decorator';
 import { ZodBody } from '@api/common/validation/zodParameter.decorator';
 import { ConsentService } from '@core/users/application/service/consent.service';
 import {
@@ -52,21 +44,14 @@ export class ConsentController {
     return successResponse({});
   }
 
-  @Patch('users/marketing-consent')
+  @MergePatch('users/marketing-consent')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateMarketing(
     @CurrentUser() current: AuthenticatedPrincipal,
     @ZodBody(updateMarketingConsentRequestSchema) request: UpdateMarketingConsentRequest,
   ) {
     return successResponse<MarketingConsentResponse>(
-      await this.consents.updateMarketing(current.userId, {
-        ...(request.marketingAgreed === undefined
-          ? {}
-          : { marketingAgreed: request.marketingAgreed }),
-        ...(request.advertisementAgreed === undefined
-          ? {}
-          : { advertisementAgreed: request.advertisementAgreed }),
-      }),
+      await this.consents.updateMarketing(current.userId, request),
     );
   }
 }

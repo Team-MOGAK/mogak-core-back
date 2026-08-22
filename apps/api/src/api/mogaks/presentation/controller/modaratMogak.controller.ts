@@ -6,7 +6,6 @@ import {
   HttpStatus,
   Inject,
   Post,
-  Put,
   UseGuards,
 } from '@nestjs/common';
 import type { AuthenticatedPrincipal as AuthenticatedUser } from '@core/auth/application/type/authenticatedPrincipal';
@@ -14,19 +13,22 @@ import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.
 import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decorator';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 import { successResponse } from '@api/common/http/apiResponse';
+import { MergePatch } from '@api/common/http/mergePatch.decorator';
 import { ZodBody, ZodParams } from '@api/common/validation/zodParameter.decorator';
 import { MogakService } from '@core/mogaks/application/service/mogak.service';
 import {
   moderatIdParamSchema,
+  moderatPatchRequestSchema,
   moderatRequestSchema,
   mogakIdParamSchema,
   mogakRequestSchema,
-  mogakUpdateRequestSchema,
+  mogakPatchRequestSchema,
   type ModaratIdParams,
+  type ModaratPatchRequest,
   type ModaratRequest,
   type MogakIdParams,
   type MogakRequest,
-  type MogakUpdateRequest,
+  type MogakPatchRequest,
 } from '../type/mogak.request';
 
 @Controller('api')
@@ -64,18 +66,15 @@ export class ModaratMogakController {
     return successResponse(await this.mogakService.getModarat(user.userId, params.modaratId));
   }
 
-  @Put('modarats/:modaratId')
+  @MergePatch('modarats/:modaratId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateModarat(
     @CurrentUser() user: AuthenticatedUser,
     @ZodParams(moderatIdParamSchema) params: ModaratIdParams,
-    @ZodBody(moderatRequestSchema) request: ModaratRequest,
+    @ZodBody(moderatPatchRequestSchema) request: ModaratPatchRequest,
   ) {
     return successResponse(
-      await this.mogakService.updateModarat(user.userId, params.modaratId, {
-        title: request.title,
-        color: request.color,
-      }),
+      await this.mogakService.updateModarat(user.userId, params.modaratId, request),
     );
   }
 
@@ -119,22 +118,15 @@ export class ModaratMogakController {
     return successResponse(await this.mogakService.listMogaks(user.userId, params.modaratId));
   }
 
-  @Put('mogaks/:mogakId')
+  @MergePatch('mogaks/:mogakId')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
   async updateMogak(
     @CurrentUser() user: AuthenticatedUser,
     @ZodParams(mogakIdParamSchema) params: MogakIdParams,
-    @ZodBody(mogakUpdateRequestSchema) request: MogakUpdateRequest,
+    @ZodBody(mogakPatchRequestSchema) request: MogakPatchRequest,
   ) {
     return successResponse(
-      await this.mogakService.updateMogak(user.userId, params.mogakId, {
-        title: request.title,
-        ...(request.categoryCode === undefined ? {} : { categoryCode: request.categoryCode }),
-        ...(request.customCategoryName === undefined
-          ? {}
-          : { customCategoryName: request.customCategoryName }),
-        ...(request.color === undefined ? {} : { color: request.color }),
-      }),
+      await this.mogakService.updateMogak(user.userId, params.mogakId, request),
     );
   }
 

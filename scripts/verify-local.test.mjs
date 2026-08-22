@@ -14,7 +14,7 @@ test('로컬 검증 계획은 PostgreSQL 준비부터 인증된 실제 API 시�
   assert.match(result.stdout, /pnpm format:check/);
   assert.match(result.stdout, /pnpm db:migrate \(mogak_test\)/);
   assert.match(result.stdout, /pnpm test:e2e --runInBand/);
-  assert.match(result.stdout, /pnpm test:db --runInBand/);
+  assert.match(result.stdout, /pnpm test:integration --runInBand/);
   assert.match(result.stdout, /node dist\/main\.js/);
   assert.match(result.stdout, /node scripts\/local-api-scenario\.mjs/);
 });

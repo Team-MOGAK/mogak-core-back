@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>Mogak 카테고리 tagged union 구현 제어</title>
+  </head>
+  <body>
+    <header>
+      <h1>Mogak 카테고리 tagged union 구현 제어</h1>
+      <dl>
+        <dt>목적</dt><dd>Mogak PATCH 카테고리 선택을 모호함 없이 전달한다.</dd>
+        <dt>사용자</dt><dd>MOGAK 모바일·서버 API 개발자</dd>
+        <dt>문제</dt><dd><code>{ code?, name? }</code>가 두 카테고리 형태를 구분하지 못하고 controller 변환을 요구한다.</dd>
+        <dt>핵심 흐름</dt><dd>PATCH 요청 검증 → <code>SYSTEM</code>/<code>CUSTOM</code> 명령 전달 → 기존 카테고리 해석·저장</dd>
+        <dt>강도</dt><dd>Standard</dd>
+        <dt>단계</dt><dd>구현 완료</dd>
+      </dl>
+      <nav><a href="json-merge-patch-rfc-design.html">승인 설계 기준선</a></nav>
+    </header>
+    <main><article>
+      <section id="baseline-reference"><h2>승인 기준</h2><p><code>PATCH /api/mogaks/:mogakId</code>의 category는 <code>{ type: 'SYSTEM', code }</code> 또는 <code>{ type: 'CUSTOM', name }</code>만 받으며, 생략하면 보존한다. 승인: 2026-08-22 KST.</p></section>
+      <section id="current-implementation"><h2>현재 구현</h2><p><code>mogakPatchRequestSchema</code>가 strict discriminated union으로 <code>SYSTEM/code</code> 또는 <code>CUSTOM/name</code>만 받는다. <code>PatchMogakCommand</code>도 같은 category 표현을 사용하며, controller는 요청을 직접 service로 전달한다. service가 저장용 <code>categoryCode</code> 또는 <code>customCategoryName</code>으로 해석한다. 얕은 공통 <code>MergePatch&lt;T&gt;</code> 타입을 도입해 Modarat·Mogak·marketing-consent·Jogak PATCH가 요청을 직접 전달한다. Jogak <code>scheduleType</code>은 Zod enum이 검증한다. Mogak repository는 Drizzle이 제외하는 <code>undefined</code> patch 값을 직접 <code>.set()</code>에 전달한다.</p></section>
+      <section id="implementation-status"><h2>구현 상태</h2><p>구현 완료. 스키마·명령 타입·controller·계약 테스트를 갱신했다.</p></section>
+      <section id="issue-register"><h2>이슈 등록부</h2><p>해당 없음.</p></section>
+      <section id="verification-evidence"><h2>검증 근거</h2><p><code>pnpm test -- --runInBand test/mogaks/presentation/jogaks.controller.spec.ts test/mogaks/application/jogaks.service.spec.ts</code>: 22개 통과. 이 테스트에는 허용되지 않은 <code>scheduleType</code>이 400 <code>Z005</code>로 거부되는 계약이 포함된다. 변경 파일 ESLint 및 Prettier 통과. <code>git diff --check</code> 통과.</p></section>
+      <section id="verification-gaps"><h2>검증 공백</h2><p>전체 <code>pnpm typecheck</code>는 이번 변경과 무관하게 <code>refactor/test/database/setup.ts</code>와 <code>test/database/setup.ts</code>의 중복 전역 선언(TS2451)으로 실패한다.</p></section>
+      <section id="residual-risks"><h2>잔여 위험</h2><p>모바일 요청과 OpenAPI가 새 tagged union 계약으로 함께 갱신돼야 한다. legacy PUT의 호환·차단·퇴출 신호 정책은 사용자 결정으로 별도 범위에 보류한다.</p></section>
+      <section id="implementation-control-state"><h2>구현 제어 상태</h2><p>구현 완료. 개발자 운영 이해 점검: 미실시.</p></section>
+    </article></main>
+  </body>
+</html>

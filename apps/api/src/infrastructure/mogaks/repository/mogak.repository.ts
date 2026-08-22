@@ -74,7 +74,11 @@ export class MogakRepository implements MogakRepositoryPort {
   async updateOwnedModarat(input: UpdateModaratInput): Promise<ModaratResult | null> {
     const [updated] = await this.db
       .update(modarats)
-      .set({ title: input.title, color: input.color, updatedAt: input.now })
+      .set({
+        title: input.title,
+        color: input.color,
+        updatedAt: input.now,
+      })
       .where(and(eq(modarats.id, input.modaratId), eq(modarats.userId, input.userId)))
       .returning({ id: modarats.id, title: modarats.title, color: modarats.color });
     return updated ?? null;
@@ -241,7 +245,9 @@ export class MogakRepository implements MogakRepositoryPort {
             ),
           )
           .returning({ id: jogakSchedules.id });
-        if (updatedSchedule === undefined) return null;
+        if (updatedSchedule === undefined) {
+          throw new MogakPersistenceException('Jogak schedule update did not return a row');
+        }
         await tx
           .delete(jogakScheduleWeekdays)
           .where(eq(jogakScheduleWeekdays.scheduleId, schedule.scheduleId));
@@ -254,7 +260,10 @@ export class MogakRepository implements MogakRepositoryPort {
           );
         }
       }
-      return { ...owned, ...(input.title === undefined ? {} : { title: input.title }) };
+      return {
+        ...owned,
+        ...(input.title === undefined ? {} : { title: input.title }),
+      };
     });
   }
 

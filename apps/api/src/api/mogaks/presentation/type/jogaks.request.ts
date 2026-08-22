@@ -38,7 +38,7 @@ export const updateJogakRequestSchema = z
     title: requiredTextSchema(1, 100).optional(),
     schedule: z
       .object({
-        scheduleType: z.string().min(1),
+        scheduleType: z.enum(['ONCE', 'WEEKLY']),
         effectiveTo: calendarDateSchema.optional(),
         weekdays: z.array(z.string()),
       })

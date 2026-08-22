@@ -1,9 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 
 import {
   authSessions,
   consentItems,
+  jogakExecutions,
+  jogakScheduleWeekdays,
+  jogakSchedules,
+  jogaks,
+  modarats,
+  mogaks,
   socialAccounts,
   userConsents,
   users,
@@ -181,11 +187,41 @@ export class AuthRepository implements AuthPersistencePort {
   }
 
   async deleteUser(userId: number): Promise<boolean> {
-    const deleted = await this.db
-      .delete(users)
-      .where(eq(users.id, userId))
-      .returning({ id: users.id });
-    return deleted.length === 1;
+    return this.db.transaction(async (tx) => {
+      const ownedJogaks = await tx
+        .select({ id: jogaks.id })
+        .from(jogaks)
+        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .where(eq(modarats.userId, userId));
+      const jogakIds = ownedJogaks.map((jogak) => jogak.id);
+      if (jogakIds.length > 0) {
+        const schedules = await tx
+          .select({ id: jogakSchedules.id })
+          .from(jogakSchedules)
+          .where(inArray(jogakSchedules.jogakId, jogakIds));
+        const scheduleIds = schedules.map((schedule) => schedule.id);
+        if (scheduleIds.length > 0) {
+          await tx
+            .delete(jogakScheduleWeekdays)
+            .where(inArray(jogakScheduleWeekdays.scheduleId, scheduleIds));
+          await tx.delete(jogakSchedules).where(inArray(jogakSchedules.id, scheduleIds));
+        }
+        await tx.delete(jogakExecutions).where(inArray(jogakExecutions.jogakId, jogakIds));
+        await tx.delete(jogaks).where(inArray(jogaks.id, jogakIds));
+      }
+      const ownedModarats = await tx
+        .select({ id: modarats.id })
+        .from(modarats)
+        .where(eq(modarats.userId, userId));
+      const modaratIds = ownedModarats.map((modarat) => modarat.id);
+      if (modaratIds.length > 0) {
+        await tx.delete(mogaks).where(inArray(mogaks.modaratId, modaratIds));
+        await tx.delete(modarats).where(inArray(modarats.id, modaratIds));
+      }
+      const deleted = await tx.delete(users).where(eq(users.id, userId)).returning({ id: users.id });
+      return deleted.length === 1;
+    });
   }
 }
 

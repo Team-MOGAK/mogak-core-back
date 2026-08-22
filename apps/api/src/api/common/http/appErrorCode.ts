@@ -234,6 +234,11 @@ export const AppErrorCode = {
     code: 'Z004',
     message: '지원하지 않는 HTTP Method 요청입니다.',
   },
+  UNSUPPORTED_MEDIA_TYPE: {
+    httpStatus: HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+    code: 'Z007',
+    message: '지원하지 않는 Content-Type입니다.',
+  },
   STORAGE_DISABLED: {
     httpStatus: HttpStatus.SERVICE_UNAVAILABLE,
     code: 'Z006',
@@ -244,6 +249,6 @@ export const AppErrorCode = {
     code: 'Z500',
     message: '서버와의 연결에 실패했습니다',
   },
-} as const satisfies Record<DomainErrorCode, ErrorDefinition>;
+} as const satisfies Record<DomainErrorCode | 'UNSUPPORTED_MEDIA_TYPE', ErrorDefinition>;
 
 export type AppErrorCode = (typeof AppErrorCode)[keyof typeof AppErrorCode];

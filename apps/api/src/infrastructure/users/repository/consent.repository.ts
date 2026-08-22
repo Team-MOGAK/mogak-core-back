@@ -114,17 +114,43 @@ export class ConsentRepository implements ConsentRepositoryPort {
     if (items.length !== codes.length || items.some((item) => !item.active)) {
       throw new UserPersistenceException('Marketing consent item is not active');
     }
-    await this.upsertUserConsents(
-      userId,
-      items.map((item) => ({
-        consentItemId: item.id,
-        agreed:
+    return this.db.transaction(async (tx) => {
+      for (const item of items) {
+        const agreed =
           item.code === 'MARKETING'
             ? command.marketingAgreed === true
-            : command.advertisementAgreed === true,
-      })),
-      now,
-    );
-    return this.getMarketingConsents(userId);
+            : command.advertisementAgreed === true;
+        await tx
+          .insert(userConsents)
+          .values({
+            userId,
+            consentItemId: item.id,
+            agreed,
+            agreedAt: agreed ? now : null,
+            withdrawnAt: agreed ? null : now,
+          })
+          .onConflictDoUpdate({
+            target: [userConsents.userId, userConsents.consentItemId],
+            set: {
+              agreed,
+              agreedAt: agreed ? now : null,
+              withdrawnAt: agreed ? null : now,
+              updatedAt: now,
+            },
+          });
+      }
+      const all = await tx
+        .select({ code: consentItems.code, agreed: userConsents.agreed })
+        .from(consentItems)
+        .leftJoin(
+          userConsents,
+          and(eq(userConsents.consentItemId, consentItems.id), eq(userConsents.userId, userId)),
+        )
+        .where(inArray(consentItems.code, ['MARKETING', 'ADVERTISEMENT']));
+      return {
+        marketingAgreed: all.find((row) => row.code === 'MARKETING')?.agreed ?? false,
+        advertisementAgreed: all.find((row) => row.code === 'ADVERTISEMENT')?.agreed ?? false,
+      };
+    });
   }
 }
