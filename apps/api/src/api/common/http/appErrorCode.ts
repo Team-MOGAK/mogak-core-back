@@ -239,16 +239,6 @@ export const AppErrorCode = {
     code: 'Z007',
     message: '지원하지 않는 Content-Type입니다.',
   },
-  PRECONDITION_FAILED: {
-    httpStatus: HttpStatus.PRECONDITION_FAILED,
-    code: 'Z008',
-    message: '리소스가 변경되었습니다. 최신 상태를 확인해주세요.',
-  },
-  PRECONDITION_REQUIRED: {
-    httpStatus: HttpStatus.PRECONDITION_REQUIRED,
-    code: 'Z009',
-    message: 'If-Match 헤더가 필요합니다.',
-  },
   STORAGE_DISABLED: {
     httpStatus: HttpStatus.SERVICE_UNAVAILABLE,
     code: 'Z006',
@@ -259,9 +249,6 @@ export const AppErrorCode = {
     code: 'Z500',
     message: '서버와의 연결에 실패했습니다',
   },
-} as const satisfies Record<
-  DomainErrorCode | 'UNSUPPORTED_MEDIA_TYPE' | 'PRECONDITION_REQUIRED',
-  ErrorDefinition
->;
+} as const satisfies Record<DomainErrorCode | 'UNSUPPORTED_MEDIA_TYPE', ErrorDefinition>;
 
 export type AppErrorCode = (typeof AppErrorCode)[keyof typeof AppErrorCode];

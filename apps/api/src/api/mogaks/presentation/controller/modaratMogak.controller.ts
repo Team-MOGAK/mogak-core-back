@@ -13,7 +13,7 @@ import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.
 import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decorator';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 import { successResponse } from '@api/common/http/apiResponse';
-import { IfMatchVersion, MergePatch } from '@api/common/http/mergePatch.decorator';
+import { MergePatch } from '@api/common/http/mergePatch.decorator';
 import { ZodBody, ZodParams } from '@api/common/validation/zodParameter.decorator';
 import { MogakService } from '@core/mogaks/application/service/mogak.service';
 import {
@@ -72,13 +72,12 @@ export class ModaratMogakController {
     @CurrentUser() user: AuthenticatedUser,
     @ZodParams(moderatIdParamSchema) params: ModaratIdParams,
     @ZodBody(moderatPatchRequestSchema) request: ModaratPatchRequest,
-    @IfMatchVersion() expectedVersion: number,
   ) {
     return successResponse(
       await this.mogakService.updateModarat(user.userId, params.modaratId, {
         ...(request.title === undefined ? {} : { title: request.title }),
         ...(request.color === undefined ? {} : { color: request.color }),
-      }, expectedVersion),
+      }),
     );
   }
 
@@ -128,7 +127,6 @@ export class ModaratMogakController {
     @CurrentUser() user: AuthenticatedUser,
     @ZodParams(mogakIdParamSchema) params: MogakIdParams,
     @ZodBody(mogakPatchRequestSchema) request: MogakPatchRequest,
-    @IfMatchVersion() expectedVersion: number,
   ) {
     return successResponse(
       await this.mogakService.updateMogak(user.userId, params.mogakId, {
@@ -141,7 +139,7 @@ export class ModaratMogakController {
               ? {}
               : { customCategoryName: request.category.name }
             : { categoryCode: request.category.code }),
-      }, expectedVersion),
+      }),
     );
   }
 

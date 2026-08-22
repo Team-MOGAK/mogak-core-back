@@ -18,7 +18,6 @@ export interface ConsentRepositoryPort {
   updateMarketingConsents(
     userId: number,
     command: UpdateMarketingConsentCommand,
-    expectedVersion: number,
     now: Date,
   ): Promise<MarketingConsentResult>;
 }

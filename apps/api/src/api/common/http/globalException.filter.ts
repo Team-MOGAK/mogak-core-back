@@ -20,7 +20,6 @@ function errorForStatus(status: number): AppErrorDefinition {
   if (status === HttpStatus.CONFLICT) return AppErrorCode.CONFLICT;
   if (status === HttpStatus.METHOD_NOT_ALLOWED) return AppErrorCode.METHOD_NOT_ALLOWED;
   if (status === HttpStatus.UNSUPPORTED_MEDIA_TYPE) return AppErrorCode.UNSUPPORTED_MEDIA_TYPE;
-  if (status === HttpStatus.PRECONDITION_REQUIRED) return AppErrorCode.PRECONDITION_REQUIRED;
   if (status >= HttpStatus.INTERNAL_SERVER_ERROR) return AppErrorCode.INTERNAL_SERVER_ERROR;
 
   return AppErrorCode.BAD_REQUEST;

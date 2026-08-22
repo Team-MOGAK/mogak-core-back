@@ -1,4 +1,4 @@
-import { bigint, integer, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
+import { bigint, pgTable, timestamp, varchar } from 'drizzle-orm/pg-core';
 
 import { mogaks } from './mogak.table';
 
@@ -9,7 +9,6 @@ export const jogaks = pgTable('jogak', {
     .notNull()
     .references(() => mogaks.id),
   title: varchar('title', { length: 100 }).notNull(),
-  version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

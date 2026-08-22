@@ -1,21 +1,11 @@
-import {
-  Controller,
-  Get,
-  HttpCode,
-  HttpStatus,
-  Inject,
-  Put,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
-import type { Response } from 'express';
+import { Controller, Get, HttpCode, HttpStatus, Inject, Put, UseGuards } from '@nestjs/common';
 
 import type { AuthenticatedPrincipal } from '@core/auth/application/type/authenticatedPrincipal';
 import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
 import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decorator';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 import { successResponse } from '@api/common/http/apiResponse';
-import { IfMatchVersion, MergePatch } from '@api/common/http/mergePatch.decorator';
+import { MergePatch } from '@api/common/http/mergePatch.decorator';
 import { ZodBody } from '@api/common/validation/zodParameter.decorator';
 import { ConsentService } from '@core/users/application/service/consent.service';
 import {
@@ -37,13 +27,10 @@ export class ConsentController {
 
   @Get('users/marketing-consent')
   @UseGuards(AccessTokenGuard, RegisteredUserGuard)
-  async marketing(
-    @CurrentUser() current: AuthenticatedPrincipal,
-    @Res({ passthrough: true }) response: Response,
-  ) {
-    const marketing = await this.consents.getMarketing(current.userId);
-    response.setHeader('ETag', `"${marketing.version}"`);
-    return successResponse<MarketingConsentResponse>(marketing);
+  async marketing(@CurrentUser() current: AuthenticatedPrincipal) {
+    return successResponse<MarketingConsentResponse>(
+      await this.consents.getMarketing(current.userId),
+    );
   }
 
   @Put('users/consents')
@@ -62,7 +49,6 @@ export class ConsentController {
   async updateMarketing(
     @CurrentUser() current: AuthenticatedPrincipal,
     @ZodBody(updateMarketingConsentRequestSchema) request: UpdateMarketingConsentRequest,
-    @IfMatchVersion() expectedVersion: number,
   ) {
     return successResponse<MarketingConsentResponse>(
       await this.consents.updateMarketing(current.userId, {
@@ -72,7 +58,7 @@ export class ConsentController {
         ...(request.advertisementAgreed === undefined
           ? {}
           : { advertisementAgreed: request.advertisementAgreed }),
-      }, expectedVersion),
+      }),
     );
   }
 }

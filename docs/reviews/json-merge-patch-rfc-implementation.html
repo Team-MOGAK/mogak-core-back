@@ -89,20 +89,20 @@
               </tr>
             </thead>
             <tbody>
-              <tr><td>열림</td><td>version/CAS와 <code>0004_patch_versions.sql</code>은 구현됐지만, Drizzle meta snapshot 생성은 기존 journal과 현재 schema의 광범위한 불일치 때문에 관련 없는 rename/create를 제안한다.</td><td>migration metadata 기준선을 별도 읽기 전용 감사로 정합시킨 뒤에만 <code>0004_snapshot.json</code>을 생성한다. 현재 수동 SQL/journal 상태로 migration을 배포하지 않는다.</td></tr>
+              <tr><td>해결됨</td><td>초기 구현이 JSON Merge Patch와 무관한 version/CAS·ETag·If-Match와 그 migration을 함께 도입했다.</td><td>2026-08-22 범위 축소 승인에 따라 해당 코드와 migration을 제거하고, media type 계약만 유지한다.</td></tr>
               <tr><td>해결됨</td><td>초기 독립 검토에서 category 응답 round-trip, 415의 Accept-Patch, retired PUT CORS 누락을 발견했다.</td><td>category의 code 우선 round-trip 허용, guard 거부 시 Accept-Patch 설정, CORS 선등록으로 보완하고 계약 테스트로 확인했다.</td></tr>
             </tbody>
           </table>
         </section>
         <section id="verification">
           <h2>검증 증거·공백</h2>
-          <p>focused presentation tests 3 suites/21 tests와 version 포함 focused tests 7 suites/48 tests가 통과했고, 변경 파일 ESLint와 <code>git diff --check</code>도 통과했다.</p><p>공백: 전체 <code>pnpm typecheck</code>는 기존 <code>refactor/**</code>·<code>test/database/setup.ts</code>의 중복 전역 오류 때문에 이 변경과 무관하게 실패한다. 실제 PostgreSQL CAS 병렬 테스트와 안전한 Drizzle snapshot은 열림 이슈와 함께 미실행이다.</p>
+          <p>범위 축소 뒤 Merge Patch presentation·application 테스트와 변경 파일 검사로 계약을 재검증한다.</p><p>공백: 전체 <code>pnpm typecheck</code>는 기존 <code>refactor/**</code>·<code>test/database/setup.ts</code>의 중복 전역 오류 때문에 이 변경과 무관하게 실패한다.</p>
         </section>
         <section id="state">
           <h2>구현 제어 상태</h2>
-          <p><strong>implementation-control-state:</strong> 운영 제어 보류. ETag/If-Match CAS는 구현·focused 검증됐지만 migration metadata 정합성 blocker가 남아 있다. 구현 이해 점검: 미실시.</p>
+          <p><strong>implementation-control-state:</strong> 구현 중. JSON Merge Patch의 media type·패치 스키마·retired PUT 계약만 남기고 focused 검증을 갱신한다. 구현 이해 점검: 미실시.</p>
         </section>
-        <section id="review"><h2>자체 변경 리뷰</h2><p><strong>리뷰 상태:</strong> 변경 요청. 범위는 PATCH 전환·version CAS·migration이다.</p><table><caption>발견 사항</caption><thead><tr><th>ID</th><th>심각도·상태</th><th>관찰·영향</th><th>필요 조치</th></tr></thead><tbody><tr><td>R1</td><td>Blocker · open</td><td><code>drizzle/meta/_journal.json</code>은 <code>0004_patch_versions</code>를 등록하지만 같은 migration snapshot이 없다. 생성기는 기존 메타데이터와 현재 schema의 광범위한 차이로 관련 없는 DDL을 제안한다.</td><td>migration metadata 기준선을 감사·정합시키고 생성된 snapshot과 실제 0004 DDL을 대조한다. 그 전에는 migration 배포 금지.</td></tr><tr><td>R2</td><td>Non-blocking risk · open</td><td><code>upsertUserConsents</code>가 변경 항목이 marketing/advertisement가 아니어도 aggregate version을 증가시킨다. 안전하지만 관계없는 동의 수정이 marketing PATCH의 ETag를 무효화한다.</td><td>대상 consent code를 조회해 marketing 계열을 실제로 변경할 때만 version을 증가시킬지 결정·테스트한다.</td></tr></tbody></table><p>검증: focused tests 7 suites/48 tests 통과(로컬 sandbox에서는 port bind가 거부되어 승인된 환경에서 재실행). 전체 typecheck와 실제 PostgreSQL migration/CAS 병렬 검증은 R1 때문에 공백이다.</p><p><strong>리뷰 판단:</strong> blocker 있음. 코드의 PATCH·CAS 경로는 검토 중 발견된 stale ETag·rollback·CORS 결함을 보완했으나, migration artifact 정합성 없이는 배포할 수 없다.</p></section>
+        <section id="review"><h2>자체 변경 리뷰</h2><p><strong>리뷰 상태:</strong> 재검토 예정. 범위는 PATCH 전환·canonical media type·retired PUT이다.</p><p>기존 version/CAS migration blocker는 해당 과설계를 제거하면서 해소한다. 최종 판단은 focused 계약 테스트와 변경 diff 검토 후 갱신한다.</p></section>
       </article>
     </main>
   </body>

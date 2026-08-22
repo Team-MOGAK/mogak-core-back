@@ -1,4 +1,4 @@
-export type ModaratResult = Readonly<{ id: number; title: string; color: string; version?: number }>;
+export type ModaratResult = Readonly<{ id: number; title: string; color: string }>;
 export type MogakResult = Readonly<{
   id: number;
   modaratId: number;
@@ -7,6 +7,5 @@ export type MogakResult = Readonly<{
   categoryCode: string | null;
   categoryName: string | null;
   customCategoryName: string | null;
-  version?: number;
 }>;
 export type MogakCategoryResult = Readonly<{ id: number; code: string; name: string }>;

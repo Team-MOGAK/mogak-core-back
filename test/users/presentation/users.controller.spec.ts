@@ -157,7 +157,6 @@ describe('사용자 HTTP 계약', () => {
     await request(app.getHttpServer())
       .patch('/api/users/marketing-consent')
       .set('Content-Type', 'application/merge-patch+json')
-      .set('If-Match', '"1"')
       .send({})
       .expect(400)
       .expect(({ body }) => expect(body.code).toBe('Z005'));

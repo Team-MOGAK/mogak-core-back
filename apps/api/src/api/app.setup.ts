@@ -27,8 +27,8 @@ export function configureApp(
     app.enableCors({
       origin: [...corsAllowedOrigins],
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
-      allowedHeaders: ['Authorization', 'Content-Type', 'RefreshToken', 'If-Match'],
-      exposedHeaders: ['ETag', 'Accept-Patch'],
+      allowedHeaders: ['Authorization', 'Content-Type', 'RefreshToken'],
+      exposedHeaders: ['Accept-Patch'],
       credentials: false,
     });
   }

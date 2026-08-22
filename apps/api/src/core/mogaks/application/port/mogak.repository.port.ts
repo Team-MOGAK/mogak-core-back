@@ -16,7 +16,7 @@ export interface MogakRepositoryPort {
   findOwnedModarat(userId: number, modaratId: number): Promise<ModaratResult | null>;
   listModarats(userId: number): Promise<ModaratResult[]>;
   updateOwnedModarat(
-    input: Readonly<{ userId: number; modaratId: number; expectedVersion: number; now: Date }> & PatchModaratCommand,
+    input: Readonly<{ userId: number; modaratId: number; now: Date }> & PatchModaratCommand,
   ): Promise<ModaratResult | null>;
   deleteOwnedModarat(userId: number, modaratId: number): Promise<boolean>;
   countMogaks(modaratId: number): Promise<number>;
@@ -37,7 +37,6 @@ export interface MogakRepositoryPort {
     input: Readonly<{
       userId: number;
       mogakId: number;
-      expectedVersion: number;
       title?: string;
       color?: string | null;
       categoryId?: number | null;
@@ -51,7 +50,6 @@ export interface MogakRepositoryPort {
     input: Readonly<{
       userId: number;
       jogakId: number;
-      expectedVersion: number;
       title?: string;
       schedule?: Readonly<{ scheduleId: number }> & ValidatedJogakSchedule;
       now: Date;

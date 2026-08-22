@@ -13,7 +13,6 @@ export type OwnedJogakResult = Readonly<{
   categoryCode: string | null;
   categoryName: string | null;
   customCategoryName: string | null;
-  version?: number;
 }>;
 export type OccurrenceScheduleResult = Readonly<{
   scheduleId: number;
