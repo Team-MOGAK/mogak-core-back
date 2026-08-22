@@ -100,9 +100,9 @@
         </section>
         <section id="state">
           <h2>구현 제어 상태</h2>
-          <p><strong>implementation-control-state:</strong> 구현 중. JSON Merge Patch의 media type·패치 스키마·retired PUT 계약만 남기고 focused 검증을 갱신한다. 구현 이해 점검: 미실시.</p>
+          <p><strong>implementation-control-state:</strong> 리뷰 완료. JSON Merge Patch의 media type·패치 스키마·retired PUT 계약만 남기고 focused 검증을 갱신했다. 구현 이해 점검: 미실시.</p>
         </section>
-        <section id="review"><h2>자체 변경 리뷰</h2><p><strong>리뷰 상태:</strong> 재검토 예정. 범위는 PATCH 전환·canonical media type·retired PUT이다.</p><p>기존 version/CAS migration blocker는 해당 과설계를 제거하면서 해소한다. 최종 판단은 focused 계약 테스트와 변경 diff 검토 후 갱신한다.</p></section>
+        <section id="review"><h2>자체 변경 리뷰</h2><p><strong>리뷰 상태:</strong> 검토 완료. 범위는 PATCH 전환·canonical media type·retired PUT이다.</p><p><strong>판단:</strong> concrete finding 없음. <code>MergePatchContentTypeGuard</code>는 media type과 parameter를 정규화해 415를 반환하고, interceptor는 성공 응답에 <code>Accept-Patch</code>를 추가한다. Modarat·Mogak의 retired PUT은 중앙 middleware가 405와 <code>Allow: PATCH</code>로 제한하며, 다른 PUT route는 매칭하지 않는다. PATCH 스키마는 빈 본문·unknown·null을 거부하고, optional 필드만 application 명령으로 전달한다.</p><p><strong>검증:</strong> 2026-08-22 focused Jest 7 suites/48 tests 통과, 변경 파일 Prettier·ESLint와 <code>git diff --check</code> 통과. <strong>공백:</strong> 전체 <code>pnpm typecheck</code>는 기존 <code>refactor/**</code>·<code>test/database/setup.ts</code> 중복 전역 오류 때문에 이 변경과 무관하게 실패한다.</p></section>
       </article>
     </main>
   </body>
