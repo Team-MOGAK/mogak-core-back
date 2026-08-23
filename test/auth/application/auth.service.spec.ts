@@ -10,6 +10,7 @@ import type { AuthenticatedPrincipal } from '@core/auth/application/type/authent
 import {
   DuplicateEmailException,
   DuplicateSocialAccountException,
+  SessionUserNotFoundAfterLockException,
 } from '@core/auth/domain/exception/authPersistence.exception';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
@@ -45,6 +46,33 @@ function createPersistence(): AuthPersistencePort {
 
 describe('인증 서비스', () => {
   const verifiers = { verify: testMock() } as unknown as SocialIdentityVerifierPort;
+
+  it('세션 생성 중 잠금 후 사용자가 사라지면 USER_NOT_FOUND로 변환한다', async () => {
+    const sessionVerifiers = {
+      verify: testMock().mockResolvedValue({
+        provider: 'GOOGLE',
+        providerUserId: 'google-subject',
+        email: 'mogak@example.test',
+        emailVerified: true,
+      }),
+    } as unknown as SocialIdentityVerifierPort;
+    const persistence = createPersistence();
+    jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: null,
+      role: 'PENDING',
+    });
+    jest
+      .mocked(persistence.createSession)
+      .mockRejectedValue(new SessionUserNotFoundAfterLockException());
+    const tokens = createTokenPorts();
+    const service = new AuthService(sessionVerifiers, persistence, tokens, tokens);
+
+    await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
+    );
+  });
 
   it('활성 세션의 검증된 액세스 주체를 반환한다', async () => {
     const principal: AuthenticatedPrincipal = {

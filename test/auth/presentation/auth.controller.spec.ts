@@ -37,7 +37,16 @@ describe('인증 HTTP 계약', () => {
       ],
     })
       .overrideGuard(AccessTokenGuard)
-      .useValue({ canActivate: () => true })
+      .useValue({
+        canActivate: (context: { switchToHttp(): { getRequest(): { user?: unknown } } }) => {
+          context.switchToHttp().getRequest().user = {
+            userId: 7,
+            role: 'USER',
+            sessionId: 'session-id',
+          };
+          return true;
+        },
+      })
       .compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
@@ -129,6 +138,12 @@ describe('인증 HTTP 계약', () => {
       });
 
     expect(authService.refresh).toHaveBeenCalledWith('current-refresh');
+  });
+
+  it('회원 탈퇴 완료는 본문 없이 204를 반환한다', async () => {
+    await request(app.getHttpServer()).post('/api/auth/withdraw').expect(204).expect('');
+
+    expect(authService.withdraw).toHaveBeenCalledWith(7);
   });
 
   it('같은 IP의 로그인은 분당 스무 번째, 토큰 갱신은 예순 번째까지만 서비스에 전달한다', async () => {

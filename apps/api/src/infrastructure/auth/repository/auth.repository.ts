@@ -1,21 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 
 import {
   authSessions,
   consentItems,
-  jogakExecutions,
-  jogakScheduleWeekdays,
-  jogakSchedules,
-  jogaks,
-  modarats,
-  mogaks,
   socialAccounts,
   userConsents,
   users,
 } from '@infra/database/schema';
 import type { Database } from '@infra/database/database.provider';
 import { DATABASE } from '@infra/database/database.tokens';
+import { lockUsersForTransaction } from '@infra/database/transaction/userAdvisoryLock';
 import type { AuthPersistencePort } from '@core/auth/application/port/authPersistence.port';
 import type { SessionRotationCommand } from '@core/auth/application/type/auth.command';
 import type { AuthUser, SessionDraft } from '@core/auth/application/type/auth.result';
@@ -29,6 +24,7 @@ import {
   AuthPersistenceException,
   DuplicateEmailException,
   DuplicateSocialAccountException,
+  SessionUserNotFoundAfterLockException,
 } from '@core/auth/domain/exception/authPersistence.exception';
 
 @Injectable()
@@ -86,16 +82,19 @@ export class AuthRepository implements AuthPersistencePort {
   }
 
   async normalizeNullRole(userId: number, role: RegistrationRole): Promise<AuthUser> {
-    await this.db
-      .update(users)
-      .set({ role, updatedAt: new Date() })
-      .where(and(eq(users.id, userId), isNull(users.role)));
+    return this.db.transaction(async (tx) => {
+      await lockUsersForTransaction(tx, [userId]);
+      await tx
+        .update(users)
+        .set({ role, updatedAt: new Date() })
+        .where(and(eq(users.id, userId), isNull(users.role)));
 
-    const normalized = await this.db.query.users.findFirst({ where: eq(users.id, userId) });
-    if (normalized === undefined || normalized.role === null) {
-      throw new AuthPersistenceException('null user role was not normalized');
-    }
-    return asAuthUser(normalized);
+      const [normalized] = await tx.select().from(users).where(eq(users.id, userId));
+      if (normalized === undefined || normalized.role === null) {
+        throw new AuthPersistenceException('null user role was not normalized');
+      }
+      return asAuthUser(normalized);
+    });
   }
 
   async createAccount(identity: VerifiedSocialIdentity): Promise<AuthUser> {
@@ -141,7 +140,12 @@ export class AuthRepository implements AuthPersistencePort {
 
   async createSession(userId: number, session: SessionDraft): Promise<void> {
     try {
-      await this.db.insert(authSessions).values({ ...session, userId });
+      await this.db.transaction(async (tx) => {
+        await lockUsersForTransaction(tx, [userId]);
+        const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
+        if (user === undefined) throw new SessionUserNotFoundAfterLockException();
+        await tx.insert(authSessions).values({ ...session, userId });
+      });
     } catch (error: unknown) {
       if (error instanceof AuthPersistenceException) {
         throw error;
@@ -151,22 +155,30 @@ export class AuthRepository implements AuthPersistencePort {
   }
 
   async rotateSession(input: SessionRotationCommand): Promise<boolean> {
-    const rows = await this.db
-      .update(authSessions)
-      .set({
-        refreshTokenHash: input.nextRefreshTokenHash,
-        expiresAt: input.nextExpiresAt,
-        updatedAt: input.now,
-      })
-      .where(
-        and(
-          eq(authSessions.id, input.sessionId),
-          eq(authSessions.refreshTokenHash, input.currentRefreshTokenHash),
-          gt(authSessions.expiresAt, input.now),
-        ),
-      )
-      .returning({ id: authSessions.id });
-    return rows.length === 1;
+    return this.db.transaction(async (tx) => {
+      const [session] = await tx
+        .select({ userId: authSessions.userId })
+        .from(authSessions)
+        .where(eq(authSessions.id, input.sessionId));
+      if (session === undefined) return false;
+      await lockUsersForTransaction(tx, [session.userId]);
+      const rows = await tx
+        .update(authSessions)
+        .set({
+          refreshTokenHash: input.nextRefreshTokenHash,
+          expiresAt: input.nextExpiresAt,
+          updatedAt: input.now,
+        })
+        .where(
+          and(
+            eq(authSessions.id, input.sessionId),
+            eq(authSessions.refreshTokenHash, input.currentRefreshTokenHash),
+            gt(authSessions.expiresAt, input.now),
+          ),
+        )
+        .returning({ id: authSessions.id });
+      return rows.length === 1;
+    });
   }
 
   async isSessionActive(sessionId: string, userId: number): Promise<boolean> {
@@ -181,46 +193,77 @@ export class AuthRepository implements AuthPersistencePort {
   }
 
   async deleteSession(sessionId: string, userId: number): Promise<void> {
-    await this.db
-      .delete(authSessions)
-      .where(and(eq(authSessions.id, sessionId), eq(authSessions.userId, userId)));
+    await this.db.transaction(async (tx) => {
+      await lockUsersForTransaction(tx, [userId]);
+      await tx
+        .delete(authSessions)
+        .where(and(eq(authSessions.id, sessionId), eq(authSessions.userId, userId)));
+    });
   }
 
   async deleteUser(userId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      const ownedJogaks = await tx
-        .select({ id: jogaks.id })
-        .from(jogaks)
-        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
-        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-        .where(eq(modarats.userId, userId));
-      const jogakIds = ownedJogaks.map((jogak) => jogak.id);
-      if (jogakIds.length > 0) {
-        const schedules = await tx
-          .select({ id: jogakSchedules.id })
-          .from(jogakSchedules)
-          .where(inArray(jogakSchedules.jogakId, jogakIds));
-        const scheduleIds = schedules.map((schedule) => schedule.id);
-        if (scheduleIds.length > 0) {
-          await tx
-            .delete(jogakScheduleWeekdays)
-            .where(inArray(jogakScheduleWeekdays.scheduleId, scheduleIds));
-          await tx.delete(jogakSchedules).where(inArray(jogakSchedules.id, scheduleIds));
-        }
-        await tx.delete(jogakExecutions).where(inArray(jogakExecutions.jogakId, jogakIds));
-        await tx.delete(jogaks).where(inArray(jogaks.id, jogakIds));
-      }
-      const ownedModarats = await tx
-        .select({ id: modarats.id })
-        .from(modarats)
-        .where(eq(modarats.userId, userId));
-      const modaratIds = ownedModarats.map((modarat) => modarat.id);
-      if (modaratIds.length > 0) {
-        await tx.delete(mogaks).where(inArray(mogaks.modaratId, modaratIds));
-        await tx.delete(modarats).where(inArray(modarats.id, modaratIds));
-      }
-      const deleted = await tx.delete(users).where(eq(users.id, userId)).returning({ id: users.id });
-      return deleted.length === 1;
+      const related = await tx.execute<{ user_id: number }>(sql`
+        with target_posts as (
+          select p.post_id from post p where p.user_id = ${userId}
+          union
+          select p.post_id from post p join daily_jogak d on d.daily_jogak_id = p.daily_jogak_id
+            join jogak j on j.jogak_id = d.jogak_id join mogak m on m.mogak_id = j.mogak_id
+            join modarat r on r.modarat_id = m.modarat_id where r.user_id = ${userId}
+        )
+        select ${userId}::bigint as user_id
+        union select p.user_id from post p join target_posts t on t.post_id = p.post_id
+        union select c.user_id from post_comment c join target_posts t on t.post_id = c.post_id
+        union select l.user_id from post_like l join target_posts t on t.post_id = l.post_id
+        union select from_id from follow where from_id = ${userId} or to_id = ${userId}
+        union select to_id from follow where from_id = ${userId} or to_id = ${userId}
+      `);
+      await lockUsersForTransaction(
+        tx,
+        related.rows.map((row) => Number(row.user_id)),
+      );
+
+      // The lock union is deliberately read before locking then every delete
+      // predicate is re-evaluated below; no JavaScript ID list or IN binding is
+      // used, so a large account cannot exceed PostgreSQL bind limits.
+      const targetPosts = sql`
+        select p.post_id from post p where p.user_id = ${userId}
+        union
+        select p.post_id from post p join daily_jogak d on d.daily_jogak_id = p.daily_jogak_id
+          join jogak j on j.jogak_id = d.jogak_id join mogak m on m.mogak_id = j.mogak_id
+          join modarat r on r.modarat_id = m.modarat_id where r.user_id = ${userId}`;
+      await tx.execute(sql`delete from post_img where post_id in (${targetPosts})`);
+      await tx.execute(
+        sql`delete from post_comment where post_id in (${targetPosts}) or user_id = ${userId}`,
+      );
+      await tx.execute(
+        sql`delete from post_like where post_id in (${targetPosts}) or user_id = ${userId}`,
+      );
+      await tx.execute(sql`delete from post where post_id in (${targetPosts})`);
+      await tx.execute(
+        sql`delete from jogak_schedule_weekdays w using jogak_schedules s, jogak j, mogak m, modarat r where w.schedule_id=s.id and s.jogak_id=j.jogak_id and j.mogak_id=m.mogak_id and m.modarat_id=r.modarat_id and r.user_id=${userId}`,
+      );
+      await tx.execute(
+        sql`delete from jogak_schedules s using jogak j, mogak m, modarat r where s.jogak_id=j.jogak_id and j.mogak_id=m.mogak_id and m.modarat_id=r.modarat_id and r.user_id=${userId}`,
+      );
+      await tx.execute(
+        sql`delete from daily_jogak d using jogak j, mogak m, modarat r where d.jogak_id=j.jogak_id and j.mogak_id=m.mogak_id and m.modarat_id=r.modarat_id and r.user_id=${userId}`,
+      );
+      await tx.execute(
+        sql`delete from jogak j using mogak m, modarat r where j.mogak_id=m.mogak_id and m.modarat_id=r.modarat_id and r.user_id=${userId}`,
+      );
+      await tx.execute(
+        sql`delete from mogak m using modarat r where m.modarat_id=r.modarat_id and r.user_id=${userId}`,
+      );
+      await tx.execute(sql`delete from modarat where user_id=${userId}`);
+      await tx.execute(sql`delete from follow where from_id=${userId} or to_id=${userId}`);
+      await tx.execute(sql`delete from auth_sessions where user_id=${userId}`);
+      await tx.execute(sql`delete from social_account where user_id=${userId}`);
+      await tx.execute(sql`delete from user_consent where user_id=${userId}`);
+      const deleted = await tx.execute<{ user_id: number }>(
+        sql`delete from users where user_id=${userId} returning user_id`,
+      );
+      return deleted.rows.length === 1;
     });
   }
 }

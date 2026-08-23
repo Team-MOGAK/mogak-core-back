@@ -13,6 +13,9 @@ import {
   postImages,
   postLikes,
   posts,
+  follows,
+  authSessions,
+  socialAccounts,
   users,
 } from '@infra/database/schema';
 import { AuthRepository } from '@infra/auth/repository/auth.repository';
@@ -34,15 +37,78 @@ describe('게시글 PostgreSQL 통합', () => {
     const fixture = await createPostFixture();
     await insertPostDependents(fixture);
 
-    await expect(
-      new AuthRepository(db as never).deleteUser(fixture.userId),
-    ).resolves.toBe(true);
+    await expect(new AuthRepository(db as never).deleteUser(fixture.userId)).resolves.toBe(true);
 
     await expect(postRows(fixture.postId)).resolves.toHaveLength(0);
     await expect(postImageRows(fixture.postId)).resolves.toHaveLength(0);
     await expect(postCommentRows(fixture.postId)).resolves.toHaveLength(0);
     await expect(postLikeRows(fixture.postId)).resolves.toHaveLength(0);
     await expect(executionRows(fixture.executionId)).resolves.toHaveLength(0);
+  });
+
+  it('A 탈퇴는 A 실행에 연결된 B 작성 게시글까지 지우되 B와 B 고유 관계는 보존한다', async () => {
+    const fixture = await createExecutionFixture();
+    const [other] = await db
+      .insert(users)
+      .values({ email: `${randomUUID()}@mogak.test`, role: 'USER' })
+      .returning({ id: users.id });
+    if (other === undefined) throw new Error('other user fixture insert did not return a row');
+    const [foreignPost] = await db
+      .insert(posts)
+      .values({
+        jogakExecutionId: fixture.executionId,
+        authorId: other.id,
+        contents: 'B의 공유 회고',
+      })
+      .returning({ id: posts.id });
+    if (foreignPost === undefined)
+      throw new Error('foreign post fixture insert did not return a row');
+    await db
+      .insert(postComments)
+      .values({ postId: foreignPost.id, authorId: other.id, contents: 'B 댓글' });
+    await db.insert(postLikes).values({ postId: foreignPost.id, userId: other.id });
+    await db.insert(follows).values({ followerId: other.id, followingId: fixture.userId });
+    await db.insert(authSessions).values({
+      id: randomUUID(),
+      userId: other.id,
+      refreshTokenHash: 'b'.repeat(64),
+      expiresAt: new Date('2030-01-01'),
+    });
+    await db.insert(socialAccounts).values({
+      userId: other.id,
+      provider: 'GOOGLE',
+      providerUserId: randomUUID(),
+      email: `${randomUUID()}@mogak.test`,
+    });
+
+    await expect(new AuthRepository(db as never).deleteUser(fixture.userId)).resolves.toBe(true);
+
+    await expect(db.select().from(posts).where(eq(posts.id, foreignPost.id))).resolves.toHaveLength(
+      0,
+    );
+    await expect(db.select().from(users).where(eq(users.id, other.id))).resolves.toHaveLength(1);
+    await expect(
+      db.select().from(authSessions).where(eq(authSessions.userId, other.id)),
+    ).resolves.toHaveLength(1);
+    await expect(
+      db.select().from(socialAccounts).where(eq(socialAccounts.userId, other.id)),
+    ).resolves.toHaveLength(1);
+  });
+
+  it('외부 transaction이 rollback하면 탈퇴 purge 전체도 되돌린다', async () => {
+    const fixture = await createPostFixture();
+    await expect(
+      db.transaction(async (tx) => {
+        await new AuthRepository(tx as never).deleteUser(fixture.userId);
+        throw new Error('force rollback');
+      }),
+    ).rejects.toThrow('force rollback');
+    await expect(db.select().from(users).where(eq(users.id, fixture.userId))).resolves.toHaveLength(
+      1,
+    );
+    await expect(db.select().from(posts).where(eq(posts.id, fixture.postId))).resolves.toHaveLength(
+      1,
+    );
   });
 
   it('실행은 유지하고 게시글 종속 행만 하드 삭제한다', async () => {

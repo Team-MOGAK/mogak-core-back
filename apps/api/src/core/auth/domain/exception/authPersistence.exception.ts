@@ -18,3 +18,10 @@ export class DuplicateSocialAccountException extends AuthPersistenceException {
     this.name = 'DuplicateSocialAccountException';
   }
 }
+
+export class SessionUserNotFoundAfterLockException extends AuthPersistenceException {
+  constructor() {
+    super('User did not exist after acquiring the user lock for session creation');
+    this.name = 'SessionUserNotFoundAfterLockException';
+  }
+}
