@@ -11,10 +11,3 @@ export class DuplicateNicknameException extends UserPersistenceException {
     this.name = 'DuplicateNicknameException';
   }
 }
-
-export class ConsentUserNotFoundAfterLockException extends UserPersistenceException {
-  constructor() {
-    super('User did not exist after acquiring the user lock for consent update');
-    this.name = 'ConsentUserNotFoundAfterLockException';
-  }
-}

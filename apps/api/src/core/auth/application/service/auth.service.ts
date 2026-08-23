@@ -13,7 +13,6 @@ import type { SocialProvider } from '../../domain/vo/socialProvider.vo';
 import {
   DuplicateEmailException,
   DuplicateSocialAccountException,
-  SessionUserNotFoundAfterLockException,
 } from '../../domain/exception/authPersistence.exception';
 import type { AuthPersistencePort } from '../port/authPersistence.port';
 import type { AuthTokenVerifierPort } from '../port/authTokenVerifier.port';
@@ -139,18 +138,11 @@ export class AuthService {
     const issuedTokens = await this.sessionTokenIssuer.issue(
       this.principal(sessionUser, sessionId),
     );
-    try {
-      await this.authPersistence.createSession(sessionUser.id, {
-        id: sessionId,
-        refreshTokenHash: issuedTokens.refreshTokenHash,
-        expiresAt: issuedTokens.refreshTokenExpiresAt,
-      });
-    } catch (error: unknown) {
-      if (error instanceof SessionUserNotFoundAfterLockException) {
-        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
-      }
-      throw error;
-    }
+    await this.authPersistence.createSession(sessionUser.id, {
+      id: sessionId,
+      refreshTokenHash: issuedTokens.refreshTokenHash,
+      expiresAt: issuedTokens.refreshTokenExpiresAt,
+    });
     return {
       flow: sessionUser.role === 'USER' ? 'REGISTERED' : requestedFlow,
       result: {

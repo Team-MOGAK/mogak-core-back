@@ -4,7 +4,6 @@ import { testMock } from '../../testMock';
 
 import type { ConsentRepositoryPort } from '@core/users/application/port/consent.repository.port';
 import { ConsentService } from '@core/users/application/service/consent.service';
-import { ConsentUserNotFoundAfterLockException } from '@core/users/domain/exception/userPersistence.exception';
 
 function createRepository(): ConsentRepositoryPort {
   return {
@@ -36,7 +35,7 @@ describe('동의 서비스', () => {
       .mockResolvedValue([activeConsent({ id: 1, code: 'TERMS', required: true })]);
     jest
       .mocked(repository.upsertUserConsents)
-      .mockRejectedValue(new ConsentUserNotFoundAfterLockException());
+      .mockRejectedValue(new DomainException(DomainErrorCode.USER_NOT_FOUND));
     const service = new ConsentService(repository);
 
     await expect(service.update(7, [{ consentItemId: 1, agreed: true }])).rejects.toEqual(
@@ -48,7 +47,7 @@ describe('동의 서비스', () => {
     const repository = createRepository();
     jest
       .mocked(repository.updateMarketingConsents)
-      .mockRejectedValue(new ConsentUserNotFoundAfterLockException());
+      .mockRejectedValue(new DomainException(DomainErrorCode.USER_NOT_FOUND));
     const service = new ConsentService(repository);
 
     await expect(service.updateMarketing(7, { marketingAgreed: true })).rejects.toEqual(

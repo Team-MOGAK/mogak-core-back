@@ -9,10 +9,3 @@ export class MogakPersistenceException extends Error {
     this.name = 'MogakPersistenceException';
   }
 }
-
-export class ModaratUserNotFoundAfterLockException extends MogakPersistenceException {
-  constructor() {
-    super('User did not exist after acquiring the user lock for modarat creation');
-    this.name = 'ModaratUserNotFoundAfterLockException';
-  }
-}

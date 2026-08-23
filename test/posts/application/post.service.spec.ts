@@ -7,7 +7,6 @@ import type { OwnedOccurrencePort } from '@core/mogaks/application/port/ownedOcc
 import type { StoragePort } from '@core/storage/application/storage.port';
 import type { PostRepositoryPort } from '@core/posts/application/port/post.repository.port';
 import { PostService } from '@core/posts/application/service/post.service';
-import { PostNotFoundAfterLockException } from '@core/posts/domain/exception/postPersistence.exception';
 
 function repository(): PostRepositoryPort {
   return {
@@ -57,9 +56,7 @@ describe('게시글 서비스', () => {
     jest
       .mocked(occurrences.resolveOwnedOccurrence)
       .mockResolvedValue({ jogakId: 11, mogakId: 3, title: '제목' });
-    jest
-      .mocked(posts.createForOccurrence)
-      .mockRejectedValue(new PostNotFoundAfterLockException(resource));
+    jest.mocked(posts.createForOccurrence).mockRejectedValue(new DomainException(code));
     const service = new PostService(posts, occurrences, storage(), mogaks());
     await expect(
       service.createPost(7, { jogakId: 11, targetDate: '2026-07-23', contents: '내용' }),

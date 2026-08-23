@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
 import {
   authSessions,
@@ -24,7 +25,6 @@ import {
   AuthPersistenceException,
   DuplicateEmailException,
   DuplicateSocialAccountException,
-  SessionUserNotFoundAfterLockException,
 } from '@core/auth/domain/exception/authPersistence.exception';
 
 @Injectable()
@@ -143,11 +143,11 @@ export class AuthRepository implements AuthPersistencePort {
       await this.db.transaction(async (tx) => {
         await lockUsersForTransaction(tx, [userId]);
         const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
-        if (user === undefined) throw new SessionUserNotFoundAfterLockException();
+        if (user === undefined) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
         await tx.insert(authSessions).values({ ...session, userId });
       });
     } catch (error: unknown) {
-      if (error instanceof AuthPersistenceException) {
+      if (error instanceof AuthPersistenceException || error instanceof DomainException) {
         throw error;
       }
       throw new AuthPersistenceException('Failed to create auth session', { cause: error });

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, count, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
@@ -26,10 +27,7 @@ import type {
   OccurrenceScheduleResult,
   OwnedJogakResult,
 } from '@core/mogaks/application/type/jogak.result';
-import {
-  ModaratUserNotFoundAfterLockException,
-  MogakPersistenceException,
-} from '@core/mogaks/domain/exception/mogakPersistence.exception';
+import { MogakPersistenceException } from '@core/mogaks/domain/exception/mogakPersistence.exception';
 import { JogakExecutionStatus } from '@core/mogaks/domain/vo/jogakExecution.vo';
 import {
   JogakScheduleType,
@@ -57,7 +55,7 @@ export class MogakRepository implements MogakRepositoryPort {
         .select({ id: users.id })
         .from(users)
         .where(eq(users.id, input.userId));
-      if (user === undefined) throw new ModaratUserNotFoundAfterLockException();
+      if (user === undefined) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       const [created] = await tx
         .insert(modarats)
         .values({ userId: input.userId, title: input.title, color: input.color })

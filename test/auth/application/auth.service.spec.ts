@@ -10,7 +10,6 @@ import type { AuthenticatedPrincipal } from '@core/auth/application/type/authent
 import {
   DuplicateEmailException,
   DuplicateSocialAccountException,
-  SessionUserNotFoundAfterLockException,
 } from '@core/auth/domain/exception/authPersistence.exception';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
@@ -65,7 +64,7 @@ describe('인증 서비스', () => {
     });
     jest
       .mocked(persistence.createSession)
-      .mockRejectedValue(new SessionUserNotFoundAfterLockException());
+      .mockRejectedValue(new DomainException(DomainErrorCode.USER_NOT_FOUND));
     const tokens = createTokenPorts();
     const service = new AuthService(sessionVerifiers, persistence, tokens, tokens);
 

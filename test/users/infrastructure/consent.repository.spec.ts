@@ -1,8 +1,8 @@
 import { testMock } from '../../testMock';
 
 import type { Database } from '@infra/database/database.provider';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { UserPersistenceException } from '@core/users/domain/exception/userPersistence.exception';
-import { ConsentUserNotFoundAfterLockException } from '@core/users/domain/exception/userPersistence.exception';
 import { ConsentRepository } from '@infra/users/repository/consent.repository';
 
 describe('동의 저장소', () => {
@@ -38,7 +38,7 @@ describe('동의 저장소', () => {
           ? repository.upsertUserConsents(7, [{ consentItemId: 1, agreed: true }], new Date())
           : repository.updateMarketingConsents(7, { marketingAgreed: true }, new Date());
 
-      await expect(call).rejects.toBeInstanceOf(ConsentUserNotFoundAfterLockException);
+      await expect(call).rejects.toEqual(new DomainException(DomainErrorCode.USER_NOT_FOUND));
       expect(execute).toHaveBeenCalledTimes(1);
       expect(selectAfterLock).toHaveBeenCalledTimes(1);
       expect(insert).not.toHaveBeenCalled();

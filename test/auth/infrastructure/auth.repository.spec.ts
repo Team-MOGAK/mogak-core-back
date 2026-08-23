@@ -2,11 +2,11 @@ import { testMock } from '../../testMock';
 import type { Database } from '@infra/database/database.provider';
 import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import {
   AuthPersistenceException,
   DuplicateEmailException,
   DuplicateSocialAccountException,
-  SessionUserNotFoundAfterLockException,
 } from '@core/auth/domain/exception/authPersistence.exception';
 import { AuthRepository } from '@infra/auth/repository/auth.repository';
 
@@ -35,7 +35,7 @@ describe('인증 저장소', () => {
         refreshTokenHash: 'refresh-token-hash',
         expiresAt: new Date('2026-08-23T00:00:00.000Z'),
       }),
-    ).rejects.toBeInstanceOf(SessionUserNotFoundAfterLockException);
+    ).rejects.toEqual(new DomainException(DomainErrorCode.USER_NOT_FOUND));
     expect(execute).toHaveBeenCalledTimes(1);
     expect(select).toHaveBeenCalledTimes(1);
     expect(insert).not.toHaveBeenCalled();

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
@@ -15,7 +16,6 @@ import {
   users,
 } from '../../database/schema';
 import type { SocialRepositoryPort } from '@core/social/application/port/social.repository.port';
-import { SocialUserNotFoundAfterLockException } from '@core/social/domain/exception/socialPersistence.exception';
 import type { FollowCommand } from '@core/social/application/type/social.command';
 import type {
   NetworkPostsQuery,
@@ -54,7 +54,7 @@ export class SocialRepository implements SocialRepositoryPort {
         .from(users)
         .where(inArray(users.id, [command.followerId, command.followingId]));
       if (existing.length !== new Set([command.followerId, command.followingId]).size) {
-        throw new SocialUserNotFoundAfterLockException();
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       }
       const [created] = await tx
         .insert(follows)

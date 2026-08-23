@@ -3,7 +3,6 @@ import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 import type { MogakRepositoryPort } from '@core/mogaks/application/port/mogak.repository.port';
 import { MogakService } from '@core/mogaks/application/service/mogak.service';
-import { ModaratUserNotFoundAfterLockException } from '@core/mogaks/domain/exception/mogakPersistence.exception';
 
 function repository(): MogakRepositoryPort {
   return {
@@ -24,7 +23,7 @@ describe('모각 서비스', () => {
     const mogaks = repository();
     jest
       .mocked(mogaks.createModarat)
-      .mockRejectedValue(new ModaratUserNotFoundAfterLockException());
+      .mockRejectedValue(new DomainException(DomainErrorCode.USER_NOT_FOUND));
     const service = new MogakService(mogaks);
 
     await expect(service.createModarat(7, { title: '모다랫', color: 'blue' })).rejects.toEqual(

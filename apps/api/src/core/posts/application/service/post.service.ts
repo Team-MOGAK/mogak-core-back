@@ -1,5 +1,4 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
-import { PostNotFoundAfterLockException } from '../../domain/exception/postPersistence.exception';
 import type { OwnedMogakPort } from '@core/mogaks/application/port/ownedMogak.port';
 import type { OwnedOccurrencePort } from '@core/mogaks/application/port/ownedOccurrence.port';
 import type { StoragePort } from '@core/storage/application/storage.port';
@@ -29,15 +28,13 @@ export class PostService {
       input.jogakId,
       input.targetDate,
     );
-    const result = await this.postNotFoundAsDomain(() =>
-      this.repository.createForOccurrence({
-        authorId: userId,
-        jogakId: occurrence.jogakId,
-        scheduledDate: input.targetDate,
-        jogakTitleSnapshot: occurrence.title,
-        contents,
-      }),
-    );
+    const result = await this.repository.createForOccurrence({
+      authorId: userId,
+      jogakId: occurrence.jogakId,
+      scheduledDate: input.targetDate,
+      jogakTitleSnapshot: occurrence.title,
+      contents,
+    });
     if (result.type === 'DUPLICATE') throw new DomainException(DomainErrorCode.POST_ALREADY_EXISTS);
     return {
       id: result.post.id,
@@ -54,9 +51,7 @@ export class PostService {
   async toggleLike(userId: number, postId: number): Promise<string> {
     if ((await this.repository.findPost(postId)) === null)
       throw new DomainException(DomainErrorCode.POST_NOT_FOUND);
-    return (await this.postNotFoundAsDomain(() =>
-      this.repository.toggleLike({ postId, userId }),
-    )) === 'CREATED'
+    return (await this.repository.toggleLike({ postId, userId })) === 'CREATED'
       ? '좋아요가 생성되었습니다'
       : '좋아요가 삭제되었습니다';
   }
@@ -142,13 +137,11 @@ export class PostService {
   async createComment(userId: number, postId: number, contents: string) {
     if ((await this.repository.findPost(postId)) === null)
       throw new DomainException(DomainErrorCode.POST_NOT_FOUND);
-    const comment = await this.postNotFoundAsDomain(() =>
-      this.repository.createComment({
-        postId,
-        authorId: userId,
-        contents: requireCommentContents(contents),
-      }),
-    );
+    const comment = await this.repository.createComment({
+      postId,
+      authorId: userId,
+      contents: requireCommentContents(contents),
+    });
     return {
       id: comment.id,
       postId: comment.postId,
@@ -190,23 +183,6 @@ export class PostService {
       throw new DomainException(DomainErrorCode.FORBIDDEN);
     }
     return comment;
-  }
-
-  private async postNotFoundAsDomain<T>(operation: () => Promise<T>): Promise<T> {
-    try {
-      return await operation();
-    } catch (error) {
-      if (error instanceof PostNotFoundAfterLockException) {
-        throw new DomainException(
-          error.resource === 'JOGAK'
-            ? DomainErrorCode.JOGAK_NOT_FOUND
-            : error.resource === 'USER'
-              ? DomainErrorCode.USER_NOT_FOUND
-              : DomainErrorCode.POST_NOT_FOUND,
-        );
-      }
-      throw error;
-    }
   }
 
   private async toPostDetail(post: PostDetailResult) {

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
@@ -18,10 +19,7 @@ import {
 } from '../../database/schema';
 import type { PostRepositoryPort } from '@core/posts/application/port/post.repository.port';
 import type { CreatePostCommand } from '@core/posts/application/type/post.command';
-import {
-  PostNotFoundAfterLockException,
-  PostPersistenceException,
-} from '@core/posts/domain/exception/postPersistence.exception';
+import { PostPersistenceException } from '@core/posts/domain/exception/postPersistence.exception';
 import type {
   PostCommentResult,
   PostDetailResult,
@@ -65,12 +63,12 @@ export class PostRepository implements PostRepositoryPort {
         .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
         .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
         .where(eq(jogaks.id, input.jogakId));
-      if (stillOwned === undefined) throw new PostNotFoundAfterLockException('JOGAK');
+      if (stillOwned === undefined) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
       const [author] = await tx
         .select({ id: users.id })
         .from(users)
         .where(eq(users.id, input.authorId));
-      if (author === undefined) throw new PostNotFoundAfterLockException('USER');
+      if (author === undefined) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       const [insertedExecution] = await tx
         .insert(jogakExecutions)
         .values({
@@ -267,12 +265,12 @@ export class PostRepository implements PostRepositoryPort {
       // Re-read after locks: withdrawal may have deleted the post while this
       // request was waiting.
       const stillRelated = await this.relatedUserIdsForPost(tx, input.postId, input.userId);
-      if (stillRelated.length === 1) throw new PostNotFoundAfterLockException('POST');
+      if (stillRelated.length === 1) throw new DomainException(DomainErrorCode.POST_NOT_FOUND);
       const [actor] = await tx
         .select({ id: users.id })
         .from(users)
         .where(eq(users.id, input.userId));
-      if (actor === undefined) throw new PostNotFoundAfterLockException('USER');
+      if (actor === undefined) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       const [created] = await tx
         .insert(postLikes)
         .values(input)
@@ -311,13 +309,13 @@ export class PostRepository implements PostRepositoryPort {
       const relatedUsers = await this.relatedUserIdsForPost(tx, input.postId, input.authorId);
       await lockUsersForTransaction(tx, relatedUsers);
       if ((await this.relatedUserIdsForPost(tx, input.postId, input.authorId)).length === 1) {
-        throw new PostNotFoundAfterLockException('POST');
+        throw new DomainException(DomainErrorCode.POST_NOT_FOUND);
       }
       const [author] = await tx
         .select({ id: users.id })
         .from(users)
         .where(eq(users.id, input.authorId));
-      if (author === undefined) throw new PostNotFoundAfterLockException('USER');
+      if (author === undefined) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       const [created] = await tx
         .insert(postComments)
         .values(input)

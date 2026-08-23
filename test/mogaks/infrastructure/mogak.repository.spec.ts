@@ -1,8 +1,8 @@
 import { testMock } from '../../testMock';
 
 import type { Database } from '@infra/database/database.provider';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { MogakPersistenceException } from '@core/mogaks/domain/exception/mogakPersistence.exception';
-import { ModaratUserNotFoundAfterLockException } from '@core/mogaks/domain/exception/mogakPersistence.exception';
 import { MogakRepository } from '@infra/mogaks/repository/mogak.repository';
 
 describe('모각 저장소', () => {
@@ -19,7 +19,7 @@ describe('모각 저장소', () => {
 
     await expect(
       repository.createModarat({ userId: 7, title: '모다랫', color: '#000000' }),
-    ).rejects.toBeInstanceOf(ModaratUserNotFoundAfterLockException);
+    ).rejects.toEqual(new DomainException(DomainErrorCode.USER_NOT_FOUND));
     expect(execute).toHaveBeenCalledTimes(1);
     expect(select).toHaveBeenCalledTimes(1);
     expect(insert).not.toHaveBeenCalled();
