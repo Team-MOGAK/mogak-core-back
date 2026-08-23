@@ -20,9 +20,7 @@ describe('사용자 저장소', () => {
       constraint: 'users_nickname_unique',
     });
     const repository = new UserRepository({
-      update: testMock().mockImplementation(() => {
-        throw duplicate;
-      }),
+      transaction: testMock().mockRejectedValue(duplicate),
     } as unknown as Database);
 
     await expect(repository.updateNickname(command)).rejects.toBeInstanceOf(
@@ -85,9 +83,7 @@ describe('사용자 저장소', () => {
   it('예상하지 못한 데이터베이스 오류를 원인을 보존한 UserPersistenceException으로 변환한다', async () => {
     const failure = new Error('database unavailable');
     const repository = new UserRepository({
-      update: testMock().mockImplementation(() => {
-        throw failure;
-      }),
+      transaction: testMock().mockRejectedValue(failure),
     } as unknown as Database);
 
     await expect(repository.updateNickname(command)).rejects.toEqual(

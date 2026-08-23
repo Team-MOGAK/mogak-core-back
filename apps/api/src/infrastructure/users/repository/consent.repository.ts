@@ -10,10 +10,14 @@ import type {
   ConsentItemState,
   MarketingConsentResult,
 } from '@core/users/application/type/consent.result';
-import { UserPersistenceException } from '@core/users/domain/exception/userPersistence.exception';
+import {
+  ConsentUserNotFoundAfterLockException,
+  UserPersistenceException,
+} from '@core/users/domain/exception/userPersistence.exception';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
-import { consentItems, userConsents } from '../../database/schema';
+import { lockUsersForTransaction } from '../../database/transaction/userAdvisoryLock';
+import { consentItems, userConsents, users } from '../../database/schema';
 
 @Injectable()
 export class ConsentRepository implements ConsentRepositoryPort {
@@ -58,6 +62,9 @@ export class ConsentRepository implements ConsentRepositoryPort {
     now: Date,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
+      await lockUsersForTransaction(tx, [userId]);
+      const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
+      if (user === undefined) throw new ConsentUserNotFoundAfterLockException();
       for (const command of commands) {
         await tx
           .insert(userConsents)
@@ -115,6 +122,9 @@ export class ConsentRepository implements ConsentRepositoryPort {
       throw new UserPersistenceException('Marketing consent item is not active');
     }
     return this.db.transaction(async (tx) => {
+      await lockUsersForTransaction(tx, [userId]);
+      const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
+      if (user === undefined) throw new ConsentUserNotFoundAfterLockException();
       for (const item of items) {
         const agreed =
           item.code === 'MARKETING'

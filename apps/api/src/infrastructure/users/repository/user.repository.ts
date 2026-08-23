@@ -14,6 +14,7 @@ import {
 } from '@core/users/domain/exception/userPersistence.exception';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
+import { lockUsersForTransaction } from '../../database/transaction/userAdvisoryLock';
 import { authSessions, jobs, userConsents, users } from '../../database/schema';
 import type { UserRecord } from '../type/user.record';
 import type {
@@ -53,33 +54,42 @@ export class UserRepository implements UserRepositoryPort {
 
   async updateNickname(command: UpdateNicknameCommand): Promise<boolean> {
     try {
-      const updated = await this.db
-        .update(users)
-        .set({ nickname: command.nickname, updatedAt: command.now })
-        .where(eq(users.id, command.userId))
-        .returning({ id: users.id });
-      return updated.length === 1;
+      return await this.db.transaction(async (tx) => {
+        await lockUsersForTransaction(tx, [command.userId]);
+        const updated = await tx
+          .update(users)
+          .set({ nickname: command.nickname, updatedAt: command.now })
+          .where(eq(users.id, command.userId))
+          .returning({ id: users.id });
+        return updated.length === 1;
+      });
     } catch (error: unknown) {
       throw asUserPersistenceException(error, 'Failed to update user nickname');
     }
   }
 
   async updateJob(command: UpdateJobCommand): Promise<boolean> {
-    const updated = await this.db
-      .update(users)
-      .set({ jobId: command.jobId, updatedAt: command.now })
-      .where(eq(users.id, command.userId))
-      .returning({ id: users.id });
-    return updated.length === 1;
+    return this.db.transaction(async (tx) => {
+      await lockUsersForTransaction(tx, [command.userId]);
+      const updated = await tx
+        .update(users)
+        .set({ jobId: command.jobId, updatedAt: command.now })
+        .where(eq(users.id, command.userId))
+        .returning({ id: users.id });
+      return updated.length === 1;
+    });
   }
 
   async updateProfileImageKey(command: UpdateProfileImageCommand): Promise<boolean> {
-    const updated = await this.db
-      .update(users)
-      .set({ profileImageKey: command.profileImageKey, updatedAt: command.now })
-      .where(eq(users.id, command.userId))
-      .returning({ id: users.id });
-    return updated.length === 1;
+    return this.db.transaction(async (tx) => {
+      await lockUsersForTransaction(tx, [command.userId]);
+      const updated = await tx
+        .update(users)
+        .set({ profileImageKey: command.profileImageKey, updatedAt: command.now })
+        .where(eq(users.id, command.userId))
+        .returning({ id: users.id });
+      return updated.length === 1;
+    });
   }
 
   async completeRegistration(
@@ -87,6 +97,7 @@ export class UserRepository implements UserRepositoryPort {
   ): Promise<Readonly<{ id: number; nickname: string }>> {
     try {
       return await this.db.transaction(async (tx) => {
+        await lockUsersForTransaction(tx, [command.userId]);
         const [registered] = await tx
           .update(users)
           .set({

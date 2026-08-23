@@ -9,7 +9,15 @@ describe('게시글 저장소', () => {
     const returning = testMock().mockResolvedValue([]);
     const values = testMock().mockReturnValue({ returning });
     const insert = testMock().mockReturnValue({ values });
-    const repository = new PostRepository({ insert } as unknown as Database);
+    const select = selectSequence([
+      [{ authorId: 2, hierarchyOwnerId: null }],
+      [{ authorId: 2, hierarchyOwnerId: null }],
+      [{ id: 2 }],
+    ]);
+    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+      callback({ execute: testMock(), select, insert }),
+    );
+    const repository = new PostRepository({ transaction } as unknown as Database);
 
     await expect(
       repository.createComment({ postId: 1, authorId: 2, contents: '댓글' }),
@@ -20,15 +28,36 @@ describe('게시글 저장소', () => {
     const returning = testMock().mockResolvedValue([{ id: 3 }]);
     const values = testMock().mockReturnValue({ returning });
     const insert = testMock().mockReturnValue({ values });
-    const where = testMock().mockResolvedValue([]);
-    const leftJoin = testMock().mockReturnValue({ where });
-    const innerJoin = testMock().mockReturnValue({ leftJoin });
-    const from = testMock().mockReturnValue({ innerJoin });
-    const select = testMock().mockReturnValue({ from });
-    const repository = new PostRepository({ insert, select } as unknown as Database);
+    const select = selectSequence([
+      [{ authorId: 2, hierarchyOwnerId: null }],
+      [{ authorId: 2, hierarchyOwnerId: null }],
+      [{ id: 2 }],
+      [],
+    ]);
+    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+      callback({ execute: testMock(), select, insert }),
+    );
+    const repository = new PostRepository({ transaction } as unknown as Database);
 
     await expect(
       repository.createComment({ postId: 1, authorId: 2, contents: '댓글' }),
     ).rejects.toBeInstanceOf(PostPersistenceException);
   });
 });
+
+function selectSequence(results: readonly unknown[]) {
+  let index = 0;
+  return testMock().mockImplementation(() => {
+    const query = {
+      from: testMock(),
+      leftJoin: testMock(),
+      innerJoin: testMock(),
+      where: testMock(),
+    };
+    query.from.mockReturnValue(query);
+    query.leftJoin.mockReturnValue(query);
+    query.innerJoin.mockReturnValue(query);
+    query.where.mockImplementation(() => Promise.resolve(results[index++]));
+    return query;
+  });
+}

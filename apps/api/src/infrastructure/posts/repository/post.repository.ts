@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
+import { lockUsersForTransaction } from '../../database/transaction/userAdvisoryLock';
 import {
   jobs,
   jogakExecutions,
@@ -17,7 +18,10 @@ import {
 } from '../../database/schema';
 import type { PostRepositoryPort } from '@core/posts/application/port/post.repository.port';
 import type { CreatePostCommand } from '@core/posts/application/type/post.command';
-import { PostPersistenceException } from '@core/posts/domain/exception/postPersistence.exception';
+import {
+  PostNotFoundAfterLockException,
+  PostPersistenceException,
+} from '@core/posts/domain/exception/postPersistence.exception';
 import type {
   PostCommentResult,
   PostDetailResult,
@@ -45,6 +49,28 @@ export class PostRepository implements PostRepositoryPort {
     input: CreatePostForOccurrenceInput,
   ): Promise<CreatePostForOccurrenceResult> {
     return this.db.transaction(async (tx) => {
+      const [owner] = await tx
+        .select({ userId: modarats.userId })
+        .from(jogaks)
+        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .where(eq(jogaks.id, input.jogakId));
+      await lockUsersForTransaction(tx, [
+        input.authorId,
+        ...(owner === undefined ? [] : [owner.userId]),
+      ]);
+      const [stillOwned] = await tx
+        .select({ id: jogaks.id })
+        .from(jogaks)
+        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .where(eq(jogaks.id, input.jogakId));
+      if (stillOwned === undefined) throw new PostNotFoundAfterLockException('JOGAK');
+      const [author] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, input.authorId));
+      if (author === undefined) throw new PostNotFoundAfterLockException('USER');
       const [insertedExecution] = await tx
         .insert(jogakExecutions)
         .values({
@@ -119,20 +145,42 @@ export class PostRepository implements PostRepositoryPort {
       now: Date;
     }>,
   ): Promise<UpdatedPostRecord | null> {
-    const [post] = await this.db
-      .update(posts)
-      .set({ contents: input.contents, updatedAt: input.now })
-      .where(and(eq(posts.id, input.postId), eq(posts.authorId, input.authorId)))
-      .returning({ id: posts.id, contents: posts.contents, updatedAt: posts.updatedAt });
-    return post ?? null;
+    return this.db.transaction(async (tx) => {
+      await lockUsersForTransaction(
+        tx,
+        await this.relatedUserIdsForPost(tx, input.postId, input.authorId),
+      );
+      const [post] = await tx
+        .update(posts)
+        .set({ contents: input.contents, updatedAt: input.now })
+        .where(and(eq(posts.id, input.postId), eq(posts.authorId, input.authorId)))
+        .returning({ id: posts.id, contents: posts.contents, updatedAt: posts.updatedAt });
+      return post ?? null;
+    });
   }
 
   async deleteOwnedPost(input: Readonly<{ postId: number; authorId: number }>): Promise<boolean> {
-    const deleted = await this.db
-      .delete(posts)
-      .where(and(eq(posts.id, input.postId), eq(posts.authorId, input.authorId)))
-      .returning({ id: posts.id });
-    return deleted.length === 1;
+    return this.db.transaction(async (tx) => {
+      await lockUsersForTransaction(
+        tx,
+        await this.relatedUserIdsForPost(tx, input.postId, input.authorId),
+      );
+      // Explicit child cleanup keeps normal post deletion independent of the
+      // database's FK cascade just like withdrawal does.
+      const [owned] = await tx
+        .select({ id: posts.id })
+        .from(posts)
+        .where(and(eq(posts.id, input.postId), eq(posts.authorId, input.authorId)));
+      if (owned === undefined) return false;
+      await tx.delete(postImages).where(eq(postImages.postId, input.postId));
+      await tx.delete(postComments).where(eq(postComments.postId, input.postId));
+      await tx.delete(postLikes).where(eq(postLikes.postId, input.postId));
+      const deleted = await tx
+        .delete(posts)
+        .where(eq(posts.id, input.postId))
+        .returning({ id: posts.id });
+      return deleted.length === 1;
+    });
   }
 
   async findOwnedPostByOccurrence(
@@ -213,17 +261,29 @@ export class PostRepository implements PostRepositoryPort {
   }
 
   async toggleLike(input: Readonly<{ postId: number; userId: number }>): Promise<ToggleLikeResult> {
-    const [created] = await this.db
-      .insert(postLikes)
-      .values(input)
-      .onConflictDoNothing({ target: [postLikes.postId, postLikes.userId] })
-      .returning({ id: postLikes.id });
-    if (created !== undefined) return 'CREATED';
-
-    await this.db
-      .delete(postLikes)
-      .where(and(eq(postLikes.postId, input.postId), eq(postLikes.userId, input.userId)));
-    return 'REMOVED';
+    return this.db.transaction(async (tx) => {
+      const relatedUsers = await this.relatedUserIdsForPost(tx, input.postId, input.userId);
+      await lockUsersForTransaction(tx, relatedUsers);
+      // Re-read after locks: withdrawal may have deleted the post while this
+      // request was waiting.
+      const stillRelated = await this.relatedUserIdsForPost(tx, input.postId, input.userId);
+      if (stillRelated.length === 1) throw new PostNotFoundAfterLockException('POST');
+      const [actor] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, input.userId));
+      if (actor === undefined) throw new PostNotFoundAfterLockException('USER');
+      const [created] = await tx
+        .insert(postLikes)
+        .values(input)
+        .onConflictDoNothing({ target: [postLikes.postId, postLikes.userId] })
+        .returning({ id: postLikes.id });
+      if (created !== undefined) return 'CREATED';
+      await tx
+        .delete(postLikes)
+        .where(and(eq(postLikes.postId, input.postId), eq(postLikes.userId, input.userId)));
+      return 'REMOVED';
+    });
   }
 
   async listComments(postId: number): Promise<PostCommentResult[]> {
@@ -247,16 +307,44 @@ export class PostRepository implements PostRepositoryPort {
   }
 
   async createComment(input: Readonly<{ postId: number; authorId: number; contents: string }>) {
-    const [created] = await this.db
-      .insert(postComments)
-      .values(input)
-      .returning({ id: postComments.id });
-    if (created === undefined)
-      throw new PostPersistenceException('comment insert did not return a row');
+    return this.db.transaction(async (tx) => {
+      const relatedUsers = await this.relatedUserIdsForPost(tx, input.postId, input.authorId);
+      await lockUsersForTransaction(tx, relatedUsers);
+      if ((await this.relatedUserIdsForPost(tx, input.postId, input.authorId)).length === 1) {
+        throw new PostNotFoundAfterLockException('POST');
+      }
+      const [author] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, input.authorId));
+      if (author === undefined) throw new PostNotFoundAfterLockException('USER');
+      const [created] = await tx
+        .insert(postComments)
+        .values(input)
+        .returning({ id: postComments.id });
+      if (created === undefined)
+        throw new PostPersistenceException('comment insert did not return a row');
 
-    const comment = await this.findComment(input.postId, created.id);
-    if (comment === null) throw new PostPersistenceException('created comment was not found');
-    return toPostCommentResult(comment);
+      const [comment] = await tx
+        .select({
+          id: postComments.id,
+          postId: postComments.postId,
+          authorId: postComments.authorId,
+          authorNickname: users.nickname,
+          authorJob: jobs.name,
+          authorProfileImageKey: users.profileImageKey,
+          contents: postComments.contents,
+          createdAt: postComments.createdAt,
+          updatedAt: postComments.updatedAt,
+        })
+        .from(postComments)
+        .innerJoin(users, eq(postComments.authorId, users.id))
+        .leftJoin(jobs, eq(users.jobId, jobs.id))
+        .where(and(eq(postComments.postId, input.postId), eq(postComments.id, created.id)));
+      if (comment === undefined)
+        throw new PostPersistenceException('created comment was not found');
+      return toPostCommentResult(comment);
+    });
   }
 
   async findComment(postId: number, commentId: number): Promise<PostCommentResult | null> {
@@ -288,33 +376,79 @@ export class PostRepository implements PostRepositoryPort {
       now: Date;
     }>,
   ): Promise<PostCommentResult | null> {
-    const [updated] = await this.db
-      .update(postComments)
-      .set({ contents: input.contents, updatedAt: input.now })
-      .where(
-        and(
-          eq(postComments.postId, input.postId),
-          eq(postComments.id, input.commentId),
-          eq(postComments.authorId, input.authorId),
-        ),
-      )
-      .returning({ id: postComments.id });
-    if (updated === undefined) return null;
-    return this.findComment(input.postId, updated.id);
+    return this.db.transaction(async (tx) => {
+      const relatedUsers = await this.relatedUserIdsForPost(tx, input.postId, input.authorId);
+      await lockUsersForTransaction(tx, relatedUsers);
+      const [updated] = await tx
+        .update(postComments)
+        .set({ contents: input.contents, updatedAt: input.now })
+        .where(
+          and(
+            eq(postComments.postId, input.postId),
+            eq(postComments.id, input.commentId),
+            eq(postComments.authorId, input.authorId),
+          ),
+        )
+        .returning({ id: postComments.id });
+      if (updated === undefined) return null;
+      const [comment] = await tx
+        .select({
+          id: postComments.id,
+          postId: postComments.postId,
+          authorId: postComments.authorId,
+          authorNickname: users.nickname,
+          authorJob: jobs.name,
+          authorProfileImageKey: users.profileImageKey,
+          contents: postComments.contents,
+          createdAt: postComments.createdAt,
+          updatedAt: postComments.updatedAt,
+        })
+        .from(postComments)
+        .innerJoin(users, eq(postComments.authorId, users.id))
+        .leftJoin(jobs, eq(users.jobId, jobs.id))
+        .where(and(eq(postComments.postId, input.postId), eq(postComments.id, updated.id)));
+      return comment === undefined ? null : toPostCommentResult(comment);
+    });
   }
 
   async deleteComment(input: Readonly<{ postId: number; commentId: number; authorId: number }>) {
-    const deleted = await this.db
-      .delete(postComments)
-      .where(
-        and(
-          eq(postComments.postId, input.postId),
-          eq(postComments.id, input.commentId),
-          eq(postComments.authorId, input.authorId),
-        ),
-      )
-      .returning({ id: postComments.id });
-    return deleted.length === 1;
+    return this.db.transaction(async (tx) => {
+      const relatedUsers = await this.relatedUserIdsForPost(tx, input.postId, input.authorId);
+      await lockUsersForTransaction(tx, relatedUsers);
+      const deleted = await tx
+        .delete(postComments)
+        .where(
+          and(
+            eq(postComments.postId, input.postId),
+            eq(postComments.id, input.commentId),
+            eq(postComments.authorId, input.authorId),
+          ),
+        )
+        .returning({ id: postComments.id });
+      return deleted.length === 1;
+    });
+  }
+
+  private async relatedUserIdsForPost(
+    tx: Pick<Database, 'select'>,
+    postId: number,
+    actorId: number,
+  ): Promise<number[]> {
+    const [post] = await tx
+      .select({ authorId: posts.authorId, hierarchyOwnerId: modarats.userId })
+      .from(posts)
+      .leftJoin(jogakExecutions, eq(posts.jogakExecutionId, jogakExecutions.id))
+      .leftJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
+      .leftJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+      .leftJoin(modarats, eq(mogaks.modaratId, modarats.id))
+      .where(eq(posts.id, postId));
+    return post === undefined
+      ? [actorId]
+      : [
+          actorId,
+          post.authorId,
+          ...(post.hierarchyOwnerId === null ? [] : [post.hierarchyOwnerId]),
+        ];
   }
 }
 

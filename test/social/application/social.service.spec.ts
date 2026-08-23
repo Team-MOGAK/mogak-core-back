@@ -4,6 +4,7 @@ import { testMock } from '../../testMock';
 
 import type { SocialRepositoryPort } from '@core/social/application/port/social.repository.port';
 import { SocialService } from '@core/social/application/service/social.service';
+import { SocialUserNotFoundAfterLockException } from '@core/social/domain/exception/socialPersistence.exception';
 
 function repository(): SocialRepositoryPort {
   return {
@@ -41,6 +42,15 @@ describe('소셜 팔로우 서비스', () => {
 
     await expect(service.follow(7, '모각러')).rejects.toEqual(
       new DomainException(DomainErrorCode.FOLLOW_ALREADY_EXISTS),
+    );
+  });
+
+  it('lock 뒤 팔로우 사용자가 사라지면 F001이 아닌 사용자 없음으로 변환한다', async () => {
+    const social = repository();
+    jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
+    jest.mocked(social.createFollow).mockRejectedValue(new SocialUserNotFoundAfterLockException());
+    await expect(new SocialService(social).follow(7, '모각러')).rejects.toEqual(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
     );
   });
 

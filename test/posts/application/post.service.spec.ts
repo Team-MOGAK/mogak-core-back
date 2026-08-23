@@ -7,6 +7,7 @@ import type { OwnedOccurrencePort } from '@core/mogaks/application/port/ownedOcc
 import type { StoragePort } from '@core/storage/application/storage.port';
 import type { PostRepositoryPort } from '@core/posts/application/port/post.repository.port';
 import { PostService } from '@core/posts/application/service/post.service';
+import { PostNotFoundAfterLockException } from '@core/posts/domain/exception/postPersistence.exception';
 
 function repository(): PostRepositoryPort {
   return {
@@ -47,6 +48,23 @@ function mogaks(): OwnedMogakPort {
 }
 
 describe('게시글 서비스', () => {
+  it.each([
+    ['JOGAK', DomainErrorCode.JOGAK_NOT_FOUND],
+    ['USER', DomainErrorCode.USER_NOT_FOUND],
+  ] as const)('lock 뒤 %s 소실을 해당 도메인 오류로 변환한다', async (resource, code) => {
+    const posts = repository();
+    const occurrences = jogaks();
+    jest
+      .mocked(occurrences.resolveOwnedOccurrence)
+      .mockResolvedValue({ jogakId: 11, mogakId: 3, title: '제목' });
+    jest
+      .mocked(posts.createForOccurrence)
+      .mockRejectedValue(new PostNotFoundAfterLockException(resource));
+    const service = new PostService(posts, occurrences, storage(), mogaks());
+    await expect(
+      service.createPost(7, { jogakId: 11, targetDate: '2026-07-23', contents: '내용' }),
+    ).rejects.toEqual(new DomainException(code));
+  });
   it('소유한 가상 발생에 게시글 하나를 만들고 현재 조각 제목을 기록한다', async () => {
     const posts = repository();
     const occurrences = jogaks();

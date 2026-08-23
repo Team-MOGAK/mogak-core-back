@@ -9,6 +9,7 @@ import type {
   UpdateMarketingConsentCommand,
 } from '../type/consent.command';
 import type { ConsentItemResult, MarketingConsentResult } from '../type/consent.result';
+import { ConsentUserNotFoundAfterLockException } from '../../domain/exception/userPersistence.exception';
 
 export class ConsentService {
   constructor(private readonly repository: ConsentRepositoryPort) {}
@@ -41,7 +42,11 @@ export class ConsentService {
 
   async update(userId: number, commands: readonly ConsentAgreementCommand[]): Promise<void> {
     await this.validate(commands);
-    await this.repository.upsertUserConsents(userId, commands, new Date());
+    try {
+      await this.repository.upsertUserConsents(userId, commands, new Date());
+    } catch (error: unknown) {
+      this.throwUserNotFoundAfterLock(error);
+    }
   }
 
   async getMarketing(userId: number): Promise<MarketingConsentResult> {
@@ -55,7 +60,18 @@ export class ConsentService {
     if (command.marketingAgreed === undefined && command.advertisementAgreed === undefined) {
       throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
     }
-    return this.repository.updateMarketingConsents(userId, command, new Date());
+    try {
+      return await this.repository.updateMarketingConsents(userId, command, new Date());
+    } catch (error: unknown) {
+      this.throwUserNotFoundAfterLock(error);
+    }
+  }
+
+  private throwUserNotFoundAfterLock(error: unknown): never {
+    if (error instanceof ConsentUserNotFoundAfterLockException) {
+      throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+    }
+    throw error;
   }
 
   private throwForValidationIssue(issue: ConsentValidationIssue): never {

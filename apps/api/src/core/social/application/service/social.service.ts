@@ -1,6 +1,7 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import type { StoragePort } from '@core/storage/application/storage.port';
 import { isSelfFollow } from '../../domain/policy/follow.policy';
+import { SocialUserNotFoundAfterLockException } from '../../domain/exception/socialPersistence.exception';
 import type { SocialRepositoryPort } from '../port/social.repository.port';
 import type {
   FeedAuthorResult,
@@ -23,8 +24,15 @@ export class SocialService {
     if (isSelfFollow(follow.followerId, follow.followingId)) {
       throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
     }
-    if (!(await this.repository.createFollow(follow))) {
-      throw new DomainException(DomainErrorCode.FOLLOW_ALREADY_EXISTS);
+    try {
+      if (!(await this.repository.createFollow(follow))) {
+        throw new DomainException(DomainErrorCode.FOLLOW_ALREADY_EXISTS);
+      }
+    } catch (error) {
+      if (error instanceof SocialUserNotFoundAfterLockException) {
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
+      throw error;
     }
   }
 

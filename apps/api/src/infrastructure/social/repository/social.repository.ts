@@ -3,6 +3,7 @@ import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
+import { lockUsersForTransaction } from '../../database/transaction/userAdvisoryLock';
 import {
   addresses,
   follows,
@@ -14,6 +15,7 @@ import {
   users,
 } from '../../database/schema';
 import type { SocialRepositoryPort } from '@core/social/application/port/social.repository.port';
+import { SocialUserNotFoundAfterLockException } from '@core/social/domain/exception/socialPersistence.exception';
 import type { FollowCommand } from '@core/social/application/type/social.command';
 import type {
   NetworkPostsQuery,
@@ -45,20 +47,33 @@ export class SocialRepository implements SocialRepositoryPort {
   }
 
   async createFollow(command: FollowCommand): Promise<boolean> {
-    const [created] = await this.db
-      .insert(follows)
-      .values(command)
-      .onConflictDoNothing({ target: [follows.followerId, follows.followingId] })
-      .returning({ id: follows.id });
-    return created !== undefined;
+    return this.db.transaction(async (tx) => {
+      await lockUsersForTransaction(tx, [command.followerId, command.followingId]);
+      const existing = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(inArray(users.id, [command.followerId, command.followingId]));
+      if (existing.length !== new Set([command.followerId, command.followingId]).size) {
+        throw new SocialUserNotFoundAfterLockException();
+      }
+      const [created] = await tx
+        .insert(follows)
+        .values(command)
+        .onConflictDoNothing({ target: [follows.followerId, follows.followingId] })
+        .returning({ id: follows.id });
+      return created !== undefined;
+    });
   }
 
   async deleteFollow(command: FollowCommand): Promise<boolean> {
-    const deleted = await this.db
-      .delete(follows)
-      .where(andFollow(command))
-      .returning({ id: follows.id });
-    return deleted.length === 1;
+    return this.db.transaction(async (tx) => {
+      await lockUsersForTransaction(tx, [command.followerId, command.followingId]);
+      const deleted = await tx
+        .delete(follows)
+        .where(andFollow(command))
+        .returning({ id: follows.id });
+      return deleted.length === 1;
+    });
   }
 
   async countMotos(userId: number): Promise<number> {

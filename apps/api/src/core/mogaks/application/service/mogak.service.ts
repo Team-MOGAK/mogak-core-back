@@ -10,16 +10,24 @@ import type {
 } from '../type/mogak.command';
 import type { MogakResult, ModaratResult } from '../type/mogak.result';
 import type { OwnedMogakPort } from '../port/ownedMogak.port';
+import { ModaratUserNotFoundAfterLockException } from '../../domain/exception/mogakPersistence.exception';
 
 export class MogakService implements OwnedMogakPort {
   constructor(private readonly repository: MogakRepositoryPort) {}
 
   async createModarat(userId: number, input: ModaratCommand): Promise<ModaratResult> {
-    return this.repository.createModarat({
-      userId,
-      title: requiredTrimmed(input.title),
-      color: requiredTrimmed(input.color),
-    });
+    try {
+      return await this.repository.createModarat({
+        userId,
+        title: requiredTrimmed(input.title),
+        color: requiredTrimmed(input.color),
+      });
+    } catch (error: unknown) {
+      if (error instanceof ModaratUserNotFoundAfterLockException) {
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
+      throw error;
+    }
   }
 
   async listModarats(userId: number): Promise<ModaratResult[]> {
