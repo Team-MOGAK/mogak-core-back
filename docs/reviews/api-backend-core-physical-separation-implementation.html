@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>API와 core/modules library 분리 구현 제어</title>
+  <style>body{max-width:900px;margin:2rem auto;padding:0 1rem;font:16px/1.6 system-ui,sans-serif;color:#172033}header,section{margin:1rem 0;padding:1rem;border:1px solid #d7dee9;border-radius:8px}code{background:#f1f5f9;padding:.1rem .25rem}table{width:100%;border-collapse:collapse}th,td{padding:.5rem;border:1px solid #d7dee9;text-align:left;vertical-align:top}</style>
+</head>
+<body>
+  <header><h1>API와 core/modules library 분리 구현 제어</h1><dl><dt>목적</dt><dd>승인된 API/core/modules 물리 분리의 구현과 검증을 제어한다.</dd><dt>사용자</dt><dd>MOGAK API·batch 개발자와 배포·유지보수 담당자</dd><dt>문제</dt><dd>API 배포물 안에 HTTP API, Nest 독립 domain/application, Nest 기반 adapter가 함께 있어 재사용 경계가 흐리다.</dd><dt>핵심 흐름</dt><dd>API controller → core use case/port → modules adapter/DB, AppModule이 controller·guard와 backend module을 연결</dd><dt>기준 설계</dt><dd><a href="api-backend-core-physical-separation-design.html">설계 기준선</a>, 2026-08-24 승인</dd><dt>강도 · 상태</dt><dd>Standard · 구현 및 회귀 검증 완료</dd></dl></header>
+  <main><article>
+    <section><h2>승인 기준선</h2><p><code>libs/core</code>에는 Nest 독립 domain/application/port를, <code>libs/modules</code>에는 Nest 기반 adapter와 feature module을 둔다. API <code>AppModule</code>이 controller·guard를 등록하고 modules feature module을 import한다.</p></section>
+    <section><h2>현재 구현</h2><p><code>apps/api/src/core/**</code>는 <code>libs/core/src/core/**</code>로, infrastructure와 feature provider module은 <code>libs/modules/src/**</code>로 이동했다. <code>apps/api/src/composition/**</code>은 제거했고 API controller·guard 등록은 <code>apps/api/src/app.module.ts</code>가 맡는다. API controller가 필요한 application service는 각 modules feature module이 export한다.</p></section>
+    <section><h2>구현 상태</h2><p>구현 및 회귀 검증 완료 — Nest workspace library 등록, alias·Jest·Drizzle 경로, 번들 빌드 의존성을 새 경로에 맞췄다.</p></section>
+    <section><h2>이슈 등록</h2><table><thead><tr><th>상태</th><th>관찰·영향</th><th>조치·검증</th></tr></thead><tbody><tr><td>해결됨</td><td>core 전체를 Nest 독립화하는 방향은 현재 adapter의 decorator·ConfigService 결합을 불필요하게 재작성하게 했다.</td><td>이미 Nest 독립인 core와 Nest 기반 modules를 별도 library로 분리했다.</td></tr><tr><td>해결됨</td><td>controller를 AppModule로 옮기자 sibling feature module에 있던 application service가 DI 범위 밖이 됐다.</td><td>controller가 직접 주입하는 service를 feature module의 exports에 명시했다. health·rate-limit e2e 통과.</td></tr></tbody></table></section>
+    <section><h2>검증 증거</h2><p><code>pnpm typecheck</code>, architecture boundary test, lint, format check, <code>pnpm build</code>가 통과했다. Nest bundle은 기존처럼 <code>dist/main.js</code>를 생성한다. 개선 후 단일 프로세스 전체 회귀는 55 suites, 257 tests가 통과했다.</p></section>
+    <section><h2>검증 공백</h2><p>DB integration test는 로컬 DB가 필요한 별도 명령(<code>pnpm test:integration</code>)으로 남아 있다.</p></section>
+    <section><h2>잔여 위험</h2><p>core token과 modules provider binding의 identity·lifecycle을 보존해야 한다. API feature module은 AppModule이 복잡해질 때에만 후속으로 도입한다.</p></section>
+    <section><h2>implementation-control-state</h2><p>기술 상태: 검증 완료. 구현 이슈: DI export 범위 문제 해결됨. 개발자 운영 이해: 미실시.</p></section>
+    <section id="review"><h2>리뷰</h2><dl><dt>유형</dt><dd>자기 변경 재리뷰</dd><dt>대상</dt><dd><code>refactor/#10</code>의 미커밋 물리 분리 변경</dd><dt>범위</dt><dd>library 공개 경계, 의존 방향, Nest DI, 빌드와 테스트 경로</dd><dt>상태</dt><dd>검토 완료</dd></dl><table><caption>발견 사항</caption><thead><tr><th>ID · 심각도</th><th>관찰·영향</th><th>조치·재검증</th></tr></thead><tbody><tr><td>CR-01 · Blocker · fixed</td><td><code>libs/core/src/index.ts</code>가 비어 있어 다른 app/job의 root import가 불가능했다.</td><td>feature별 public barrel을 export하고 <code>@mogak/core</code> consumer test를 추가했다. typecheck와 core build 통과.</td></tr><tr><td>CR-02 · Non-blocking risk · fixed</td><td>architecture test가 <code>@mogak/modules/</code> alias의 core 역의존을 막지 못했다.</td><td>alias ownership과 core→modules rejection fixture를 추가했다. architecture test 통과.</td></tr></tbody></table><aside><strong>검증 한계:</strong> DB integration, clean install build, dev watch startup은 아직 독립 실행하지 않았다. 단위·HTTP 회귀 55 suites/257 tests, typecheck, lint, format, app/core/modules build는 통과했다.</aside><p><strong>리뷰 판단:</strong> concrete finding 없음. 단, core 산출물은 외부 npm package가 아니라 monorepo source alias로 재사용하는 Nest library다.</p></section>
+  </article></main>
+</body>
+</html>

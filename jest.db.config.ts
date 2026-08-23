@@ -18,13 +18,14 @@ if (suppliedDatabaseUrl === undefined) {
 const config: Config = {
   ...createDefaultEsmPreset({ tsconfig: '<rootDir>/tsconfig.spec.json' }),
   testEnvironment: 'node',
-  roots: ['<rootDir>/apps/api/src', '<rootDir>/test'],
+  roots: ['<rootDir>/apps/api/src', '<rootDir>/libs', '<rootDir>/test'],
   testMatch: ['<rootDir>/test/database/**/*.integration.spec.ts'],
   moduleNameMapper: {
     '^@api/(.*)$': '<rootDir>/apps/api/src/api/$1',
-    '^@core/(.*)$': '<rootDir>/apps/api/src/core/$1',
-    '^@infra/(.*)$': '<rootDir>/apps/api/src/infrastructure/$1',
-    '^@composition/(.*)$': '<rootDir>/apps/api/src/composition/$1',
+    '^@core/(.*)$': '<rootDir>/libs/core/src/core/$1',
+    '^@mogak/core$': '<rootDir>/libs/core/src/index.ts',
+    '^@infra/(.*)$': '<rootDir>/libs/modules/src/infrastructure/$1',
+    '^@mogak/modules/(.*)$': '<rootDir>/libs/modules/src/$1',
   },
   setupFilesAfterEnv: ['<rootDir>/test/database/setup.ts'],
   maxWorkers: 1,

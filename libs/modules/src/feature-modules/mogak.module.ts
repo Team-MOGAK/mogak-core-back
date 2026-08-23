@@ -12,13 +12,9 @@ import {
   kstToday,
 } from '@core/mogaks/application/service/jogaks.service';
 import { MogakRepository } from '@infra/mogaks/repository/mogak.repository';
-import { JogaksController } from '@api/mogaks/presentation/controller/jogaks.controller';
-import { ModaratMogakController } from '@api/mogaks/presentation/controller/modaratMogak.controller';
-import { MogakMetadataController } from '@api/mogaks/presentation/controller/mogakMetadata.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule],
-  controllers: [ModaratMogakController, MogakMetadataController, JogaksController],
   providers: [
     MogakRepository,
     { provide: MOGAK_REPOSITORY, useExisting: MogakRepository },
@@ -36,6 +32,6 @@ import { MogakMetadataController } from '@api/mogaks/presentation/controller/mog
     { provide: OWNED_OCCURRENCE_PORT, useExisting: JogaksService },
     { provide: KST_DATE_PROVIDER, useValue: kstToday },
   ],
-  exports: [OWNED_MOGAK_PORT, OWNED_OCCURRENCE_PORT],
+  exports: [MogakService, JogaksService, OWNED_MOGAK_PORT, OWNED_OCCURRENCE_PORT],
 })
 export class MogakModule {}

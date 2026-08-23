@@ -12,13 +12,9 @@ import { AppleIdentityVerifier } from '@infra/auth/verifier/appleIdentityVerifie
 import { GoogleIdentityVerifier } from '@infra/auth/verifier/googleIdentityVerifier';
 import { KakaoIdentityVerifier } from '@infra/auth/verifier/kakaoIdentityVerifier';
 import { SocialIdentityVerifierRegistry } from '@infra/auth/verifier/socialIdentityVerifier.registry';
-import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
-import { AuthController } from '@api/auth/presentation/controller/auth.controller';
-import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 
 @Module({
   imports: [DatabaseModule],
-  controllers: [AuthController],
   providers: [
     JwtTokenService,
     AuthRepository,
@@ -58,9 +54,7 @@ import { RegisteredUserGuard } from '@api/auth/presentation/controller/registere
       useFactory: (identityVerifier, persistence, tokenIssuer, tokenVerifier) =>
         new AuthService(identityVerifier, persistence, tokenIssuer, tokenVerifier),
     },
-    AccessTokenGuard,
-    RegisteredUserGuard,
   ],
-  exports: [SESSION_TOKEN_ISSUER, AuthService, AccessTokenGuard, RegisteredUserGuard],
+  exports: [SESSION_TOKEN_ISSUER, AuthService],
 })
 export class AuthModule {}

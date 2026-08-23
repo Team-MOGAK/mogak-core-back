@@ -10,11 +10,9 @@ import { OWNED_OCCURRENCE_PORT } from '@core/mogaks/application/port/ownedOccurr
 import { STORAGE_PORT } from '@core/storage/application/storage.port';
 import { PostService } from '@core/posts/application/service/post.service';
 import { PostRepository } from '@infra/posts/repository/post.repository';
-import { PostController } from '@api/posts/presentation/controller/post.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule, MogakModule, StorageModule],
-  controllers: [PostController],
   providers: [
     PostRepository,
     { provide: POST_REPOSITORY, useExisting: PostRepository },
@@ -25,5 +23,6 @@ import { PostController } from '@api/posts/presentation/controller/post.controll
         new PostService(repository, occurrences, storage, mogaks),
     },
   ],
+  exports: [PostService],
 })
 export class PostModule {}
