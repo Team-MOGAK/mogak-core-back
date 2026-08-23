@@ -23,9 +23,7 @@ export class SocialService {
     if (isSelfFollow(follow.followerId, follow.followingId)) {
       throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
     }
-    if (!(await this.repository.createFollow(follow))) {
-      throw new DomainException(DomainErrorCode.FOLLOW_ALREADY_EXISTS);
-    }
+    await this.repository.createFollow(follow);
   }
 
   async unfollow(userId: number, nickname: string): Promise<void> {
@@ -34,9 +32,7 @@ export class SocialService {
     if (isSelfFollow(follow.followerId, follow.followingId)) {
       throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
     }
-    if (!(await this.repository.deleteFollow(follow))) {
-      throw new DomainException(DomainErrorCode.FOLLOW_NOT_FOUND);
-    }
+    await this.repository.deleteFollow(follow);
   }
 
   async getFollowCounts(nickname: string) {

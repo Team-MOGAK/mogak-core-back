@@ -170,17 +170,24 @@ describe('인증 저장소', () => {
   });
 
   it('null role을 전달된 역할로 user_id 및 role IS NULL 조건에서만 갱신한다', async () => {
-    const findFirst = testMock().mockResolvedValue({
-      id: 7,
-      email: 'mogak@example.test',
-      nickname: '모각이',
-      role: 'USER',
-    });
+    const selected = testMock().mockResolvedValue([
+      {
+        id: 7,
+        email: 'mogak@example.test',
+        nickname: '모각이',
+        role: 'USER',
+      },
+    ]);
     const where = testMock().mockResolvedValue([]);
     const set = testMock().mockReturnValue({ where });
+    const select = testMock().mockReturnValue({
+      from: testMock().mockReturnValue({ where: selected }),
+    });
+    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+      callback({ execute: testMock(), update: testMock().mockReturnValue({ set }), select }),
+    );
     const repository = new AuthRepository({
-      query: { users: { findFirst } },
-      update: testMock().mockReturnValue({ set }),
+      transaction,
     } as unknown as Database);
 
     await expect(repository.normalizeNullRole(7, 'USER')).resolves.toMatchObject({ role: 'USER' });

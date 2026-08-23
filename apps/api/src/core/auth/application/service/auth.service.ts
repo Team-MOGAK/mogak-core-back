@@ -59,7 +59,7 @@ export class AuthService {
     try {
       const newUser = await this.authPersistence.createAccount(identity);
       return this.issueSession(newUser, 'NEW');
-    } catch (error: unknown) {
+    } catch (error) {
       if (
         error instanceof DuplicateEmailException ||
         error instanceof DuplicateSocialAccountException

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
 
 import type { ConsentRepositoryPort } from '@core/users/application/port/consent.repository.port';
@@ -11,12 +11,15 @@ import type {
   MarketingConsentResult,
 } from '@core/users/application/type/consent.result';
 import { UserPersistenceException } from '@core/users/domain/exception/userPersistence.exception';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
-import { consentItems, userConsents } from '../../database/schema';
+import { consentItems, userConsents, users } from '../../database/schema';
 
 @Injectable()
 export class ConsentRepository implements ConsentRepositoryPort {
+  private readonly logger = new Logger(ConsentRepository.name);
+
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async listActiveItems(): Promise<ConsentItemState[]> {
@@ -58,6 +61,15 @@ export class ConsentRepository implements ConsentRepositoryPort {
     now: Date,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
+      const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
+      if (user === undefined) {
+        this.logger.warn({
+          event: 'resource_not_found_after_user_lock',
+          resource: 'USER',
+          operation: 'upsert_user_consents',
+        });
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
       for (const command of commands) {
         await tx
           .insert(userConsents)
@@ -115,6 +127,15 @@ export class ConsentRepository implements ConsentRepositoryPort {
       throw new UserPersistenceException('Marketing consent item is not active');
     }
     return this.db.transaction(async (tx) => {
+      const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
+      if (user === undefined) {
+        this.logger.warn({
+          event: 'resource_not_found_after_user_lock',
+          resource: 'USER',
+          operation: 'update_marketing_consents',
+        });
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
       for (const item of items) {
         const agreed =
           item.code === 'MARKETING'

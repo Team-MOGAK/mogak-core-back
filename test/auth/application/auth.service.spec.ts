@@ -46,6 +46,33 @@ function createPersistence(): AuthPersistencePort {
 describe('인증 서비스', () => {
   const verifiers = { verify: testMock() } as unknown as SocialIdentityVerifierPort;
 
+  it('세션 생성 중 잠금 후 사용자가 사라지면 USER_NOT_FOUND로 변환한다', async () => {
+    const sessionVerifiers = {
+      verify: testMock().mockResolvedValue({
+        provider: 'GOOGLE',
+        providerUserId: 'google-subject',
+        email: 'mogak@example.test',
+        emailVerified: true,
+      }),
+    } as unknown as SocialIdentityVerifierPort;
+    const persistence = createPersistence();
+    jest.mocked(persistence.findUserBySocialIdentity).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: null,
+      role: 'PENDING',
+    });
+    jest
+      .mocked(persistence.createSession)
+      .mockRejectedValue(new DomainException(DomainErrorCode.USER_NOT_FOUND));
+    const tokens = createTokenPorts();
+    const service = new AuthService(sessionVerifiers, persistence, tokens, tokens);
+
+    await expect(service.login('GOOGLE', 'id-token')).rejects.toEqual(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
+    );
+  });
+
   it('활성 세션의 검증된 액세스 주체를 반환한다', async () => {
     const principal: AuthenticatedPrincipal = {
       userId: 3,
@@ -478,5 +505,26 @@ describe('인증 서비스', () => {
       result: { isRegistered: false, userId: 7 },
     });
     expect(persistence.normalizeNullRole).toHaveBeenCalledWith(7, 'PENDING');
+  });
+
+  it('탈퇴 persistence가 false를 반환하면 USER_NOT_FOUND를 던진다', async () => {
+    const persistence = createPersistence();
+    jest.mocked(persistence.deleteUser).mockResolvedValue(false);
+    const tokens = createTokenPorts();
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
+
+    await expect(service.withdraw(7)).rejects.toEqual(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
+    );
+    expect(persistence.deleteUser).toHaveBeenCalledWith(7);
+  });
+
+  it('탈퇴 persistence가 성공하면 완료한다', async () => {
+    const persistence = createPersistence();
+    jest.mocked(persistence.deleteUser).mockResolvedValue(true);
+    const tokens = createTokenPorts();
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
+
+    await expect(service.withdraw(7)).resolves.toBeUndefined();
   });
 });

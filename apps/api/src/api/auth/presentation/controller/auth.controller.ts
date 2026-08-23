@@ -13,12 +13,7 @@ import {
   type ProviderParams,
   type SocialLoginRequest,
 } from '../type/auth.request';
-import type {
-  LoginResponse,
-  LogoutResponse,
-  RefreshResponse,
-  WithdrawResponse,
-} from '../type/auth.response';
+import type { LoginResponse, LogoutResponse, RefreshResponse } from '../type/auth.response';
 import { AccessTokenGuard } from './accessToken.guard';
 import { CurrentUser } from './currentUser.decorator';
 
@@ -69,10 +64,9 @@ export class AuthController {
 
   @Post('withdraw')
   @UseGuards(AccessTokenGuard)
-  @HttpCode(HttpStatus.CREATED)
+  @HttpCode(HttpStatus.NO_CONTENT)
   async withdraw(@CurrentUser() user: AuthenticatedPrincipal) {
     await this.authService.withdraw(user.userId);
-    return successResponse<WithdrawResponse>({ isDeleted: true });
   }
 }
 

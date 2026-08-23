@@ -12,8 +12,8 @@ export const SOCIAL_REPOSITORY = Symbol('SOCIAL_REPOSITORY');
 
 export interface SocialRepositoryPort {
   findUserByNickname(nickname: string): Promise<SocialUserResult | null>;
-  createFollow(command: FollowCommand): Promise<boolean>;
-  deleteFollow(command: FollowCommand): Promise<boolean>;
+  createFollow(command: FollowCommand): Promise<void>;
+  deleteFollow(command: FollowCommand): Promise<void>;
   countMotos(userId: number): Promise<number>;
   countMentors(userId: number): Promise<number>;
   listMotos(userId: number): Promise<SocialUserSummaryResult[]>;

@@ -9,7 +9,7 @@ export const socialAccounts = pgTable(
     id: bigint('social_account_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
     userId: bigint('user_id', { mode: 'number' })
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => users.id),
     provider: varchar('provider', { length: 20 }).notNull(),
     providerUserId: varchar('provider_user_id', { length: 255 }).notNull(),
     email: varchar('email', { length: 255 }),

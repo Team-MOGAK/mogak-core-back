@@ -26,21 +26,34 @@ describe('소셜 팔로우 서비스', () => {
   it('팔로우 입력으로 닉네임을 유지하고 사용자 식별자 두 개만 저장한다', async () => {
     const social = repository();
     jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
-    jest.mocked(social.createFollow).mockResolvedValue(true);
+    jest.mocked(social.createFollow).mockResolvedValue(undefined);
     const service = new SocialService(social);
 
     await expect(service.follow(7, '모각러')).resolves.toBeUndefined();
     expect(social.createFollow).toHaveBeenCalledWith({ followerId: 7, followingId: 8 });
   });
 
-  it('사전 조회 lock 없이 삽입 충돌을 F001 오류로 변환한다', async () => {
+  it('저장소의 팔로우 중복 오류를 그대로 전달한다', async () => {
     const social = repository();
     jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
-    jest.mocked(social.createFollow).mockResolvedValue(false);
+    jest
+      .mocked(social.createFollow)
+      .mockRejectedValue(new DomainException(DomainErrorCode.FOLLOW_ALREADY_EXISTS));
     const service = new SocialService(social);
 
     await expect(service.follow(7, '모각러')).rejects.toEqual(
       new DomainException(DomainErrorCode.FOLLOW_ALREADY_EXISTS),
+    );
+  });
+
+  it('lock 뒤 팔로우 사용자가 사라지면 F001이 아닌 사용자 없음으로 변환한다', async () => {
+    const social = repository();
+    jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
+    jest
+      .mocked(social.createFollow)
+      .mockRejectedValue(new DomainException(DomainErrorCode.USER_NOT_FOUND));
+    await expect(new SocialService(social).follow(7, '모각러')).rejects.toEqual(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
     );
   });
 
@@ -55,10 +68,12 @@ describe('소셜 팔로우 서비스', () => {
     expect(social.createFollow).not.toHaveBeenCalled();
   });
 
-  it('소유한 삭제 대상이 없으면 F002 오류로 변환한다', async () => {
+  it('저장소의 팔로우 없음 오류를 그대로 전달한다', async () => {
     const social = repository();
     jest.mocked(social.findUserByNickname).mockResolvedValue({ id: 8 });
-    jest.mocked(social.deleteFollow).mockResolvedValue(false);
+    jest
+      .mocked(social.deleteFollow)
+      .mockRejectedValue(new DomainException(DomainErrorCode.FOLLOW_NOT_FOUND));
     const service = new SocialService(social);
 
     await expect(service.unfollow(7, '모각러')).rejects.toEqual(

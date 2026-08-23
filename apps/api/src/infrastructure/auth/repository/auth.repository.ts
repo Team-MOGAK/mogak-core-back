@@ -4,12 +4,11 @@ import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import {
   authSessions,
   consentItems,
-  jogakExecutions,
-  jogakScheduleWeekdays,
   jogakSchedules,
   jogaks,
   modarats,
   mogaks,
+  posts,
   socialAccounts,
   userConsents,
   users,
@@ -30,6 +29,12 @@ import {
   DuplicateEmailException,
   DuplicateSocialAccountException,
 } from '@core/auth/domain/exception/authPersistence.exception';
+import {
+  purgeAccountRelations,
+  purgeMogakDomain,
+  purgePostDomain,
+  withdrawalTargetPostIds,
+} from './query/accountDeletionPurge.query';
 
 @Injectable()
 export class AuthRepository implements AuthPersistencePort {
@@ -86,16 +91,18 @@ export class AuthRepository implements AuthPersistencePort {
   }
 
   async normalizeNullRole(userId: number, role: RegistrationRole): Promise<AuthUser> {
-    await this.db
-      .update(users)
-      .set({ role, updatedAt: new Date() })
-      .where(and(eq(users.id, userId), isNull(users.role)));
+    return this.db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ role, updatedAt: new Date() })
+        .where(and(eq(users.id, userId), isNull(users.role)));
 
-    const normalized = await this.db.query.users.findFirst({ where: eq(users.id, userId) });
-    if (normalized === undefined || normalized.role === null) {
-      throw new AuthPersistenceException('null user role was not normalized');
-    }
-    return asAuthUser(normalized);
+      const [normalized] = await tx.select().from(users).where(eq(users.id, userId));
+      if (normalized === undefined || normalized.role === null) {
+        throw new AuthPersistenceException('null user role was not normalized');
+      }
+      return asAuthUser(normalized);
+    });
   }
 
   async createAccount(identity: VerifiedSocialIdentity): Promise<AuthUser> {
@@ -188,41 +195,68 @@ export class AuthRepository implements AuthPersistencePort {
 
   async deleteUser(userId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      const ownedJogaks = await tx
-        .select({ id: jogaks.id })
-        .from(jogaks)
-        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
-        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-        .where(eq(modarats.userId, userId));
-      const jogakIds = ownedJogaks.map((jogak) => jogak.id);
-      if (jogakIds.length > 0) {
-        const schedules = await tx
-          .select({ id: jogakSchedules.id })
-          .from(jogakSchedules)
-          .where(inArray(jogakSchedules.jogakId, jogakIds));
-        const scheduleIds = schedules.map((schedule) => schedule.id);
-        if (scheduleIds.length > 0) {
-          await tx
-            .delete(jogakScheduleWeekdays)
-            .where(inArray(jogakScheduleWeekdays.scheduleId, scheduleIds));
-          await tx.delete(jogakSchedules).where(inArray(jogakSchedules.id, scheduleIds));
-        }
-        await tx.delete(jogakExecutions).where(inArray(jogakExecutions.jogakId, jogakIds));
-        await tx.delete(jogaks).where(inArray(jogaks.id, jogakIds));
-      }
-      const ownedModarats = await tx
-        .select({ id: modarats.id })
-        .from(modarats)
-        .where(eq(modarats.userId, userId));
-      const modaratIds = ownedModarats.map((modarat) => modarat.id);
-      if (modaratIds.length > 0) {
-        await tx.delete(mogaks).where(inArray(mogaks.modaratId, modaratIds));
-        await tx.delete(modarats).where(inArray(modarats.id, modaratIds));
-      }
-      const deleted = await tx.delete(users).where(eq(users.id, userId)).returning({ id: users.id });
+      const [user] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, userId))
+        .for('update');
+      if (user === undefined) return false;
+
+      await lockWithdrawalTree(tx, userId);
+
+      await purgePostDomain(tx, userId);
+      await purgeMogakDomain(tx, userId);
+      await purgeAccountRelations(tx, userId);
+      const deleted = await tx
+        .delete(users)
+        .where(eq(users.id, userId))
+        .returning({ id: users.id });
       return deleted.length === 1;
     });
   }
+}
+
+async function lockWithdrawalTree(tx: Pick<Database, 'select'>, userId: number): Promise<void> {
+  const ownedModaratIds = tx
+    .select({ id: modarats.id })
+    .from(modarats)
+    .where(eq(modarats.userId, userId));
+  await tx
+    .select({ id: modarats.id })
+    .from(modarats)
+    .where(eq(modarats.userId, userId))
+    .for('update');
+
+  const ownedMogakIds = tx
+    .select({ id: mogaks.id })
+    .from(mogaks)
+    .where(inArray(mogaks.modaratId, ownedModaratIds));
+  await tx
+    .select({ id: mogaks.id })
+    .from(mogaks)
+    .where(inArray(mogaks.modaratId, ownedModaratIds))
+    .for('update');
+
+  const ownedJogakIds = tx
+    .select({ id: jogaks.id })
+    .from(jogaks)
+    .where(inArray(jogaks.mogakId, ownedMogakIds));
+  await tx
+    .select({ id: jogaks.id })
+    .from(jogaks)
+    .where(inArray(jogaks.mogakId, ownedMogakIds))
+    .for('update');
+  await tx
+    .select({ id: jogakSchedules.id })
+    .from(jogakSchedules)
+    .where(inArray(jogakSchedules.jogakId, ownedJogakIds))
+    .for('update');
+  const targetPostIds = withdrawalTargetPostIds(tx, userId);
+  await tx
+    .select({ id: posts.id })
+    .from(posts)
+    .where(inArray(posts.id, targetPostIds))
+    .for('update');
 }
 
 function asAuthUser(user: {

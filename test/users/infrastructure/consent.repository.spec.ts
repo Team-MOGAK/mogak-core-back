@@ -1,10 +1,48 @@
 import { testMock } from '../../testMock';
 
 import type { Database } from '@infra/database/database.provider';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { UserPersistenceException } from '@core/users/domain/exception/userPersistence.exception';
 import { ConsentRepository } from '@infra/users/repository/consent.repository';
 
 describe('동의 저장소', () => {
+  it.each([
+    ['가입 동의', 'upsertUserConsents'],
+    ['마케팅 동의', 'updateMarketingConsents'],
+  ] as const)(
+    '잠금 뒤 사용자가 없으면 %s을 삽입하지 않고 전용 예외를 던진다',
+    async (_, method) => {
+      const whereAfterLock = testMock().mockResolvedValue([]);
+      const fromAfterLock = testMock().mockReturnValue({ where: whereAfterLock });
+      const selectAfterLock = testMock().mockReturnValue({ from: fromAfterLock });
+      const insert = testMock();
+      const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+        callback({ select: selectAfterLock, insert }),
+      );
+      const repository = new ConsentRepository({
+        transaction,
+        ...(method === 'updateMarketingConsents'
+          ? {
+              select: testMock().mockReturnValue({
+                from: testMock().mockReturnValue({
+                  where: testMock().mockResolvedValue([{ id: 1, code: 'MARKETING', active: true }]),
+                }),
+              }),
+            }
+          : {}),
+      } as unknown as Database);
+
+      const call =
+        method === 'upsertUserConsents'
+          ? repository.upsertUserConsents(7, [{ consentItemId: 1, agreed: true }], new Date())
+          : repository.updateMarketingConsents(7, { marketingAgreed: true }, new Date());
+
+      await expect(call).rejects.toEqual(new DomainException(DomainErrorCode.USER_NOT_FOUND));
+      expect(selectAfterLock).toHaveBeenCalledTimes(1);
+      expect(insert).not.toHaveBeenCalled();
+    },
+  );
+
   it('비활성 마케팅 동의 항목을 UserPersistenceException으로 보고한다', async () => {
     const repository = new ConsentRepository({
       select: testMock().mockReturnValue({

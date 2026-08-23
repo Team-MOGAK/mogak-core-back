@@ -53,33 +53,39 @@ export class UserRepository implements UserRepositoryPort {
 
   async updateNickname(command: UpdateNicknameCommand): Promise<boolean> {
     try {
-      const updated = await this.db
-        .update(users)
-        .set({ nickname: command.nickname, updatedAt: command.now })
-        .where(eq(users.id, command.userId))
-        .returning({ id: users.id });
-      return updated.length === 1;
+      return await this.db.transaction(async (tx) => {
+        const updated = await tx
+          .update(users)
+          .set({ nickname: command.nickname, updatedAt: command.now })
+          .where(eq(users.id, command.userId))
+          .returning({ id: users.id });
+        return updated.length === 1;
+      });
     } catch (error: unknown) {
       throw asUserPersistenceException(error, 'Failed to update user nickname');
     }
   }
 
   async updateJob(command: UpdateJobCommand): Promise<boolean> {
-    const updated = await this.db
-      .update(users)
-      .set({ jobId: command.jobId, updatedAt: command.now })
-      .where(eq(users.id, command.userId))
-      .returning({ id: users.id });
-    return updated.length === 1;
+    return this.db.transaction(async (tx) => {
+      const updated = await tx
+        .update(users)
+        .set({ jobId: command.jobId, updatedAt: command.now })
+        .where(eq(users.id, command.userId))
+        .returning({ id: users.id });
+      return updated.length === 1;
+    });
   }
 
   async updateProfileImageKey(command: UpdateProfileImageCommand): Promise<boolean> {
-    const updated = await this.db
-      .update(users)
-      .set({ profileImageKey: command.profileImageKey, updatedAt: command.now })
-      .where(eq(users.id, command.userId))
-      .returning({ id: users.id });
-    return updated.length === 1;
+    return this.db.transaction(async (tx) => {
+      const updated = await tx
+        .update(users)
+        .set({ profileImageKey: command.profileImageKey, updatedAt: command.now })
+        .where(eq(users.id, command.userId))
+        .returning({ id: users.id });
+      return updated.length === 1;
+    });
   }
 
   async completeRegistration(

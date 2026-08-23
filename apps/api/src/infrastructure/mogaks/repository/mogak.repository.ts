@@ -1,5 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, count, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
@@ -11,6 +12,7 @@ import {
   modarats,
   mogakCategories,
   mogaks,
+  users,
 } from '../../database/schema';
 import type { MogakRepositoryPort } from '@core/mogaks/application/port/mogak.repository.port';
 import type {
@@ -43,16 +45,32 @@ type DeletionTransaction = Pick<Database, 'delete' | 'select'>;
 
 @Injectable()
 export class MogakRepository implements MogakRepositoryPort {
+  private readonly logger = new Logger(MogakRepository.name);
+
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async createModarat(input: CreateModaratInput): Promise<ModaratResult> {
-    const [created] = await this.db
-      .insert(modarats)
-      .values({ userId: input.userId, title: input.title, color: input.color })
-      .returning({ id: modarats.id, title: modarats.title, color: modarats.color });
-    if (created === undefined)
-      throw new MogakPersistenceException('Modarat insert did not return a row');
-    return created;
+    return this.db.transaction(async (tx) => {
+      const [user] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, input.userId));
+      if (user === undefined) {
+        this.logger.warn({
+          event: 'resource_not_found_after_user_lock',
+          resource: 'USER',
+          operation: 'create_modarat',
+        });
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
+      const [created] = await tx
+        .insert(modarats)
+        .values({ userId: input.userId, title: input.title, color: input.color })
+        .returning({ id: modarats.id, title: modarats.title, color: modarats.color });
+      if (created === undefined)
+        throw new MogakPersistenceException('Modarat insert did not return a row');
+      return created;
+    });
   }
 
   async findOwnedModarat(userId: number, modaratId: number): Promise<ModaratResult | null> {
@@ -72,16 +90,14 @@ export class MogakRepository implements MogakRepositoryPort {
   }
 
   async updateOwnedModarat(input: UpdateModaratInput): Promise<ModaratResult | null> {
-    const [updated] = await this.db
-      .update(modarats)
-      .set({
-        title: input.title,
-        color: input.color,
-        updatedAt: input.now,
-      })
-      .where(and(eq(modarats.id, input.modaratId), eq(modarats.userId, input.userId)))
-      .returning({ id: modarats.id, title: modarats.title, color: modarats.color });
-    return updated ?? null;
+    return this.db.transaction(async (tx) => {
+      const [updated] = await tx
+        .update(modarats)
+        .set({ title: input.title, color: input.color, updatedAt: input.now })
+        .where(and(eq(modarats.id, input.modaratId), eq(modarats.userId, input.userId)))
+        .returning({ id: modarats.id, title: modarats.title, color: modarats.color });
+      return updated ?? null;
+    });
   }
 
   async deleteOwnedModarat(userId: number, modaratId: number): Promise<boolean> {
@@ -126,33 +142,48 @@ export class MogakRepository implements MogakRepositoryPort {
   }
 
   async createMogak(input: CreateMogakInput): Promise<MogakResult> {
-    const [created] = await this.db
-      .insert(mogaks)
-      .values({
-        modaratId: input.modaratId,
-        title: input.title,
-        color: input.color,
-        categoryId: input.categoryId,
-        customCategoryName: input.customCategoryName,
-      })
-      .returning({
-        id: mogaks.id,
-        modaratId: mogaks.modaratId,
-        title: mogaks.title,
-        color: mogaks.color,
-        categoryId: mogaks.categoryId,
-        customCategoryName: mogaks.customCategoryName,
-      });
-    if (created === undefined)
-      throw new MogakPersistenceException('Mogak insert did not return a row');
+    return this.db.transaction(async (tx) => {
+      const [owner] = await tx
+        .select({ userId: modarats.userId })
+        .from(modarats)
+        .where(eq(modarats.id, input.modaratId));
+      if (owner === undefined) throw new MogakPersistenceException('Modarat did not exist');
+      const [stillOwned] = await tx
+        .select({ id: modarats.id })
+        .from(modarats)
+        .where(and(eq(modarats.id, input.modaratId), eq(modarats.userId, owner.userId)));
+      if (stillOwned === undefined) throw new MogakPersistenceException('Modarat did not exist');
+      const [created] = await tx
+        .insert(mogaks)
+        .values({
+          modaratId: input.modaratId,
+          title: input.title,
+          color: input.color,
+          categoryId: input.categoryId,
+          customCategoryName: input.customCategoryName,
+        })
+        .returning({
+          id: mogaks.id,
+          modaratId: mogaks.modaratId,
+          title: mogaks.title,
+          color: mogaks.color,
+          categoryId: mogaks.categoryId,
+          customCategoryName: mogaks.customCategoryName,
+        });
+      if (created === undefined)
+        throw new MogakPersistenceException('Mogak insert did not return a row');
 
-    if (created.categoryId === null) {
-      return { ...created, categoryCode: null, categoryName: null };
-    }
-    const category = await this.findCategoryById(created.categoryId);
-    if (category === null)
-      throw new MogakPersistenceException('Created Mogak category did not exist');
-    return { ...created, categoryCode: category.code, categoryName: category.name };
+      if (created.categoryId === null) {
+        return { ...created, categoryCode: null, categoryName: null };
+      }
+      const [category] = await tx
+        .select({ code: mogakCategories.code, name: mogakCategories.name })
+        .from(mogakCategories)
+        .where(eq(mogakCategories.id, created.categoryId));
+      if (category === undefined)
+        throw new MogakPersistenceException('Created Mogak category did not exist');
+      return { ...created, categoryCode: category.code, categoryName: category.name };
+    });
   }
 
   async listMogaksForOwnedModarat(userId: number, modaratId: number): Promise<MogakResult[]> {
@@ -176,22 +207,33 @@ export class MogakRepository implements MogakRepositoryPort {
   }
 
   async updateOwnedMogak(input: UpdateMogakInput): Promise<MogakResult | null> {
-    const owned = await this.findOwnedMogak(input.userId, input.mogakId);
-    if (owned === null) return null;
-
-    const [updated] = await this.db
-      .update(mogaks)
-      .set({
-        title: input.title,
-        color: input.color,
-        categoryId: input.categoryId,
-        customCategoryName: input.customCategoryName,
-        updatedAt: input.now,
-      })
-      .where(and(eq(mogaks.id, input.mogakId), eq(mogaks.modaratId, owned.modaratId)))
-      .returning({ id: mogaks.id });
-    if (updated === undefined) return null;
-    return this.findOwnedMogak(input.userId, input.mogakId);
+    return this.db.transaction(async (tx) => {
+      const [owned] = await tx
+        .select({ modaratId: mogaks.modaratId })
+        .from(mogaks)
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .where(and(eq(mogaks.id, input.mogakId), eq(modarats.userId, input.userId)));
+      if (owned === undefined) return null;
+      const [updated] = await tx
+        .update(mogaks)
+        .set({
+          title: input.title,
+          color: input.color,
+          categoryId: input.categoryId,
+          customCategoryName: input.customCategoryName,
+          updatedAt: input.now,
+        })
+        .where(and(eq(mogaks.id, input.mogakId), eq(mogaks.modaratId, owned.modaratId)))
+        .returning({ id: mogaks.id });
+      if (updated === undefined) return null;
+      const [result] = await tx
+        .select(selectMogakFields())
+        .from(mogaks)
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .leftJoin(mogakCategories, eq(mogaks.categoryId, mogakCategories.id))
+        .where(and(eq(mogaks.id, input.mogakId), eq(modarats.userId, input.userId)));
+      return result ?? null;
+    });
   }
 
   async deleteOwnedMogak(userId: number, mogakId: number): Promise<boolean> {
@@ -220,10 +262,15 @@ export class MogakRepository implements MogakRepositoryPort {
   }
 
   async patchOwnedJogak(input: PatchOwnedJogakInput): Promise<OwnedJogakResult | null> {
-    const owned = await this.findOwnedJogak(input.userId, input.jogakId);
-    if (owned === null) return null;
-
     return this.db.transaction(async (tx) => {
+      const [owned] = await tx
+        .select(selectOwnedJogakFields())
+        .from(jogaks)
+        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .leftJoin(mogakCategories, eq(mogaks.categoryId, mogakCategories.id))
+        .where(and(eq(jogaks.id, input.jogakId), eq(modarats.userId, input.userId)));
+      if (owned === undefined) return null;
       const [updatedJogak] = await tx
         .update(jogaks)
         .set({ ...(input.title === undefined ? {} : { title: input.title }), updatedAt: input.now })
@@ -352,6 +399,17 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async createJogakWithSchedule(input: CreateJogakWithScheduleInput): Promise<CreatedJogakResult> {
     return this.db.transaction(async (tx) => {
+      const [owner] = await tx
+        .select({ userId: modarats.userId })
+        .from(mogaks)
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .where(eq(mogaks.id, input.mogak.id));
+      if (owner === undefined) throw new MogakPersistenceException('Mogak did not exist');
+      const [stillOwned] = await tx
+        .select({ id: mogaks.id })
+        .from(mogaks)
+        .where(eq(mogaks.id, input.mogak.id));
+      if (stillOwned === undefined) throw new MogakPersistenceException('Mogak did not exist');
       const [createdJogak] = await tx
         .insert(jogaks)
         .values({ mogakId: input.mogak.id, title: input.title })
@@ -534,17 +592,31 @@ export class MogakRepository implements MogakRepositoryPort {
   }
 
   async insertExecution(input: InsertExecutionInput): Promise<ExecutionResult | null> {
-    const [execution] = await this.db
-      .insert(jogakExecutions)
-      .values(input)
-      .onConflictDoNothing({ target: [jogakExecutions.jogakId, jogakExecutions.scheduledDate] })
-      .returning(selectExecutionFields());
-    if (execution === undefined) return null;
-    try {
-      return { ...execution, status: JogakExecutionStatus.parse(execution.status) };
-    } catch {
-      throw MogakPersistenceException.unsupportedValue('execution status', execution.status);
-    }
+    return this.db.transaction(async (tx) => {
+      const [owner] = await tx
+        .select({ userId: modarats.userId })
+        .from(jogaks)
+        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .where(eq(jogaks.id, input.jogakId));
+      if (owner === undefined) return null;
+      const [stillOwned] = await tx
+        .select({ id: jogaks.id })
+        .from(jogaks)
+        .where(eq(jogaks.id, input.jogakId));
+      if (stillOwned === undefined) return null;
+      const [execution] = await tx
+        .insert(jogakExecutions)
+        .values(input)
+        .onConflictDoNothing({ target: [jogakExecutions.jogakId, jogakExecutions.scheduledDate] })
+        .returning(selectExecutionFields());
+      if (execution === undefined) return null;
+      try {
+        return { ...execution, status: JogakExecutionStatus.parse(execution.status) };
+      } catch {
+        throw MogakPersistenceException.unsupportedValue('execution status', execution.status);
+      }
+    });
   }
 
   async updateExecutionStatus(input: {
@@ -553,22 +625,37 @@ export class MogakRepository implements MogakRepositoryPort {
     desiredStatus: JogakExecutionStatus;
     now: Date;
   }): Promise<ExecutionResult | null> {
-    const [execution] = await this.db
-      .update(jogakExecutions)
-      .set({ status: input.desiredStatus, updatedAt: input.now })
-      .where(
-        and(
-          eq(jogakExecutions.id, input.executionId),
-          eq(jogakExecutions.status, input.currentStatus),
-        ),
-      )
-      .returning(selectExecutionFields());
-    if (execution === undefined) return null;
-    try {
-      return { ...execution, status: JogakExecutionStatus.parse(execution.status) };
-    } catch {
-      throw MogakPersistenceException.unsupportedValue('execution status', execution.status);
-    }
+    return this.db.transaction(async (tx) => {
+      const [owner] = await tx
+        .select({ userId: modarats.userId })
+        .from(jogakExecutions)
+        .innerJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
+        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .where(eq(jogakExecutions.id, input.executionId));
+      if (owner === undefined) return null;
+      const [stillExists] = await tx
+        .select({ id: jogakExecutions.id })
+        .from(jogakExecutions)
+        .where(eq(jogakExecutions.id, input.executionId));
+      if (stillExists === undefined) return null;
+      const [execution] = await tx
+        .update(jogakExecutions)
+        .set({ status: input.desiredStatus, updatedAt: input.now })
+        .where(
+          and(
+            eq(jogakExecutions.id, input.executionId),
+            eq(jogakExecutions.status, input.currentStatus),
+          ),
+        )
+        .returning(selectExecutionFields());
+      if (execution === undefined) return null;
+      try {
+        return { ...execution, status: JogakExecutionStatus.parse(execution.status) };
+      } catch {
+        throw MogakPersistenceException.unsupportedValue('execution status', execution.status);
+      }
+    });
   }
 
   private async findCategoryById(categoryId: number): Promise<MogakCategoryResult | null> {

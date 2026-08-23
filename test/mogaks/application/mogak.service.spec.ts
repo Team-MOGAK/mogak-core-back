@@ -19,6 +19,18 @@ function repository(): MogakRepositoryPort {
 }
 
 describe('모각 서비스', () => {
+  it('모다랫 생성 중 잠금 후 사용자가 사라지면 USER_NOT_FOUND로 변환한다', async () => {
+    const mogaks = repository();
+    jest
+      .mocked(mogaks.createModarat)
+      .mockRejectedValue(new DomainException(DomainErrorCode.USER_NOT_FOUND));
+    const service = new MogakService(mogaks);
+
+    await expect(service.createModarat(7, { title: '모다랫', color: 'blue' })).rejects.toEqual(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
+    );
+  });
+
   it('공백뿐인 모다랏 제목을 저장소 호출 전에 거부한다', async () => {
     const mogaks = repository();
     const service = new MogakService(mogaks);
