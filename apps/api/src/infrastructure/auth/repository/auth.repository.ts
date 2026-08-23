@@ -1,21 +1,13 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm';
-import { unionAll } from 'drizzle-orm/pg-core';
-import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
+import { Inject, Injectable } from '@nestjs/common';
+import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 
 import {
   authSessions,
   consentItems,
-  follows,
-  jogakExecutions,
   jogakSchedules,
-  jogakScheduleWeekdays,
   jogaks,
   modarats,
   mogaks,
-  postComments,
-  postImages,
-  postLikes,
   posts,
   socialAccounts,
   userConsents,
@@ -23,7 +15,6 @@ import {
 } from '@infra/database/schema';
 import type { Database } from '@infra/database/database.provider';
 import { DATABASE } from '@infra/database/database.tokens';
-import { lockUsersForTransaction } from '@infra/database/transaction/userAdvisoryLock';
 import type { AuthPersistencePort } from '@core/auth/application/port/authPersistence.port';
 import type { SessionRotationCommand } from '@core/auth/application/type/auth.command';
 import type { AuthUser, SessionDraft } from '@core/auth/application/type/auth.result';
@@ -38,11 +29,15 @@ import {
   DuplicateEmailException,
   DuplicateSocialAccountException,
 } from '@core/auth/domain/exception/authPersistence.exception';
+import {
+  purgeAccountRelations,
+  purgeMogakDomain,
+  purgePostDomain,
+  withdrawalTargetPostIds,
+} from './query/accountDeletionPurge.query';
 
 @Injectable()
 export class AuthRepository implements AuthPersistencePort {
-  private readonly logger = new Logger(AuthRepository.name);
-
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async findUserById(userId: number): Promise<AuthUser | null> {
@@ -97,7 +92,6 @@ export class AuthRepository implements AuthPersistencePort {
 
   async normalizeNullRole(userId: number, role: RegistrationRole): Promise<AuthUser> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [userId]);
       await tx
         .update(users)
         .set({ role, updatedAt: new Date() })
@@ -154,21 +148,9 @@ export class AuthRepository implements AuthPersistencePort {
 
   async createSession(userId: number, session: SessionDraft): Promise<void> {
     try {
-      await this.db.transaction(async (tx) => {
-        await lockUsersForTransaction(tx, [userId]);
-        const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
-        if (user === undefined) {
-          this.logger.warn({
-            event: 'resource_not_found_after_user_lock',
-            resource: 'USER',
-            operation: 'create_session',
-          });
-          throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
-        }
-        await tx.insert(authSessions).values({ ...session, userId });
-      });
+      await this.db.insert(authSessions).values({ ...session, userId });
     } catch (error: unknown) {
-      if (error instanceof AuthPersistenceException || error instanceof DomainException) {
+      if (error instanceof AuthPersistenceException) {
         throw error;
       }
       throw new AuthPersistenceException('Failed to create auth session', { cause: error });
@@ -176,30 +158,22 @@ export class AuthRepository implements AuthPersistencePort {
   }
 
   async rotateSession(input: SessionRotationCommand): Promise<boolean> {
-    return this.db.transaction(async (tx) => {
-      const [session] = await tx
-        .select({ userId: authSessions.userId })
-        .from(authSessions)
-        .where(eq(authSessions.id, input.sessionId));
-      if (session === undefined) return false;
-      await lockUsersForTransaction(tx, [session.userId]);
-      const rows = await tx
-        .update(authSessions)
-        .set({
-          refreshTokenHash: input.nextRefreshTokenHash,
-          expiresAt: input.nextExpiresAt,
-          updatedAt: input.now,
-        })
-        .where(
-          and(
-            eq(authSessions.id, input.sessionId),
-            eq(authSessions.refreshTokenHash, input.currentRefreshTokenHash),
-            gt(authSessions.expiresAt, input.now),
-          ),
-        )
-        .returning({ id: authSessions.id });
-      return rows.length === 1;
-    });
+    const rows = await this.db
+      .update(authSessions)
+      .set({
+        refreshTokenHash: input.nextRefreshTokenHash,
+        expiresAt: input.nextExpiresAt,
+        updatedAt: input.now,
+      })
+      .where(
+        and(
+          eq(authSessions.id, input.sessionId),
+          eq(authSessions.refreshTokenHash, input.currentRefreshTokenHash),
+          gt(authSessions.expiresAt, input.now),
+        ),
+      )
+      .returning({ id: authSessions.id });
+    return rows.length === 1;
   }
 
   async isSessionActive(sessionId: string, userId: number): Promise<boolean> {
@@ -214,78 +188,25 @@ export class AuthRepository implements AuthPersistencePort {
   }
 
   async deleteSession(sessionId: string, userId: number): Promise<void> {
-    await this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [userId]);
-      await tx
-        .delete(authSessions)
-        .where(and(eq(authSessions.id, sessionId), eq(authSessions.userId, userId)));
-    });
+    await this.db
+      .delete(authSessions)
+      .where(and(eq(authSessions.id, sessionId), eq(authSessions.userId, userId)));
   }
 
   async deleteUser(userId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      const targetPostIds = withdrawalTargetPostIds(tx, userId);
-      const targetPosts = tx.$with('target_posts').as(targetPostIds);
-      const relatedUsers = unionAll(
-        tx
-          .select({ userId: posts.authorId })
-          .from(posts)
-          .innerJoin(targetPosts, eq(posts.id, targetPosts.id)),
-        tx
-          .select({ userId: postComments.authorId })
-          .from(postComments)
-          .innerJoin(targetPosts, eq(postComments.postId, targetPosts.id)),
-        tx
-          .select({ userId: postLikes.userId })
-          .from(postLikes)
-          .innerJoin(targetPosts, eq(postLikes.postId, targetPosts.id)),
-        tx
-          .select({ userId: follows.followerId })
-          .from(follows)
-          .where(eq(follows.followerId, userId)),
-        tx
-          .select({ userId: follows.followingId })
-          .from(follows)
-          .where(eq(follows.followingId, userId)),
-      ).as('related_users');
-      const related = await tx
-        .with(targetPosts)
-        .select({ userId: relatedUsers.userId })
-        .from(relatedUsers);
-      await lockUsersForTransaction(tx, [userId, ...related.map((row) => row.userId)]);
+      const [user] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, userId))
+        .for('update');
+      if (user === undefined) return false;
 
-      const ownedMogakIds = withdrawalOwnedMogakIds(tx, userId);
-      const ownedJogakIds = tx
-        .select({ id: jogaks.id })
-        .from(jogaks)
-        .where(inArray(jogaks.mogakId, ownedMogakIds));
-      const ownedScheduleIds = tx
-        .select({ id: jogakSchedules.id })
-        .from(jogakSchedules)
-        .where(inArray(jogakSchedules.jogakId, ownedJogakIds));
+      await lockWithdrawalTree(tx, userId);
 
-      await tx.delete(postImages).where(inArray(postImages.postId, targetPostIds));
-      await tx
-        .delete(postComments)
-        .where(or(inArray(postComments.postId, targetPostIds), eq(postComments.authorId, userId)));
-      await tx
-        .delete(postLikes)
-        .where(or(inArray(postLikes.postId, targetPostIds), eq(postLikes.userId, userId)));
-      await tx.delete(posts).where(inArray(posts.id, targetPostIds));
-      await tx
-        .delete(jogakScheduleWeekdays)
-        .where(inArray(jogakScheduleWeekdays.scheduleId, ownedScheduleIds));
-      await tx.delete(jogakSchedules).where(inArray(jogakSchedules.jogakId, ownedJogakIds));
-      await tx.delete(jogakExecutions).where(inArray(jogakExecutions.jogakId, ownedJogakIds));
-      await tx.delete(jogaks).where(inArray(jogaks.mogakId, ownedMogakIds));
-      await tx.delete(mogaks).where(inArray(mogaks.id, ownedMogakIds));
-      await tx.delete(modarats).where(eq(modarats.userId, userId));
-      await tx
-        .delete(follows)
-        .where(or(eq(follows.followerId, userId), eq(follows.followingId, userId)));
-      await tx.delete(authSessions).where(eq(authSessions.userId, userId));
-      await tx.delete(socialAccounts).where(eq(socialAccounts.userId, userId));
-      await tx.delete(userConsents).where(eq(userConsents.userId, userId));
+      await purgePostDomain(tx, userId);
+      await purgeMogakDomain(tx, userId);
+      await purgeAccountRelations(tx, userId);
       const deleted = await tx
         .delete(users)
         .where(eq(users.id, userId))
@@ -295,26 +216,47 @@ export class AuthRepository implements AuthPersistencePort {
   }
 }
 
-function withdrawalOwnedMogakIds(tx: Pick<Database, 'select'>, userId: number) {
-  return tx
+async function lockWithdrawalTree(tx: Pick<Database, 'select'>, userId: number): Promise<void> {
+  const ownedModaratIds = tx
+    .select({ id: modarats.id })
+    .from(modarats)
+    .where(eq(modarats.userId, userId));
+  await tx
+    .select({ id: modarats.id })
+    .from(modarats)
+    .where(eq(modarats.userId, userId))
+    .for('update');
+
+  const ownedMogakIds = tx
     .select({ id: mogaks.id })
     .from(mogaks)
-    .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-    .where(eq(modarats.userId, userId));
-}
+    .where(inArray(mogaks.modaratId, ownedModaratIds));
+  await tx
+    .select({ id: mogaks.id })
+    .from(mogaks)
+    .where(inArray(mogaks.modaratId, ownedModaratIds))
+    .for('update');
 
-function withdrawalTargetPostIds(tx: Pick<Database, 'select'>, userId: number) {
-  const ownedExecutionIds = tx
-    .select({ id: jogakExecutions.id })
-    .from(jogakExecutions)
-    .innerJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
-    .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
-    .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-    .where(eq(modarats.userId, userId));
-  return tx
+  const ownedJogakIds = tx
+    .select({ id: jogaks.id })
+    .from(jogaks)
+    .where(inArray(jogaks.mogakId, ownedMogakIds));
+  await tx
+    .select({ id: jogaks.id })
+    .from(jogaks)
+    .where(inArray(jogaks.mogakId, ownedMogakIds))
+    .for('update');
+  await tx
+    .select({ id: jogakSchedules.id })
+    .from(jogakSchedules)
+    .where(inArray(jogakSchedules.jogakId, ownedJogakIds))
+    .for('update');
+  const targetPostIds = withdrawalTargetPostIds(tx, userId);
+  await tx
     .select({ id: posts.id })
     .from(posts)
-    .where(or(eq(posts.authorId, userId), inArray(posts.jogakExecutionId, ownedExecutionIds)));
+    .where(inArray(posts.id, targetPostIds))
+    .for('update');
 }
 
 function asAuthUser(user: {

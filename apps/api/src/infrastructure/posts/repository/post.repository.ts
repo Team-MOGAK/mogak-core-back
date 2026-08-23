@@ -4,7 +4,6 @@ import { DomainErrorCode, DomainException } from '@core/common/error/domainExcep
 
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
-import { lockUsersForTransaction } from '../../database/transaction/userAdvisoryLock';
 import {
   jobs,
   jogakExecutions,
@@ -49,16 +48,6 @@ export class PostRepository implements PostRepositoryPort {
     input: CreatePostForOccurrenceInput,
   ): Promise<CreatePostForOccurrenceResult> {
     return this.db.transaction(async (tx) => {
-      const [owner] = await tx
-        .select({ userId: modarats.userId })
-        .from(jogaks)
-        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
-        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-        .where(eq(jogaks.id, input.jogakId));
-      await lockUsersForTransaction(tx, [
-        input.authorId,
-        ...(owner === undefined ? [] : [owner.userId]),
-      ]);
       const [stillOwned] = await tx
         .select({ id: jogaks.id })
         .from(jogaks)
@@ -158,10 +147,6 @@ export class PostRepository implements PostRepositoryPort {
     }>,
   ): Promise<UpdatedPostRecord | null> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(
-        tx,
-        await this.relatedUserIdsForPost(tx, input.postId, input.authorId),
-      );
       const [post] = await tx
         .update(posts)
         .set({ contents: input.contents, updatedAt: input.now })
@@ -173,10 +158,6 @@ export class PostRepository implements PostRepositoryPort {
 
   async deleteOwnedPost(input: Readonly<{ postId: number; authorId: number }>): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(
-        tx,
-        await this.relatedUserIdsForPost(tx, input.postId, input.authorId),
-      );
       // Explicit child cleanup keeps normal post deletion independent of the
       // database's FK cascade just like withdrawal does.
       const [owned] = await tx
@@ -274,8 +255,6 @@ export class PostRepository implements PostRepositoryPort {
 
   async toggleLike(input: Readonly<{ postId: number; userId: number }>): Promise<ToggleLikeResult> {
     return this.db.transaction(async (tx) => {
-      const relatedUsers = await this.relatedUserIdsForPost(tx, input.postId, input.userId);
-      await lockUsersForTransaction(tx, relatedUsers);
       // Re-read after locks: withdrawal may have deleted the post while this
       // request was waiting.
       const [post] = await tx
@@ -337,8 +316,6 @@ export class PostRepository implements PostRepositoryPort {
 
   async createComment(input: Readonly<{ postId: number; authorId: number; contents: string }>) {
     return this.db.transaction(async (tx) => {
-      const relatedUsers = await this.relatedUserIdsForPost(tx, input.postId, input.authorId);
-      await lockUsersForTransaction(tx, relatedUsers);
       const [post] = await tx
         .select({ id: posts.id })
         .from(posts)
@@ -422,8 +399,6 @@ export class PostRepository implements PostRepositoryPort {
     }>,
   ): Promise<PostCommentResult | null> {
     return this.db.transaction(async (tx) => {
-      const relatedUsers = await this.relatedUserIdsForPost(tx, input.postId, input.authorId);
-      await lockUsersForTransaction(tx, relatedUsers);
       const [updated] = await tx
         .update(postComments)
         .set({ contents: input.contents, updatedAt: input.now })
@@ -458,8 +433,6 @@ export class PostRepository implements PostRepositoryPort {
 
   async deleteComment(input: Readonly<{ postId: number; commentId: number; authorId: number }>) {
     return this.db.transaction(async (tx) => {
-      const relatedUsers = await this.relatedUserIdsForPost(tx, input.postId, input.authorId);
-      await lockUsersForTransaction(tx, relatedUsers);
       const deleted = await tx
         .delete(postComments)
         .where(
@@ -472,28 +445,6 @@ export class PostRepository implements PostRepositoryPort {
         .returning({ id: postComments.id });
       return deleted.length === 1;
     });
-  }
-
-  private async relatedUserIdsForPost(
-    tx: Pick<Database, 'select'>,
-    postId: number,
-    actorId: number,
-  ): Promise<number[]> {
-    const [post] = await tx
-      .select({ authorId: posts.authorId, hierarchyOwnerId: modarats.userId })
-      .from(posts)
-      .leftJoin(jogakExecutions, eq(posts.jogakExecutionId, jogakExecutions.id))
-      .leftJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
-      .leftJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
-      .leftJoin(modarats, eq(mogaks.modaratId, modarats.id))
-      .where(eq(posts.id, postId));
-    return post === undefined
-      ? [actorId]
-      : [
-          actorId,
-          post.authorId,
-          ...(post.hierarchyOwnerId === null ? [] : [post.hierarchyOwnerId]),
-        ];
   }
 }
 

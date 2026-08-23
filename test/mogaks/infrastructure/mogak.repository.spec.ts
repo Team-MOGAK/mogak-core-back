@@ -7,20 +7,18 @@ import { MogakRepository } from '@infra/mogaks/repository/mogak.repository';
 
 describe('모각 저장소', () => {
   it('잠금 뒤 사용자가 없으면 모다랫을 삽입하지 않고 전용 예외를 던진다', async () => {
-    const execute = testMock().mockResolvedValue(undefined);
     const where = testMock().mockResolvedValue([]);
     const from = testMock().mockReturnValue({ where });
     const select = testMock().mockReturnValue({ from });
     const insert = testMock();
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
-      callback({ execute, select, insert }),
+      callback({ select, insert }),
     );
     const repository = new MogakRepository({ transaction } as unknown as Database);
 
     await expect(
       repository.createModarat({ userId: 7, title: '모다랫', color: '#000000' }),
     ).rejects.toEqual(new DomainException(DomainErrorCode.USER_NOT_FOUND));
-    expect(execute).toHaveBeenCalledTimes(1);
     expect(select).toHaveBeenCalledTimes(1);
     expect(insert).not.toHaveBeenCalled();
   });

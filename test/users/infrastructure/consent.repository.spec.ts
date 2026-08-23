@@ -12,13 +12,12 @@ describe('동의 저장소', () => {
   ] as const)(
     '잠금 뒤 사용자가 없으면 %s을 삽입하지 않고 전용 예외를 던진다',
     async (_, method) => {
-      const execute = testMock().mockResolvedValue(undefined);
       const whereAfterLock = testMock().mockResolvedValue([]);
       const fromAfterLock = testMock().mockReturnValue({ where: whereAfterLock });
       const selectAfterLock = testMock().mockReturnValue({ from: fromAfterLock });
       const insert = testMock();
       const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
-        callback({ execute, select: selectAfterLock, insert }),
+        callback({ select: selectAfterLock, insert }),
       );
       const repository = new ConsentRepository({
         transaction,
@@ -39,7 +38,6 @@ describe('동의 저장소', () => {
           : repository.updateMarketingConsents(7, { marketingAgreed: true }, new Date());
 
       await expect(call).rejects.toEqual(new DomainException(DomainErrorCode.USER_NOT_FOUND));
-      expect(execute).toHaveBeenCalledTimes(1);
       expect(selectAfterLock).toHaveBeenCalledTimes(1);
       expect(insert).not.toHaveBeenCalled();
     },

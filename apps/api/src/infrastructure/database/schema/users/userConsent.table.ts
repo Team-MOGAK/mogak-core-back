@@ -10,7 +10,7 @@ export const userConsents = pgTable(
     id: bigint('user_consent_id', { mode: 'number' }).primaryKey().generatedByDefaultAsIdentity(),
     userId: bigint('user_id', { mode: 'number' })
       .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+      .references(() => users.id),
     consentItemId: bigint('consent_item_id', { mode: 'number' })
       .notNull()
       .references(() => consentItems.id),

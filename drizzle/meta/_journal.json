@@ -29,6 +29,20 @@
       "when": 1784811780888,
       "tag": "0003_groovy_gabe_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787500000000,
+      "tag": "0004_withdrawal_purge_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787500000001,
+      "tag": "0005_remove_withdrawal_fk_cascades",
+      "breakpoints": true
     }
   ]
 }

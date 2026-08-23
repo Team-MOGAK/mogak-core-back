@@ -4,7 +4,6 @@ import { DomainErrorCode, DomainException } from '@core/common/error/domainExcep
 
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
-import { lockUsersForTransaction } from '../../database/transaction/userAdvisoryLock';
 import {
   jogakExecutions,
   jogakSchedules,
@@ -52,7 +51,6 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async createModarat(input: CreateModaratInput): Promise<ModaratResult> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [input.userId]);
       const [user] = await tx
         .select({ id: users.id })
         .from(users)
@@ -93,7 +91,6 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async updateOwnedModarat(input: UpdateModaratInput): Promise<ModaratResult | null> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [input.userId]);
       const [updated] = await tx
         .update(modarats)
         .set({ title: input.title, color: input.color, updatedAt: input.now })
@@ -105,7 +102,6 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async deleteOwnedModarat(userId: number, modaratId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [userId]);
       const [owned] = await tx
         .select({ id: modarats.id })
         .from(modarats)
@@ -152,7 +148,6 @@ export class MogakRepository implements MogakRepositoryPort {
         .from(modarats)
         .where(eq(modarats.id, input.modaratId));
       if (owner === undefined) throw new MogakPersistenceException('Modarat did not exist');
-      await lockUsersForTransaction(tx, [owner.userId]);
       const [stillOwned] = await tx
         .select({ id: modarats.id })
         .from(modarats)
@@ -213,7 +208,6 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async updateOwnedMogak(input: UpdateMogakInput): Promise<MogakResult | null> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [input.userId]);
       const [owned] = await tx
         .select({ modaratId: mogaks.modaratId })
         .from(mogaks)
@@ -244,7 +238,6 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async deleteOwnedMogak(userId: number, mogakId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [userId]);
       const [owned] = await tx
         .select({ id: mogaks.id })
         .from(mogaks)
@@ -270,7 +263,6 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async patchOwnedJogak(input: PatchOwnedJogakInput): Promise<OwnedJogakResult | null> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [input.userId]);
       const [owned] = await tx
         .select(selectOwnedJogakFields())
         .from(jogaks)
@@ -324,7 +316,6 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async deleteOwnedJogak(userId: number, jogakId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [userId]);
       const [owned] = await tx
         .select({ id: jogaks.id })
         .from(jogaks)
@@ -414,7 +405,6 @@ export class MogakRepository implements MogakRepositoryPort {
         .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
         .where(eq(mogaks.id, input.mogak.id));
       if (owner === undefined) throw new MogakPersistenceException('Mogak did not exist');
-      await lockUsersForTransaction(tx, [owner.userId]);
       const [stillOwned] = await tx
         .select({ id: mogaks.id })
         .from(mogaks)
@@ -610,7 +600,6 @@ export class MogakRepository implements MogakRepositoryPort {
         .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
         .where(eq(jogaks.id, input.jogakId));
       if (owner === undefined) return null;
-      await lockUsersForTransaction(tx, [owner.userId]);
       const [stillOwned] = await tx
         .select({ id: jogaks.id })
         .from(jogaks)
@@ -645,7 +634,6 @@ export class MogakRepository implements MogakRepositoryPort {
         .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
         .where(eq(jogakExecutions.id, input.executionId));
       if (owner === undefined) return null;
-      await lockUsersForTransaction(tx, [owner.userId]);
       const [stillExists] = await tx
         .select({ id: jogakExecutions.id })
         .from(jogakExecutions)

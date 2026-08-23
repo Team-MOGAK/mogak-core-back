@@ -14,7 +14,6 @@ import {
 } from '@core/users/domain/exception/userPersistence.exception';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
-import { lockUsersForTransaction } from '../../database/transaction/userAdvisoryLock';
 import { authSessions, jobs, userConsents, users } from '../../database/schema';
 import type { UserRecord } from '../type/user.record';
 import type {
@@ -55,7 +54,6 @@ export class UserRepository implements UserRepositoryPort {
   async updateNickname(command: UpdateNicknameCommand): Promise<boolean> {
     try {
       return await this.db.transaction(async (tx) => {
-        await lockUsersForTransaction(tx, [command.userId]);
         const updated = await tx
           .update(users)
           .set({ nickname: command.nickname, updatedAt: command.now })
@@ -70,7 +68,6 @@ export class UserRepository implements UserRepositoryPort {
 
   async updateJob(command: UpdateJobCommand): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [command.userId]);
       const updated = await tx
         .update(users)
         .set({ jobId: command.jobId, updatedAt: command.now })
@@ -82,7 +79,6 @@ export class UserRepository implements UserRepositoryPort {
 
   async updateProfileImageKey(command: UpdateProfileImageCommand): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [command.userId]);
       const updated = await tx
         .update(users)
         .set({ profileImageKey: command.profileImageKey, updatedAt: command.now })
@@ -97,7 +93,6 @@ export class UserRepository implements UserRepositoryPort {
   ): Promise<Readonly<{ id: number; nickname: string }>> {
     try {
       return await this.db.transaction(async (tx) => {
-        await lockUsersForTransaction(tx, [command.userId]);
         const [registered] = await tx
           .update(users)
           .set({

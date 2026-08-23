@@ -14,7 +14,6 @@ import { UserPersistenceException } from '@core/users/domain/exception/userPersi
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
-import { lockUsersForTransaction } from '../../database/transaction/userAdvisoryLock';
 import { consentItems, userConsents, users } from '../../database/schema';
 
 @Injectable()
@@ -62,7 +61,6 @@ export class ConsentRepository implements ConsentRepositoryPort {
     now: Date,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [userId]);
       const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
       if (user === undefined) {
         this.logger.warn({
@@ -129,7 +127,6 @@ export class ConsentRepository implements ConsentRepositoryPort {
       throw new UserPersistenceException('Marketing consent item is not active');
     }
     return this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [userId]);
       const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
       if (user === undefined) {
         this.logger.warn({

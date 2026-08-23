@@ -4,7 +4,6 @@ import { DomainErrorCode, DomainException } from '@core/common/error/domainExcep
 
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
-import { lockUsersForTransaction } from '../../database/transaction/userAdvisoryLock';
 import {
   addresses,
   follows,
@@ -50,7 +49,6 @@ export class SocialRepository implements SocialRepositoryPort {
 
   async createFollow(command: FollowCommand): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [command.followerId, command.followingId]);
       const existing = await tx
         .select({ id: users.id })
         .from(users)
@@ -76,7 +74,6 @@ export class SocialRepository implements SocialRepositoryPort {
 
   async deleteFollow(command: FollowCommand): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await lockUsersForTransaction(tx, [command.followerId, command.followingId]);
       const deleted = await tx
         .delete(follows)
         .where(andFollow(command))

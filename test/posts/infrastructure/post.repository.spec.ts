@@ -28,12 +28,7 @@ describe('게시글 저장소', () => {
     const returning = testMock().mockResolvedValue([{ id: 3 }]);
     const values = testMock().mockReturnValue({ returning });
     const insert = testMock().mockReturnValue({ values });
-    const select = selectSequence([
-      [{ authorId: 2, hierarchyOwnerId: null }],
-      [{ authorId: 2, hierarchyOwnerId: null }],
-      [{ id: 2 }],
-      [],
-    ]);
+    const select = selectSequence([[{ id: 2 }], [{ id: 2 }], []]);
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
       callback({ execute: testMock(), select, insert }),
     );

@@ -2,7 +2,6 @@ import { testMock } from '../../testMock';
 import type { Database } from '@infra/database/database.provider';
 import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
-import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import {
   AuthPersistenceException,
   DuplicateEmailException,
@@ -18,29 +17,6 @@ const identity = {
 };
 
 describe('인증 저장소', () => {
-  it('잠금 뒤 사용자가 없으면 세션을 삽입하지 않고 전용 예외를 던진다', async () => {
-    const execute = testMock().mockResolvedValue(undefined);
-    const where = testMock().mockResolvedValue([]);
-    const from = testMock().mockReturnValue({ where });
-    const select = testMock().mockReturnValue({ from });
-    const insert = testMock();
-    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
-      callback({ execute, select, insert }),
-    );
-    const repository = new AuthRepository({ transaction } as unknown as Database);
-
-    await expect(
-      repository.createSession(7, {
-        id: 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f',
-        refreshTokenHash: 'refresh-token-hash',
-        expiresAt: new Date('2026-08-23T00:00:00.000Z'),
-      }),
-    ).rejects.toEqual(new DomainException(DomainErrorCode.USER_NOT_FOUND));
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(select).toHaveBeenCalledTimes(1);
-    expect(insert).not.toHaveBeenCalled();
-  });
-
   it('이메일 고유성 위반을 DuplicateEmailException으로 변환한다', async () => {
     const transaction = testMock().mockRejectedValue({
       code: '23505',
@@ -102,13 +78,7 @@ describe('인증 저장소', () => {
     const failure = new Error('database unavailable');
     const values = testMock().mockRejectedValue(failure);
     const insert = testMock().mockReturnValue({ values });
-    const where = testMock().mockResolvedValue([{ id: 7 }]);
-    const from = testMock().mockReturnValue({ where });
-    const select = testMock().mockReturnValue({ from });
-    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
-      callback({ execute: testMock(), select, insert }),
-    );
-    const repository = new AuthRepository({ transaction } as unknown as Database);
+    const repository = new AuthRepository({ insert } as unknown as Database);
 
     await expect(
       repository.createSession(7, {
@@ -128,13 +98,7 @@ describe('인증 저장소', () => {
     const failure = new AuthPersistenceException('session insert invariant failed');
     const values = testMock().mockRejectedValue(failure);
     const insert = testMock().mockReturnValue({ values });
-    const where = testMock().mockResolvedValue([{ id: 7 }]);
-    const from = testMock().mockReturnValue({ where });
-    const select = testMock().mockReturnValue({ from });
-    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
-      callback({ execute: testMock(), select, insert }),
-    );
-    const repository = new AuthRepository({ transaction } as unknown as Database);
+    const repository = new AuthRepository({ insert } as unknown as Database);
 
     await expect(
       repository.createSession(7, {

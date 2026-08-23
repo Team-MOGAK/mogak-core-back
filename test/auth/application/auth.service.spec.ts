@@ -506,4 +506,25 @@ describe('인증 서비스', () => {
     });
     expect(persistence.normalizeNullRole).toHaveBeenCalledWith(7, 'PENDING');
   });
+
+  it('탈퇴 persistence가 false를 반환하면 USER_NOT_FOUND를 던진다', async () => {
+    const persistence = createPersistence();
+    jest.mocked(persistence.deleteUser).mockResolvedValue(false);
+    const tokens = createTokenPorts();
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
+
+    await expect(service.withdraw(7)).rejects.toEqual(
+      new DomainException(DomainErrorCode.USER_NOT_FOUND),
+    );
+    expect(persistence.deleteUser).toHaveBeenCalledWith(7);
+  });
+
+  it('탈퇴 persistence가 성공하면 완료한다', async () => {
+    const persistence = createPersistence();
+    jest.mocked(persistence.deleteUser).mockResolvedValue(true);
+    const tokens = createTokenPorts();
+    const service = new AuthService(verifiers, persistence, tokens, tokens);
+
+    await expect(service.withdraw(7)).resolves.toBeUndefined();
+  });
 });

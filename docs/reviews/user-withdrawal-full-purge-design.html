@@ -7,13 +7,17 @@
       <p><strong>설계 상태: 승인됨</strong> · 2026-08-23</p>
       <p>목적: 탈퇴와 동시 mutation이 경합해도 앱 코드가 관계 데이터를 안전하게 삭제한다.</p>
     </header>
-    <nav aria-label="설계 목차"><a href="#contract">HTTP 계약</a> · <a href="#concurrency">동시성 규약</a> · <a href="#orm-purge">ORM 삭제 전환</a> · <a href="#failure">실패 처리 책임</a> · <a href="#control">설계 점검</a></nav>
+    <nav aria-label="설계 목차"><a href="#contract">HTTP 계약</a> · <a href="#sync-baseline">동기 운영 기준</a> · <a href="#concurrency">동시성 규약</a> · <a href="#cte-batching">CTE 삭제 배치</a> · <a href="#verification-extension">검증 보강</a> · <a href="#sync-capacity">동기 처리 한계</a> · <a href="#orm-purge">ORM 삭제 전환</a> · <a href="#failure">실패 처리 책임</a> · <a href="#control">설계 점검</a> · <a href="#review">리뷰</a></nav>
     <main><article>
     <h2>목적</h2>
     <p>회원 탈퇴 요청 안에서 회원과 회원이 소유하거나 작성한 관계 데이터를 앱 코드가 명시적으로 삭제한다. DB FK cascade는 삭제 완결성의 전제가 아니다.</p>
     <section id="contract"><h2>HTTP 계약</h2>
     <pre>POST /api/auth/withdraw → 204 No Content</pre>
     <p>응답 본문 및 <code>isDeleted</code> 필드는 반환하지 않는다. 성공은 삭제 완료를 뜻한다.</p>
+    </section><section id="sync-baseline"><h2>동기 운영 기준 — 제안</h2>
+    <ol><li>탈퇴 transaction이 대상 <code>users</code> 행과, 새 자식 행을 받을 수 있는 모다랏·모각·조각·실행·게시글 부모 행을 <code>FOR UPDATE</code>로 선점한다.</li><li>새 댓글·좋아요·이미지는 lock된 게시글 FK를, 새 실행·조각·모각은 lock된 부모 FK를, 세션·팔로우·사용자 작성 데이터는 lock된 사용자 FK를 참조하므로 FK의 <code>KEY SHARE</code>와 충돌해 대기한다.</li><li>대기 중 먼저 시작한 mutation이 commit했을 수 있으므로, 부모 lock 획득 후 사용자 존재와 모든 삭제 대상은 DB subquery로 다시 계산한다.</li><li>게시글 자식부터 사용자까지 명시적으로 삭제하고, 모든 DB 삭제를 하나의 transaction으로 commit 또는 rollback 한다.</li><li>일반 mutation에는 탈퇴만을 위한 advisory/user lock 호출을 추가하지 않는다. 단, FK를 거치지 않고 관계를 만드는 경로가 없는지는 감사한다.</li></ol>
+    <dl><dt>인덱스</dt><dd><code>post_img(post_id)</code>, <code>post_comment(post_id)</code>, <code>post_comment(user_id)</code>, <code>post(user_id)</code>, <code>modarat(user_id)</code>, <code>mogak(modarat_id)</code>, <code>jogak(mogak_id)</code>, <code>auth_sessions(user_id)</code>, <code>follow(to_id)</code>를 migration으로 추가한다. 운영 DB에서는 가능한 <code>CREATE INDEX CONCURRENTLY</code> 방식으로 배포한다.</dd><dt>시간 제한·관측</dt><dd>transaction/lock 대기/삭제 건수 테이블별 로그와 metric을 남기고, DB lock timeout 및 statement timeout을 둔다. timeout·오류는 rollback하며 204를 반환하지 않는다.</dd><dt>재시도 계약</dt><dd>성공만 204다. 완료 후 토큰은 함께 삭제되어 동일 사용자의 재요청은 인증 단계에서 실패한다. 별도의 <code>DELETING</code> 상태나 retry API는 sync 범위에 넣지 않는다.</dd><dt>외부 데이터</dt><dd>DB에 저장된 관계 행만 이 transaction으로 완결한다. 오브젝트 스토리지의 실제 파일 삭제가 요구되면 async purge의 별도 범위로 전환한다.</dd></dl>
+    <aside><p><strong>불변식:</strong> DB FK cascade는 탈퇴 완결성의 수단이 아니다. 마지막 <code>users</code> 삭제 이전에 모든 관계 행이 앱 코드의 명시적 delete로 사라져야 한다. 현재 FK가 <code>ON DELETE CASCADE</code>인 것은 누락을 숨길 수 있으므로, 이를 <code>RESTRICT</code>로 바꾸는 작업은 다른 삭제 endpoint까지 영향이 있어 별도 schema migration 범위로 검토한다.</p></aside>
     </section><section id="deletion"><h2>삭제 순서</h2>
     <ol>
       <li>대상 사용자 transaction advisory lock 획득</li>
@@ -23,9 +27,42 @@
       <li>마지막으로 users 행을 삭제</li>
     </ol>
     </section><section id="concurrency"><h2>동시성 규약</h2>
-    <p>탈퇴는 대상 사용자뿐 아니라, 대상 실행에 연결된 게시글 작성자·댓글 작성자·좋아요 사용자와 팔로우 상대를 하나의 집합으로 먼저 조회해 오름차순으로 <code>pg_advisory_xact_lock</code> 한다. lock 획득 후 모든 삭제 대상은 SQL subquery로 다시 계산한다. 댓글·좋아요 mutation도 작성자, 게시글 작성자, 연결된 모각 소유자를 함께 lock하고, 팔로우는 양쪽 사용자를 함께 lock한다.</p>
+    <p>탈퇴만 사용자·모다랏·모각·조각·실행·게시글 부모 행을 <code>FOR UPDATE</code>로 lock한다. 관계를 새로 만드는 일반 mutation은 해당 FK 참조 과정에서 <code>KEY SHARE</code>를 획득하므로, 탈퇴의 부모 <code>FOR UPDATE</code>와 충돌한다. 기존 자식 행의 변경은 이후 명시적 delete와 행 lock으로 직렬화된다. 모든 삭제 대상은 부모 lock 뒤 SQL subquery로 다시 계산한다.</p>
     <p>대량 계정에서도 bind parameter 제한에 걸리지 않도록 탈퇴 cascade는 JavaScript ID 배열이나 <code>IN (...ids)</code>가 아니라 DB 서브쿼리로 수행한다.</p>
     <p>이 lock은 DB 전체에 공유되지만 같은 사용자 key만 충돌한다. transaction commit/rollback 때 자동 해제된다.</p>
+    </section><section id="cte-batching"><h2>CTE 삭제 배치 — 재승인 대상</h2>
+    <p><mark>결정 제안:</mark> 현재의 명시적 앱단 cascade와 부모 row lock은 유지하되, 삭제 SQL을 도메인별 data-modifying CTE로 묶는다. FK cascade·DB trigger·stored procedure는 도입하지 않는다.</p>
+    <table><caption>삭제 statement 경계</caption><thead><tr><th>순서</th><th>도메인</th><th>포함하는 명시 delete</th></tr></thead><tbody>
+      <tr><td>1</td><td>게시글</td><td><code>post_img → post_comment → post_like → post</code></td></tr>
+      <tr><td>2</td><td>모각 트리</td><td><code>jogak_schedule_weekdays → jogak_schedules → daily_jogak → jogak → mogak → modarat</code></td></tr>
+      <tr><td>3</td><td>계정 직접 관계</td><td><code>follow → auth_sessions → social_account → user_consent</code></td></tr>
+      <tr><td>4</td><td>계정</td><td><code>users DELETE ... RETURNING</code></td></tr>
+    </tbody></table>
+    <figure><figcaption>보존할 transaction 순서와 줄어드는 왕복</figcaption><pre><code>users/tree/post FOR UPDATE → 게시글 CTE → 모각 트리 CTE → 계정 직접 관계 CTE → users DELETE RETURNING → commit</code></pre><p>삭제 statement는 약 15회에서 4회로 줄인다. lock statement는 유지하므로 요청 전체는 약 21회에서 약 10회 왕복이 목표다.</p></figure>
+    <aside><p><strong>가장 강한 반증:</strong> data-modifying CTE는 같은 행을 두 번 수정하거나 FK 삭제 순서를 암묵적으로 기대하면 예측할 수 없다. 각 하위 delete는 상위 CTE의 <code>RETURNING</code>을 참조해 순서를 강제하고, 세 도메인을 하나의 거대 query로 합치지 않는다.</p></aside>
+    <p><strong>미룬 범위:</strong> lock 조회 자체를 조인 하나로 합치거나, async purge worker·DB stored procedure로 전환하는 것은 포함하지 않는다.</p>
+    </section><section id="verification-extension"><h2>탈퇴 검증 보강 — 재승인 대상</h2>
+    <p><mark>변경 범위:</mark> 런타임 코드와 HTTP 계약은 바꾸지 않는다. PostgreSQL 통합 테스트와 AuthService 단위 테스트만 보강해 앱단 cascade·재시도·실제 경합의 불변식을 증명한다.</p>
+    <table><caption>추가할 검증</caption><thead><tr><th>범주</th><th>증명할 결과</th></tr></thead><tbody>
+      <tr><td>전체 관계 삭제</td><td>탈퇴 사용자와 그 모다랏·모각·조각·일정·요일·실행·게시글·이미지·댓글·좋아요·팔로우·세션·소셜 계정·동의가 모두 사라진다. 다른 사용자의 고유 데이터는 보존한다.</td></tr>
+      <tr><td>빈 계정·없는 사용자</td><td>관계가 없는 계정도 삭제되고, 없는 사용자는 repository에서 <code>false</code>, service에서 <code>USER_NOT_FOUND</code>가 된다. 성공 뒤 같은 토큰은 세션 삭제 때문에 인증 단계의 <code>LOGOUT_TOKEN</code>이 된다.</td></tr>
+      <tr><td>실제 경합</td><td><code>deleteUser()</code>가 확보한 post/users lock과 동시에 댓글·좋아요·팔로우 insert를 시작하면 insert가 대기하고, 탈퇴 commit 뒤 부모 부재로 실패한다.</td></tr>
+    </tbody></table>
+    <aside><p><strong>한계:</strong> 현 DB FK의 <code>ON DELETE CASCADE</code>가 누락된 명시 delete를 가릴 수 있다. 이번 테스트는 실제 삭제 범위와 lock 결과를 증명하지만, DB cascade 자체를 제거하지는 않는다. FK 정책 변경은 별도 schema 범위다.</p></aside>
+    </section><section id="sync-capacity"><h2>동기 처리 한계 — 측정 기반 제안</h2>
+    <p><mark>결정 제안:</mark> 초기 동기 탈퇴는 <em>작은 계정에 한정한 임시 운영 방식</em>으로만 둔다. 현재의 무제한 fan-out과 “관계 사용자 전부 advisory lock”을 그대로 둔 채로는 운영 상한을 보장할 수 없다.</p>
+    <table><caption>2026-08-23 로컬 <code>mogak_test</code> 측정 (모두 하나의 rollback transaction, 외부 저장소 제외)</caption><thead><tr><th>조건</th><th>관측값</th><th>의미</th></tr></thead><tbody>
+      <tr><td>게시글 10,000 / 이미지 10,000 / 댓글 100,000</td><td>앱단 전체 purge 12.11초</td><td>HTTP 요청 transaction으로 감수할 수 없는 구간</td></tr>
+      <tr><td>같은 fixture의 <code>post</code> 삭제</td><td>12.88초</td><td>전체 시간의 대부분. 자식 행을 먼저 지워도 FK trigger가 자식 테이블을 재확인한다.</td></tr>
+      <tr><td>동일 fixture에 rollback되는 <code>post_img(post_id)</code>, <code>post_comment(post_id)</code> 등 임시 인덱스 적용</td><td>전체 9.72초 / <code>post</code> 5.02초</td><td>필수 인덱스지만, 게시글 10,000건 부모 삭제를 동기로 처리할 근거는 되지 않는다.</td></tr>
+      <tr><td>순차 advisory lock 100 / 1,000개</td><td>40.6ms / 265.6ms (로컬)</td><td>현 구현의 fan-out 비용 증거. 제안한 parent-row lock은 이 비용을 제거한다.</td></tr>
+    </tbody></table>
+    <figure><figcaption>동기 탈퇴 시간의 두 독립 축</figcaption><pre><code>HTTP 시간 = DB 삭제/인덱스/FK trigger 비용
+          + (lock된 삭제 트리 행 수와 실제 lock 대기 시간)
+          + 실제 lock 대기 시간</code></pre><p>게시글 수만 제한해도 댓글·좋아요 작성자나 팔로우 수가 크면 두 번째 축이 요청 시간을 지배한다.</p></figure>
+    <aside><p><strong>현재 가장 강한 반증:</strong> FK 컬럼 인덱스가 실제 스키마에 여럿 없다. 특히 <code>post_img.post_id</code>, <code>post_comment.post_id</code>, <code>post_comment.user_id</code>, <code>post.user_id</code>, <code>modarat.user_id</code>, <code>mogak.modarat_id</code>, <code>jogak.mogak_id</code>, <code>auth_sessions.user_id</code>, <code>follow.to_id</code>가 삭제 조건 또는 FK 재확인에 필요하다. 인덱스 없이 “소량 계정”도 전체 테이블 성장에 따라 느려진다.</p></aside>
+    <dl><dt>동기로 감수 가능한 전제</dt><dd>외부 파일/검색/알림 삭제는 포함하지 않고, 삭제 transaction의 p95가 1초 이하·p99가 3초 이하임을 운영 규모 데이터에서 확인하며, 관계 사용자 lock fan-out이 작은 계정에 한정한다.</dd><dt>동기 방식의 중단선</dt><dd>한 요청이 3초를 자주 넘기거나, 대기 lock이 생기거나, 게시글·댓글·좋아요·팔로우 어느 하나가 무제한으로 자랄 수 있으면 async purge job으로 전환한다.</dd><dt>미룬 범위</dt><dd><code>DELETING</code> 상태를 먼저 commit하고 새 command를 즉시 거절하는 구조, 재시도·recovery worker, 외부 오브젝트 삭제는 async 설계에서 함께 결정한다.</dd></dl>
+    <p><strong>검증 전제:</strong> 위 수치는 비어 있는 로컬 DB에서 만든 단일 계정 fixture의 경계 증거이며, 운영 성능 예측값은 아니다. 실제 배포 후보 데이터 분포와 DB 네트워크 지연에서 <code>EXPLAIN (ANALYZE, BUFFERS)</code> 및 p95/p99를 다시 확인해야 한다.</p>
     </section><section id="orm-purge"><h2>ORM 삭제 전환 — 재승인 대상</h2>
     <p><mark>변경 제안:</mark> 테이블명 문자열 raw SQL과 <code>DELETE USING</code>을 없앤다. 탈퇴 persistence 경로에서 Drizzle table 정의와 query builder를 사용한다. 관련 사용자 lock 대상 조회는 Drizzle typed CTE <code>target_posts</code>를 한 SQL 안에서 재사용하고, 삭제는 서브쿼리로 조합한다.</p>
     <ol><li>조회한 관련 사용자 ID는 기존처럼 정렬·중복 제거해 advisory lock에만 사용한다.</li><li>삭제는 <code>tx.delete(table).where(inArray(column, subquery))</code>로 수행한다. 자식부터 부모로의 순서는 유지한다.</li><li>삭제용 subquery는 lock 획득 뒤 다시 평가한다. 삭제 조건에 JavaScript ID 배열을 바인딩하지 않는다.</li></ol>
@@ -39,7 +76,35 @@
     <p><mark>변경 제안:</mark> lock 획득 뒤 사용자·게시글·조각 등 필수 리소스가 사라진 경우, repository가 기존 <code>DomainException</code> 코드(<code>USER_NOT_FOUND</code>, <code>POST_NOT_FOUND</code>, <code>JOGAK_NOT_FOUND</code>)를 직접 던진다. service의 <code>try/catch</code>, <code>instanceof</code>, 컨텍스트별 <code>*AfterLockException</code>은 제거한다.</p>
     <p>HTTP 상태와 오류 코드는 바뀌지 않는다. 예상하지 못한 DB 오류는 기존 persistence 오류로 유지하며, 전역 FK 23503 변환은 도입하지 않는다.</p>
     </section><section id="control"><h2>설계 점검</h2>
-    <p><strong>design-control-state:</strong> 확인 중 · 질문 ID: WD-ORM-01, WD-LOCK-02, WD-ERR-01 · raw SQL 전환과 lock 후 재확인 최적화는 2026-08-23 사용자 승인. HTML 점검 결과는 대화로 전달되지 않았으므로 별도 미확인 상태로 남긴다.</p>
+    <p><strong>design-control-state:</strong> 미실시 · 질문 ID: WD-CTE-01 · 2026-08-23 사용자 승인: 도메인별 CTE 삭제 배치로 왕복을 줄이되 기존 parent row lock과 앱단 명시 delete를 유지한다.</p>
+    <fieldset><legend>WD-CTE-01 — CTE로 삭제 왕복을 줄일 때도 앱단 cascade를 유지하려면 무엇이 반드시 필요한가?</legend>
+      <label><input type="radio" name="wd-cte" value="a"> A. 모든 table delete를 독립 CTE로 나열하고 PostgreSQL이 순서를 알아서 정하게 한다.</label><br>
+      <label><input type="radio" name="wd-cte" value="b"> B. 자식 delete와 부모 delete를 <code>RETURNING</code> 참조로 연결하고, 도메인 간 statement 경계와 기존 parent row lock을 유지한다.</label><br>
+      <label><input type="radio" name="wd-cte" value="c"> C. FK <code>ON DELETE CASCADE</code>가 최종적으로 정리하므로 명시 delete는 생략한다.</label><br>
+      <button type="button" onclick="document.getElementById('wd-cte-result').hidden=false">결과 보기</button>
+      <output id="wd-cte-result" hidden aria-live="polite"><strong>정답: B.</strong> CTE는 왕복 절감 수단일 뿐이다. 앱단 cascade를 지키려면 자식부터 부모로의 명시 delete 의존성과 기존 lock/re-evaluation 경계를 그대로 유지해야 한다.</output>
+    </fieldset>
+    <fieldset><legend>WD-VERIFY-01 — 탈퇴가 post/users를 <code>FOR UPDATE</code>로 선점한 뒤 다른 사용자가 댓글·좋아요·팔로우 insert를 시작하면, 탈퇴가 commit된 후 그 insert의 기대 결과는?</legend>
+      <label><input type="radio" name="wd-verify" value="a"> A. 대기했던 insert가 부모 삭제와 무관하게 성공한다.</label><br>
+      <label><input type="radio" name="wd-verify" value="b"> B. FK 참조가 lock에 대기했다가, 탈퇴 commit 후 부모가 없어져 실패한다.</label><br>
+      <label><input type="radio" name="wd-verify" value="c"> C. 모든 관계 사용자의 advisory lock이 없으므로 결과를 보장할 수 없다.</label><br>
+      <button type="button" onclick="document.getElementById('wd-verify-result').hidden=false">결과 보기</button>
+      <output id="wd-verify-result" hidden aria-live="polite"><strong>정답: B.</strong> comment·like는 post FK를, follow는 users FK를 참조한다. 탈퇴 transaction의 부모 <code>FOR UPDATE</code>와 FK의 <code>KEY SHARE</code>가 충돌하므로 insert는 대기하고, commit 뒤 부모 부재를 다시 확인해 실패한다.</output>
+    </fieldset>
+    <fieldset><legend>WD-SYNC-04 — 게시글 10,000건의 삭제 시간이 3초를 넘는다면 어떤 판단이 맞나?</legend>
+      <label><input type="radio" name="wd-sync" value="a"> A. FK 자식 행을 이미 지웠으므로 인덱스 없이도 동기 요청을 계속 허용한다.</label><br>
+      <label><input type="radio" name="wd-sync" value="b"> B. 필요한 FK/삭제 인덱스를 우선 보강하고, 실제 p95/p99와 관계 사용자 lock fan-out을 기준으로 동기 상한을 검증한다.</label><br>
+      <label><input type="radio" name="wd-sync" value="c"> C. 게시글 수만 10,000으로 제한하면 관계 사용자 수와 무관하게 안전하다.</label><br>
+      <button type="button" onclick="document.getElementById('wd-sync-result').hidden=false">결과 보기</button>
+      <output id="wd-sync-result" hidden aria-live="polite"><strong>정답: B.</strong> 자식 테이블 FK 재확인도 인덱스를 필요로 하며, 현재 순차 advisory lock 비용은 관계 사용자 수에 따라 별도로 증가한다.</output>
+    </fieldset>
+    <fieldset><legend>WD-SYNC-05 — 탈퇴가 대상 사용자만 lock할 때, 댓글·좋아요·팔로우의 동시 쓰기를 막는 조건은?</legend>
+      <label><input type="radio" name="wd-sync-lock" value="a"> A. 탈퇴가 모든 댓글·좋아요 작성자를 미리 조회해 각각 lock한다.</label><br>
+      <label><input type="radio" name="wd-sync-lock" value="b"> B. 탈퇴가 게시글 등 부모 행을 <code>FOR UPDATE</code>로 lock하고, 새 자식 insert는 FK 참조 잠금 충돌로 대기시킨다.</label><br>
+      <label><input type="radio" name="wd-sync-lock" value="c"> C. 게시글을 먼저 지우면 동시 쓰기 방어는 필요 없다.</label><br>
+      <button type="button" onclick="document.getElementById('wd-sync-lock-result').hidden=false">결과 보기</button>
+      <output id="wd-sync-lock-result" hidden aria-live="polite"><strong>정답: B.</strong> 새 comment/like/image는 post FK를, 새 follow/session/modarat는 users FK를 참조한다. 탈퇴가 이 부모를 <code>FOR UPDATE</code>로 선점하면 FK의 <code>KEY SHARE</code>와 충돌한다.</output>
+    </fieldset>
     <fieldset><legend>WD-ORM-01 — 대량 계정에서 bind parameter 제한을 피하면서 lock 이후 최신 삭제 범위를 적용하려면?</legend>
       <label><input type="radio" name="wd-orm" value="a"> A. 모든 ID를 JavaScript 배열로 모아 <code>IN (...ids)</code>에 전달한다.</label><br>
       <label><input type="radio" name="wd-orm" value="b"> B. lock에만 조회 ID 배열을 사용하고, 삭제 조건은 query builder subquery로 다시 계산한다.</label><br>
@@ -61,6 +126,16 @@
       <button type="button" onclick="document.getElementById('wd-err-result').hidden=false">결과 보기</button>
       <output id="wd-err-result" hidden aria-live="polite"><strong>정답: B.</strong> 경합으로 사라진 리소스는 정상적인 not-found 계약으로 처리하되, 다른 DB 결함을 USER_NOT_FOUND로 오분류하지 않는다.</output>
     </fieldset>
+    </section><section id="review"><h2>구현 리뷰 — 2026-08-23</h2>
+    <p><strong>리뷰 유형:</strong> 자기 변경 · <strong>대상:</strong> <code>main...fix/withdrawal-full-purge</code> · <strong>상태:</strong> 검토 완료</p>
+    <p>검토 범위는 앱단 회원 탈퇴 cascade, parent row lock, 도메인별 CTE delete, 인덱스 migration 및 관련 테스트다. 실제 구현은 <code>users FOR UPDATE → tree/post FOR UPDATE → post/mogak/account CTE → users DELETE</code> 순서를 지키고, CTE query builder는 <code>accountDeletionPurge.query.ts</code>에 분리되어 있다.</p>
+    <table><caption>발견 사항</caption><thead><tr><th>ID</th><th>상태·심각도</th><th>증거와 영향</th><th>최소 조치</th></tr></thead><tbody>
+      <tr><td>WD-R-001</td><td>fixed · Blocker</td><td><code>0005_remove_withdrawal_fk_cascades.sql</code>이 12개 회원·게시글 관계 FK를 <code>NO ACTION</code>으로 재생성했다. 전용 <code>mogak_test</code>에서 users/post 대상 FK의 cascade action이 0개임을 카탈로그로 확인했고, 앱단 삭제 integration suite가 통과했다.</td><td>해결됨. 명시 delete가 누락된 부모 삭제는 이제 FK 위반으로 실패한다.</td></tr>
+      <tr><td>WD-R-002</td><td>fixed · Non-blocking risk</td><td><code>db:prepare-withdrawal-indexes</code>가 10개 인덱스를 transaction 밖의 <code>CREATE INDEX CONCURRENTLY IF NOT EXISTS</code>로 선적용한다. <code>0004</code>는 <code>IF NOT EXISTS</code>로 멱등 적용한다.</td><td>운영자는 README의 선적용 → migration 순서를 사용한다. FK constraint 변경은 짧은 DDL lock이 필요하므로 배포 창에서 실행한다.</td></tr>
+    </tbody></table>
+    <h3>검증 증거와 공백</h3>
+    <ul><li><code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>, <code>pnpm build</code> 통과.</li><li><code>pnpm test --runInBand</code>: 54 suites / 256 tests 통과.</li><li><code>DATABASE_URL=…:5436/mogak_test pnpm test:integration --runInBand</code>: 3 suites / 20 tests 통과. 탈퇴 관계 정리, 빈 계정, rollback, 타 사용자 보존, FK lock 대기가 포함된다.</li><li>그러나 DB FK cascade 제거가 없으므로 위 테스트만으로 명시 delete의 완전성을 독립 증명할 수 없다.</li></ul>
+    <aside><p><strong>재리뷰 판단:</strong> <em>concrete finding 없음</em>. 동시성·rollback·삭제 범위와 DB cascade 제거를 실제 schema 및 통합 테스트로 확인했다. 운영 배포에서는 README의 인덱스 선적용 절차와 FK DDL 배포 창을 따라야 한다.</p></aside>
     </section><section id="non-goals"><h2>범위 밖</h2>
     <p>외부 오브젝트 스토리지 삭제, 비동기 purge job, lifecycle 상태 및 물리 core 모듈 분리(#10)는 이번 동기 구현에 포함하지 않는다.</p>
     </section></article></main>
