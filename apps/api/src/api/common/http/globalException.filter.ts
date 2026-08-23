@@ -2,11 +2,12 @@ import {
   Catch,
   HttpException,
   HttpStatus,
-  Logger,
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
+import { InjectPinoLogger } from 'nestjs-pino';
+import type { PinoLogger } from 'nestjs-pino';
 import type { Response } from 'express';
 
 import { DomainException } from '@core/common/error/domainException';
@@ -48,7 +49,10 @@ const MAX_LOG_STRING_LENGTH = 1_000;
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(GlobalExceptionFilter.name);
+  constructor(
+    @InjectPinoLogger(GlobalExceptionFilter.name)
+    private readonly logger: PinoLogger,
+  ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
@@ -75,15 +79,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       });
     } else if (exception instanceof HttpException) {
       if (exception.getStatus() >= HttpStatus.INTERNAL_SERVER_ERROR) {
-        this.logger.error('Unhandled HTTP exception', exception.stack);
+        this.logger.error({ err: safeErrorSnapshot(exception) }, 'Unhandled HTTP exception');
       }
     } else {
       this.logger.error(
         {
           event: 'unhandled_exception',
           database: databaseErrorDetails(exception),
+          ...(exception instanceof Error ? { err: safeErrorSnapshot(exception) } : {}),
         },
-        exception instanceof Error ? exception.stack : undefined,
+        'Unhandled exception',
       );
     }
 
@@ -115,6 +120,27 @@ function databaseErrorDetails(
         ...(constraint === undefined ? {} : { constraint }),
         ...(table === undefined ? {} : { table }),
       };
+}
+
+function safeErrorSnapshot(error: Error): Error {
+  const snapshot = new Error();
+  assignSafeErrorString(snapshot, error, 'name');
+  assignSafeErrorString(snapshot, error, 'message');
+  assignSafeErrorString(snapshot, error, 'stack');
+  return snapshot;
+}
+
+function assignSafeErrorString(
+  snapshot: Error,
+  error: Error,
+  field: 'name' | 'message' | 'stack',
+): void {
+  try {
+    const value = error[field];
+    if (typeof value === 'string') snapshot[field] = value;
+  } catch {
+    // A hostile error getter must not make exception handling fail.
+  }
 }
 
 function appErrorForDomainCode(code: string): AppErrorDefinition {

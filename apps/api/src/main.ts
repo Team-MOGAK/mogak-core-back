@@ -2,12 +2,14 @@ import 'reflect-metadata';
 
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { Logger as PinoLogger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { configureApp } from '@api/app.setup';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(PinoLogger));
   const config = app.get(ConfigService);
   configureApp(app, {
     corsAllowedOrigins: parseCorsAllowedOrigins(config.get<string>('CORS_ALLOWED_ORIGINS')),
