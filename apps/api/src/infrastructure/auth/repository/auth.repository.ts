@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm';
+import { unionAll } from 'drizzle-orm/pg-core';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
 import {
@@ -224,29 +225,34 @@ export class AuthRepository implements AuthPersistencePort {
   async deleteUser(userId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       const targetPostIds = withdrawalTargetPostIds(tx, userId);
-      const postAuthors = await tx
-        .select({ userId: posts.authorId })
-        .from(posts)
-        .where(inArray(posts.id, targetPostIds));
-      const commentAuthors = await tx
-        .select({ userId: postComments.authorId })
-        .from(postComments)
-        .where(inArray(postComments.postId, targetPostIds));
-      const likeUsers = await tx
-        .select({ userId: postLikes.userId })
-        .from(postLikes)
-        .where(inArray(postLikes.postId, targetPostIds));
-      const followUsers = await tx
-        .select({ followerId: follows.followerId, followingId: follows.followingId })
-        .from(follows)
-        .where(or(eq(follows.followerId, userId), eq(follows.followingId, userId)));
-      await lockUsersForTransaction(tx, [
-        userId,
-        ...postAuthors.map((row) => row.userId),
-        ...commentAuthors.map((row) => row.userId),
-        ...likeUsers.map((row) => row.userId),
-        ...followUsers.flatMap((row) => [row.followerId, row.followingId]),
-      ]);
+      const targetPosts = tx.$with('target_posts').as(targetPostIds);
+      const relatedUsers = unionAll(
+        tx
+          .select({ userId: posts.authorId })
+          .from(posts)
+          .innerJoin(targetPosts, eq(posts.id, targetPosts.id)),
+        tx
+          .select({ userId: postComments.authorId })
+          .from(postComments)
+          .innerJoin(targetPosts, eq(postComments.postId, targetPosts.id)),
+        tx
+          .select({ userId: postLikes.userId })
+          .from(postLikes)
+          .innerJoin(targetPosts, eq(postLikes.postId, targetPosts.id)),
+        tx
+          .select({ userId: follows.followerId })
+          .from(follows)
+          .where(eq(follows.followerId, userId)),
+        tx
+          .select({ userId: follows.followingId })
+          .from(follows)
+          .where(eq(follows.followingId, userId)),
+      ).as('related_users');
+      const related = await tx
+        .with(targetPosts)
+        .select({ userId: relatedUsers.userId })
+        .from(relatedUsers);
+      await lockUsersForTransaction(tx, [userId, ...related.map((row) => row.userId)]);
 
       const ownedMogakIds = withdrawalOwnedMogakIds(tx, userId);
       const ownedJogakIds = tx

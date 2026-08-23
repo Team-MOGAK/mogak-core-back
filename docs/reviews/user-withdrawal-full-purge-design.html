@@ -27,7 +27,7 @@
     <p>대량 계정에서도 bind parameter 제한에 걸리지 않도록 탈퇴 cascade는 JavaScript ID 배열이나 <code>IN (...ids)</code>가 아니라 DB 서브쿼리로 수행한다.</p>
     <p>이 lock은 DB 전체에 공유되지만 같은 사용자 key만 충돌한다. transaction commit/rollback 때 자동 해제된다.</p>
     </section><section id="orm-purge"><h2>ORM 삭제 전환 — 재승인 대상</h2>
-    <p><mark>변경 제안:</mark> 탈퇴의 CTE, <code>DELETE USING</code>, 테이블명 문자열 raw SQL을 없앤다. 탈퇴 persistence 경로에서 Drizzle table 정의와 query builder를 사용해 <code>targetPostIds</code>, <code>ownedJogakIds</code>, <code>relatedUserIds</code>를 서브쿼리로 조합한다.</p>
+    <p><mark>변경 제안:</mark> 테이블명 문자열 raw SQL과 <code>DELETE USING</code>을 없앤다. 탈퇴 persistence 경로에서 Drizzle table 정의와 query builder를 사용한다. 관련 사용자 lock 대상 조회는 Drizzle typed CTE <code>target_posts</code>를 한 SQL 안에서 재사용하고, 삭제는 서브쿼리로 조합한다.</p>
     <ol><li>조회한 관련 사용자 ID는 기존처럼 정렬·중복 제거해 advisory lock에만 사용한다.</li><li>삭제는 <code>tx.delete(table).where(inArray(column, subquery))</code>로 수행한다. 자식부터 부모로의 순서는 유지한다.</li><li>삭제용 subquery는 lock 획득 뒤 다시 평가한다. 삭제 조건에 JavaScript ID 배열을 바인딩하지 않는다.</li></ol>
     <p><mark>동시 개선 범위:</mark> lock 전에 owner를 찾기 위한 join은 유지한다. 그러나 lock 후에는 해당 owner의 탈퇴가 같은 lock 없이 진행될 수 없으므로, 실행·조각·모각·게시글의 존재 재확인은 각 PK 또는 직접 FK만 조회한다. 같은 소유권 join을 두 번째 수행하지 않는다.</p>
     <ul><li><code>updateExecutionStatus</code>: 3-join 재확인 → <code>daily_jogak_id</code> PK 재확인</li><li><code>insertExecution</code>, <code>createJogakWithSchedule</code>: owner join 재수행 → <code>jogak_id</code>/<code>mogak_id</code> PK 재확인</li><li><code>createForOccurrence</code>: 2-join 재확인 → <code>jogak_id</code> PK 재확인</li><li><code>toggleLike</code>, <code>createComment</code>: lock 대상 수집용 hierarchy join은 유지하고, lock 후 존재 확인은 <code>post_id</code> PK 재확인</li></ul>
