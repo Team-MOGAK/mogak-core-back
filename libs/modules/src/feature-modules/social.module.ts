@@ -6,11 +6,9 @@ import { SOCIAL_REPOSITORY } from '@core/social/application/port/social.reposito
 import { STORAGE_PORT } from '@core/storage/application/storage.port';
 import { SocialService } from '@core/social/application/service/social.service';
 import { SocialRepository } from '@infra/social/repository/social.repository';
-import { SocialController } from '@api/social/presentation/controller/social.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule, StorageModule],
-  controllers: [SocialController],
   providers: [
     {
       provide: SocialService,
@@ -20,5 +18,6 @@ import { SocialController } from '@api/social/presentation/controller/social.con
     SocialRepository,
     { provide: SOCIAL_REPOSITORY, useExisting: SocialRepository },
   ],
+  exports: [SocialService],
 })
 export class SocialModule {}

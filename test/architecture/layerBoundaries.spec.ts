@@ -5,7 +5,11 @@ import ts from 'typescript';
 
 type Violation = Readonly<{ file: string; message: string }>;
 
-const sourceRoot = resolve(process.cwd(), 'apps/api/src');
+const sourceRoots = [
+  resolve(process.cwd(), 'apps/api/src'),
+  resolve(process.cwd(), 'libs/core/src'),
+  resolve(process.cwd(), 'libs/modules/src'),
+];
 const forbiddenDomainPackages = [
   /^@nestjs(?:\/|$)/,
   /^zod(?:\/|$)/,
@@ -23,22 +27,22 @@ const sourceAliases = {
   '@api/': 'api',
   '@core/': 'core',
   '@infra/': 'infrastructure',
-  '@composition/': 'composition',
+  '@mogak/modules/': 'modules',
 } as const;
 
 describe('layer boundaries', () => {
   it('keeps source imports and request contracts within the agreed architecture', () => {
-    const violations = collectLayerBoundaryViolations(sourceRoot);
+    const violations = sourceRoots.flatMap(collectLayerBoundaryViolations);
 
     expect(formatViolations(violations)).toEqual([]);
   });
 
   it('keeps PostgreSQL unique-violation details out of auth and user application services', () => {
     expect(
-      readFileSync('apps/api/src/core/auth/application/service/auth.service.ts', 'utf8'),
+      readFileSync('libs/core/src/core/auth/application/service/auth.service.ts', 'utf8'),
     ).not.toMatch(/23505|users_email_unique|social_accounts_provider_user_unique/);
     expect(
-      readFileSync('apps/api/src/core/users/application/service/user.service.ts', 'utf8'),
+      readFileSync('libs/core/src/core/users/application/service/user.service.ts', 'utf8'),
     ).not.toMatch(/23505|users_nickname_unique/);
   });
 
@@ -79,6 +83,11 @@ describe('layer boundaries', () => {
         root,
         'core/social/application/type/probe.api.ts',
         `import { SocialController } from '@api/social/presentation/controller/social.controller'; void SocialController;`,
+      );
+      writeFixture(
+        root,
+        'core/social/application/type/probe.modules.ts',
+        `import { SocialModule } from '@mogak/modules/feature-modules/social.module'; void SocialModule;`,
       );
       writeFixture(
         root,
@@ -128,6 +137,9 @@ describe('layer boundaries', () => {
           ),
           expect.stringContaining(
             "core must not import an adapter layer '@api/social/presentation/controller/social.controller'",
+          ),
+          expect.stringContaining(
+            "core must not import an adapter layer '@mogak/modules/feature-modules/social.module'",
           ),
           expect.stringContaining(
             "application must not import database '../../../database/schema'",
@@ -181,7 +193,7 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
             root,
             file,
             moduleSpecifier,
-            new Set(['api', 'infrastructure', 'composition', 'database']),
+            new Set(['api', 'infrastructure', 'modules', 'composition', 'database']),
           )
         ) {
           violations.push({

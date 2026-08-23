@@ -1,8 +1,8 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./apps/api/src"
+    "rootDir": "."
   },
-  "include": ["apps/api/src/**/*.ts"],
+  "include": ["apps/api/src/**/*.ts", "libs/**/*.ts"],
   "exclude": ["node_modules", "dist", "test", "**/*.spec.ts"]
 }

@@ -14,13 +14,9 @@ import { UserService } from '@core/users/application/service/user.service';
 import { ConsentRepository } from '@infra/users/repository/consent.repository';
 import { MetadataRepository } from '@infra/users/repository/metadata.repository';
 import { UserRepository } from '@infra/users/repository/user.repository';
-import { ConsentController } from '@api/users/presentation/controller/consent.controller';
-import { MetadataController } from '@api/users/presentation/controller/metadata.controller';
-import { UsersController } from '@api/users/presentation/controller/users.controller';
 
 @Module({
   imports: [DatabaseModule, AuthModule, StorageModule],
-  controllers: [UsersController, ConsentController, MetadataController],
   providers: [
     UserRepository,
     ConsentRepository,

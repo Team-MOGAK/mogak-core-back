@@ -3,9 +3,12 @@
     "baseUrl": ".",
     "paths": {
       "@api/*": ["apps/api/src/api/*"],
-      "@core/*": ["apps/api/src/core/*"],
-      "@infra/*": ["apps/api/src/infrastructure/*"],
-      "@composition/*": ["apps/api/src/composition/*"]
+      "@core/*": ["libs/core/src/core/*"],
+      "@infra/*": ["libs/modules/src/infrastructure/*"],
+      "@mogak/core": ["libs/core/src"],
+      "@mogak/core/*": ["libs/core/src/*"],
+      "@mogak/modules": ["libs/modules/src"],
+      "@mogak/modules/*": ["libs/modules/src/*"]
     },
     "module": "commonjs",
     "target": "ES2023",
@@ -21,5 +24,5 @@
     "types": ["node", "jest", "multer"],
     "skipLibCheck": true
   },
-  "include": ["apps/api/src/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "*.ts"]
+  "include": ["apps/api/src/**/*.ts", "libs/**/*.ts", "test/**/*.ts", "scripts/**/*.ts", "*.ts"]
 }
