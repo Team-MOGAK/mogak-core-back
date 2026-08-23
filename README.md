@@ -90,15 +90,6 @@ curl http://localhost:8080/health
 # {"status":"ok"}
 ```
 
-### 운영 인덱스 사전 준비
-
-탈퇴 purge 인덱스가 아직 없는 운영 DB에서는 migration 전에 아래 명령을 한 번 실행합니다. 이 명령은 각 인덱스를 `CREATE INDEX CONCURRENTLY`로 만들어 일반 쓰기를 막지 않습니다. 이어서 일반 migration을 적용하면 `0004`는 이미 존재하는 인덱스를 건너뛰고 `0005` FK 정책 변경을 적용합니다.
-
-```bash
-DATABASE_URL=... pnpm db:prepare-withdrawal-indexes
-DATABASE_URL=... pnpm db:migrate
-```
-
 ## 검증
 
 ```bash

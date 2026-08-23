@@ -27,7 +27,6 @@
     "verify:local": "node scripts/verify-local.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:prepare-withdrawal-indexes": "node scripts/prepare-withdrawal-purge-indexes.mjs",
     "db:migrate:legacy-compat": "node scripts/migrateLegacySchemaCompatibility.mjs"
   },
   "dependencies": {
