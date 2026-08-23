@@ -1,5 +1,7 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { InjectPinoLogger } from 'nestjs-pino';
+import type { PinoLogger } from 'nestjs-pino';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
 import type { Database } from '../../database/database.provider';
@@ -40,9 +42,10 @@ type UpdatedPostRecord = Readonly<{ id: number; contents: string; updatedAt: Dat
 
 @Injectable()
 export class PostRepository implements PostRepositoryPort {
-  private readonly logger = new Logger(PostRepository.name);
-
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    @InjectPinoLogger(PostRepository.name) private readonly logger: PinoLogger,
+  ) {}
 
   async createForOccurrence(
     input: CreatePostForOccurrenceInput,
@@ -54,8 +57,7 @@ export class PostRepository implements PostRepositoryPort {
         .where(eq(jogaks.id, input.jogakId));
       if (stillOwned === undefined) {
         this.logger.warn({
-          event: 'resource_not_found_after_user_lock',
-          resource: 'JOGAK',
+          event: 'jogak_not_found_after_lock',
           operation: 'create_post_for_occurrence',
         });
         throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
@@ -66,8 +68,7 @@ export class PostRepository implements PostRepositoryPort {
         .where(eq(users.id, input.authorId));
       if (author === undefined) {
         this.logger.warn({
-          event: 'resource_not_found_after_user_lock',
-          resource: 'USER',
+          event: 'user_not_found_after_lock',
           operation: 'create_post_for_occurrence',
         });
         throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
@@ -263,8 +264,7 @@ export class PostRepository implements PostRepositoryPort {
         .where(eq(posts.id, input.postId));
       if (post === undefined) {
         this.logger.warn({
-          event: 'resource_not_found_after_user_lock',
-          resource: 'POST',
+          event: 'post_not_found_after_lock',
           operation: 'toggle_like',
         });
         throw new DomainException(DomainErrorCode.POST_NOT_FOUND);
@@ -275,8 +275,7 @@ export class PostRepository implements PostRepositoryPort {
         .where(eq(users.id, input.userId));
       if (actor === undefined) {
         this.logger.warn({
-          event: 'resource_not_found_after_user_lock',
-          resource: 'USER',
+          event: 'user_not_found_after_lock',
           operation: 'toggle_like',
         });
         throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
@@ -322,8 +321,7 @@ export class PostRepository implements PostRepositoryPort {
         .where(eq(posts.id, input.postId));
       if (post === undefined) {
         this.logger.warn({
-          event: 'resource_not_found_after_user_lock',
-          resource: 'POST',
+          event: 'post_not_found_after_lock',
           operation: 'create_comment',
         });
         throw new DomainException(DomainErrorCode.POST_NOT_FOUND);
@@ -334,8 +332,7 @@ export class PostRepository implements PostRepositoryPort {
         .where(eq(users.id, input.authorId));
       if (author === undefined) {
         this.logger.warn({
-          event: 'resource_not_found_after_user_lock',
-          resource: 'USER',
+          event: 'user_not_found_after_lock',
           operation: 'create_comment',
         });
         throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
