@@ -82,14 +82,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         this.logger.error({ err: safeErrorSnapshot(exception) }, 'Unhandled HTTP exception');
       }
     } else {
-      this.logger.error(
-        {
-          event: 'unhandled_exception',
-          database: databaseErrorDetails(exception),
-          ...(exception instanceof Error ? { err: safeErrorSnapshot(exception) } : {}),
-        },
-        'Unhandled exception',
-      );
+      this.logger.error(unhandledExceptionLog(exception), 'Unhandled exception');
     }
 
     const error =
@@ -113,13 +106,22 @@ function databaseErrorDetails(
   const code = typeof details.code === 'string' ? details.code : undefined;
   const constraint = typeof details.constraint === 'string' ? details.constraint : undefined;
   const table = typeof details.table === 'string' ? details.table : undefined;
-  return code === undefined && constraint === undefined && table === undefined
-    ? undefined
-    : {
-        ...(code === undefined ? {} : { code }),
-        ...(constraint === undefined ? {} : { constraint }),
-        ...(table === undefined ? {} : { table }),
-      };
+  if (code === undefined && constraint === undefined && table === undefined) return undefined;
+  const result: { code?: string; constraint?: string; table?: string } = {};
+  if (code !== undefined) result.code = code;
+  if (constraint !== undefined) result.constraint = constraint;
+  if (table !== undefined) result.table = table;
+  return result;
+}
+
+function unhandledExceptionLog(exception: unknown): {
+  event: 'unhandled_exception';
+  database: ReturnType<typeof databaseErrorDetails>;
+  err?: Error;
+} {
+  const database = databaseErrorDetails(exception);
+  if (!(exception instanceof Error)) return { event: 'unhandled_exception', database };
+  return { event: 'unhandled_exception', database, err: safeErrorSnapshot(exception) };
 }
 
 function safeErrorSnapshot(error: Error): Error {
