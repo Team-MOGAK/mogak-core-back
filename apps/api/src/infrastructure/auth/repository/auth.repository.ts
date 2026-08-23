@@ -1,10 +1,21 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
 import {
   authSessions,
   consentItems,
+  follows,
+  jogakExecutions,
+  jogakSchedules,
+  jogakScheduleWeekdays,
+  jogaks,
+  modarats,
+  mogaks,
+  postComments,
+  postImages,
+  postLikes,
+  posts,
   socialAccounts,
   userConsents,
   users,
@@ -212,69 +223,92 @@ export class AuthRepository implements AuthPersistencePort {
 
   async deleteUser(userId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      const related = await tx.execute<{ user_id: number }>(sql`
-        with target_posts as (
-          select p.post_id from post p where p.user_id = ${userId}
-          union
-          select p.post_id from post p join daily_jogak d on d.daily_jogak_id = p.daily_jogak_id
-            join jogak j on j.jogak_id = d.jogak_id join mogak m on m.mogak_id = j.mogak_id
-            join modarat r on r.modarat_id = m.modarat_id where r.user_id = ${userId}
-        )
-        select ${userId}::bigint as user_id
-        union select p.user_id from post p join target_posts t on t.post_id = p.post_id
-        union select c.user_id from post_comment c join target_posts t on t.post_id = c.post_id
-        union select l.user_id from post_like l join target_posts t on t.post_id = l.post_id
-        union select from_id from follow where from_id = ${userId} or to_id = ${userId}
-        union select to_id from follow where from_id = ${userId} or to_id = ${userId}
-      `);
-      await lockUsersForTransaction(
-        tx,
-        related.rows.map((row) => Number(row.user_id)),
-      );
+      const targetPostIds = withdrawalTargetPostIds(tx, userId);
+      const postAuthors = await tx
+        .select({ userId: posts.authorId })
+        .from(posts)
+        .where(inArray(posts.id, targetPostIds));
+      const commentAuthors = await tx
+        .select({ userId: postComments.authorId })
+        .from(postComments)
+        .where(inArray(postComments.postId, targetPostIds));
+      const likeUsers = await tx
+        .select({ userId: postLikes.userId })
+        .from(postLikes)
+        .where(inArray(postLikes.postId, targetPostIds));
+      const followUsers = await tx
+        .select({ followerId: follows.followerId, followingId: follows.followingId })
+        .from(follows)
+        .where(or(eq(follows.followerId, userId), eq(follows.followingId, userId)));
+      await lockUsersForTransaction(tx, [
+        userId,
+        ...postAuthors.map((row) => row.userId),
+        ...commentAuthors.map((row) => row.userId),
+        ...likeUsers.map((row) => row.userId),
+        ...followUsers.flatMap((row) => [row.followerId, row.followingId]),
+      ]);
 
-      // The lock union is deliberately read before locking then every delete
-      // predicate is re-evaluated below; no JavaScript ID list or IN binding is
-      // used, so a large account cannot exceed PostgreSQL bind limits.
-      const targetPosts = sql`
-        select p.post_id from post p where p.user_id = ${userId}
-        union
-        select p.post_id from post p join daily_jogak d on d.daily_jogak_id = p.daily_jogak_id
-          join jogak j on j.jogak_id = d.jogak_id join mogak m on m.mogak_id = j.mogak_id
-          join modarat r on r.modarat_id = m.modarat_id where r.user_id = ${userId}`;
-      await tx.execute(sql`delete from post_img where post_id in (${targetPosts})`);
-      await tx.execute(
-        sql`delete from post_comment where post_id in (${targetPosts}) or user_id = ${userId}`,
-      );
-      await tx.execute(
-        sql`delete from post_like where post_id in (${targetPosts}) or user_id = ${userId}`,
-      );
-      await tx.execute(sql`delete from post where post_id in (${targetPosts})`);
-      await tx.execute(
-        sql`delete from jogak_schedule_weekdays w using jogak_schedules s, jogak j, mogak m, modarat r where w.schedule_id=s.id and s.jogak_id=j.jogak_id and j.mogak_id=m.mogak_id and m.modarat_id=r.modarat_id and r.user_id=${userId}`,
-      );
-      await tx.execute(
-        sql`delete from jogak_schedules s using jogak j, mogak m, modarat r where s.jogak_id=j.jogak_id and j.mogak_id=m.mogak_id and m.modarat_id=r.modarat_id and r.user_id=${userId}`,
-      );
-      await tx.execute(
-        sql`delete from daily_jogak d using jogak j, mogak m, modarat r where d.jogak_id=j.jogak_id and j.mogak_id=m.mogak_id and m.modarat_id=r.modarat_id and r.user_id=${userId}`,
-      );
-      await tx.execute(
-        sql`delete from jogak j using mogak m, modarat r where j.mogak_id=m.mogak_id and m.modarat_id=r.modarat_id and r.user_id=${userId}`,
-      );
-      await tx.execute(
-        sql`delete from mogak m using modarat r where m.modarat_id=r.modarat_id and r.user_id=${userId}`,
-      );
-      await tx.execute(sql`delete from modarat where user_id=${userId}`);
-      await tx.execute(sql`delete from follow where from_id=${userId} or to_id=${userId}`);
-      await tx.execute(sql`delete from auth_sessions where user_id=${userId}`);
-      await tx.execute(sql`delete from social_account where user_id=${userId}`);
-      await tx.execute(sql`delete from user_consent where user_id=${userId}`);
-      const deleted = await tx.execute<{ user_id: number }>(
-        sql`delete from users where user_id=${userId} returning user_id`,
-      );
-      return deleted.rows.length === 1;
+      const ownedMogakIds = withdrawalOwnedMogakIds(tx, userId);
+      const ownedJogakIds = tx
+        .select({ id: jogaks.id })
+        .from(jogaks)
+        .where(inArray(jogaks.mogakId, ownedMogakIds));
+      const ownedScheduleIds = tx
+        .select({ id: jogakSchedules.id })
+        .from(jogakSchedules)
+        .where(inArray(jogakSchedules.jogakId, ownedJogakIds));
+
+      await tx.delete(postImages).where(inArray(postImages.postId, targetPostIds));
+      await tx
+        .delete(postComments)
+        .where(or(inArray(postComments.postId, targetPostIds), eq(postComments.authorId, userId)));
+      await tx
+        .delete(postLikes)
+        .where(or(inArray(postLikes.postId, targetPostIds), eq(postLikes.userId, userId)));
+      await tx.delete(posts).where(inArray(posts.id, targetPostIds));
+      await tx
+        .delete(jogakScheduleWeekdays)
+        .where(inArray(jogakScheduleWeekdays.scheduleId, ownedScheduleIds));
+      await tx.delete(jogakSchedules).where(inArray(jogakSchedules.jogakId, ownedJogakIds));
+      await tx.delete(jogakExecutions).where(inArray(jogakExecutions.jogakId, ownedJogakIds));
+      await tx.delete(jogaks).where(inArray(jogaks.mogakId, ownedMogakIds));
+      await tx.delete(mogaks).where(inArray(mogaks.id, ownedMogakIds));
+      await tx.delete(modarats).where(eq(modarats.userId, userId));
+      await tx
+        .delete(follows)
+        .where(or(eq(follows.followerId, userId), eq(follows.followingId, userId)));
+      await tx.delete(authSessions).where(eq(authSessions.userId, userId));
+      await tx.delete(socialAccounts).where(eq(socialAccounts.userId, userId));
+      await tx.delete(userConsents).where(eq(userConsents.userId, userId));
+      const deleted = await tx
+        .delete(users)
+        .where(eq(users.id, userId))
+        .returning({ id: users.id });
+      return deleted.length === 1;
     });
   }
+}
+
+function withdrawalOwnedMogakIds(tx: Pick<Database, 'select'>, userId: number) {
+  return tx
+    .select({ id: mogaks.id })
+    .from(mogaks)
+    .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+    .where(eq(modarats.userId, userId));
+}
+
+function withdrawalTargetPostIds(tx: Pick<Database, 'select'>, userId: number) {
+  const ownedExecutionIds = tx
+    .select({ id: jogakExecutions.id })
+    .from(jogakExecutions)
+    .innerJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
+    .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+    .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+    .where(eq(modarats.userId, userId));
+  return tx
+    .select({ id: posts.id })
+    .from(posts)
+    .where(or(eq(posts.authorId, userId), inArray(posts.jogakExecutionId, ownedExecutionIds)));
 }
 
 function asAuthUser(user: {

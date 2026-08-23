@@ -62,8 +62,6 @@ export class PostRepository implements PostRepositoryPort {
       const [stillOwned] = await tx
         .select({ id: jogaks.id })
         .from(jogaks)
-        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
-        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
         .where(eq(jogaks.id, input.jogakId));
       if (stillOwned === undefined) {
         this.logger.warn({
@@ -280,8 +278,11 @@ export class PostRepository implements PostRepositoryPort {
       await lockUsersForTransaction(tx, relatedUsers);
       // Re-read after locks: withdrawal may have deleted the post while this
       // request was waiting.
-      const stillRelated = await this.relatedUserIdsForPost(tx, input.postId, input.userId);
-      if (stillRelated.length === 1) {
+      const [post] = await tx
+        .select({ id: posts.id })
+        .from(posts)
+        .where(eq(posts.id, input.postId));
+      if (post === undefined) {
         this.logger.warn({
           event: 'resource_not_found_after_user_lock',
           resource: 'POST',
@@ -338,7 +339,11 @@ export class PostRepository implements PostRepositoryPort {
     return this.db.transaction(async (tx) => {
       const relatedUsers = await this.relatedUserIdsForPost(tx, input.postId, input.authorId);
       await lockUsersForTransaction(tx, relatedUsers);
-      if ((await this.relatedUserIdsForPost(tx, input.postId, input.authorId)).length === 1) {
+      const [post] = await tx
+        .select({ id: posts.id })
+        .from(posts)
+        .where(eq(posts.id, input.postId));
+      if (post === undefined) {
         this.logger.warn({
           event: 'resource_not_found_after_user_lock',
           resource: 'POST',

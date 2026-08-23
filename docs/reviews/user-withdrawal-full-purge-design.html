@@ -7,7 +7,7 @@
       <p><strong>설계 상태: 승인됨</strong> · 2026-08-23</p>
       <p>목적: 탈퇴와 동시 mutation이 경합해도 앱 코드가 관계 데이터를 안전하게 삭제한다.</p>
     </header>
-    <nav aria-label="설계 목차"><a href="#contract">HTTP 계약</a> · <a href="#concurrency">동시성 규약</a> · <a href="#failure">실패 처리 책임</a> · <a href="#control">설계 점검</a></nav>
+    <nav aria-label="설계 목차"><a href="#contract">HTTP 계약</a> · <a href="#concurrency">동시성 규약</a> · <a href="#orm-purge">ORM 삭제 전환</a> · <a href="#failure">실패 처리 책임</a> · <a href="#control">설계 점검</a></nav>
     <main><article>
     <h2>목적</h2>
     <p>회원 탈퇴 요청 안에서 회원과 회원이 소유하거나 작성한 관계 데이터를 앱 코드가 명시적으로 삭제한다. DB FK cascade는 삭제 완결성의 전제가 아니다.</p>
@@ -24,13 +24,36 @@
     </ol>
     </section><section id="concurrency"><h2>동시성 규약</h2>
     <p>탈퇴는 대상 사용자뿐 아니라, 대상 실행에 연결된 게시글 작성자·댓글 작성자·좋아요 사용자와 팔로우 상대를 하나의 집합으로 먼저 조회해 오름차순으로 <code>pg_advisory_xact_lock</code> 한다. lock 획득 후 모든 삭제 대상은 SQL subquery로 다시 계산한다. 댓글·좋아요 mutation도 작성자, 게시글 작성자, 연결된 모각 소유자를 함께 lock하고, 팔로우는 양쪽 사용자를 함께 lock한다.</p>
-    <p>대량 계정에서도 bind parameter 제한에 걸리지 않도록 탈퇴 cascade는 JavaScript ID 배열이나 <code>IN (...ids)</code>가 아니라 set-based SQL subquery와 <code>DELETE USING</code>으로 수행한다.</p>
+    <p>대량 계정에서도 bind parameter 제한에 걸리지 않도록 탈퇴 cascade는 JavaScript ID 배열이나 <code>IN (...ids)</code>가 아니라 DB 서브쿼리로 수행한다.</p>
     <p>이 lock은 DB 전체에 공유되지만 같은 사용자 key만 충돌한다. transaction commit/rollback 때 자동 해제된다.</p>
+    </section><section id="orm-purge"><h2>ORM 삭제 전환 — 재승인 대상</h2>
+    <p><mark>변경 제안:</mark> 탈퇴의 CTE, <code>DELETE USING</code>, 테이블명 문자열 raw SQL을 없앤다. 탈퇴 persistence 경로에서 Drizzle table 정의와 query builder를 사용해 <code>targetPostIds</code>, <code>ownedJogakIds</code>, <code>relatedUserIds</code>를 서브쿼리로 조합한다.</p>
+    <ol><li>조회한 관련 사용자 ID는 기존처럼 정렬·중복 제거해 advisory lock에만 사용한다.</li><li>삭제는 <code>tx.delete(table).where(inArray(column, subquery))</code>로 수행한다. 자식부터 부모로의 순서는 유지한다.</li><li>삭제용 subquery는 lock 획득 뒤 다시 평가한다. 삭제 조건에 JavaScript ID 배열을 바인딩하지 않는다.</li></ol>
+    <p><mark>동시 개선 범위:</mark> lock 전에 owner를 찾기 위한 join은 유지한다. 그러나 lock 후에는 해당 owner의 탈퇴가 같은 lock 없이 진행될 수 없으므로, 실행·조각·모각·게시글의 존재 재확인은 각 PK 또는 직접 FK만 조회한다. 같은 소유권 join을 두 번째 수행하지 않는다.</p>
+    <ul><li><code>updateExecutionStatus</code>: 3-join 재확인 → <code>daily_jogak_id</code> PK 재확인</li><li><code>insertExecution</code>, <code>createJogakWithSchedule</code>: owner join 재수행 → <code>jogak_id</code>/<code>mogak_id</code> PK 재확인</li><li><code>createForOccurrence</code>: 2-join 재확인 → <code>jogak_id</code> PK 재확인</li><li><code>toggleLike</code>, <code>createComment</code>: lock 대상 수집용 hierarchy join은 유지하고, lock 후 존재 확인은 <code>post_id</code> PK 재확인</li></ul>
+    <figure><figcaption>탈퇴 transaction 경계</figcaption><pre><code>관련 사용자 조회 → 정렬 advisory lock → 삭제 대상 subquery 재평가
+→ 게시글 자식 삭제 → 게시글 삭제 → 모각 자식/부모 삭제
+→ follow/session/account/consent 삭제 → users 삭제 → commit</code></pre><p>조회 결과 배열은 lock에만 쓰며, 삭제 범위는 DB 내부 서브쿼리가 결정한다.</p></figure>
+    <table><caption>전환 시 지켜야 할 조건</caption><thead><tr><th>조건</th><th>보장</th></tr></thead><tbody><tr><td>대량 계정 bind 한도 회피</td><td>삭제 조건은 ORM subquery</td></tr><tr><td>락 경합 안전성</td><td>기존 lock 집합·오름차순·재평가 유지</td></tr><tr><td>부분 삭제 방지</td><td>하나의 transaction 유지</td></tr><tr><td>외부 계약 유지</td><td>204 및 기존 DomainException 유지</td></tr></tbody></table>
     </section><section id="failure"><h2>실패 처리 책임 — 재승인 대상</h2>
     <p><mark>변경 제안:</mark> lock 획득 뒤 사용자·게시글·조각 등 필수 리소스가 사라진 경우, repository가 기존 <code>DomainException</code> 코드(<code>USER_NOT_FOUND</code>, <code>POST_NOT_FOUND</code>, <code>JOGAK_NOT_FOUND</code>)를 직접 던진다. service의 <code>try/catch</code>, <code>instanceof</code>, 컨텍스트별 <code>*AfterLockException</code>은 제거한다.</p>
     <p>HTTP 상태와 오류 코드는 바뀌지 않는다. 예상하지 못한 DB 오류는 기존 persistence 오류로 유지하며, 전역 FK 23503 변환은 도입하지 않는다.</p>
     </section><section id="control"><h2>설계 점검</h2>
-    <p><strong>design-control-state:</strong> 확인 중 · 질문 ID: WD-ERR-01 · 승인: 2026-08-23 사용자 승인. HTML 점검 결과는 대화로 전달되지 않았으므로 별도 미확인 상태로 남긴다.</p>
+    <p><strong>design-control-state:</strong> 확인 중 · 질문 ID: WD-ORM-01, WD-LOCK-02, WD-ERR-01 · raw SQL 전환과 lock 후 재확인 최적화는 2026-08-23 사용자 승인. HTML 점검 결과는 대화로 전달되지 않았으므로 별도 미확인 상태로 남긴다.</p>
+    <fieldset><legend>WD-ORM-01 — 대량 계정에서 bind parameter 제한을 피하면서 lock 이후 최신 삭제 범위를 적용하려면?</legend>
+      <label><input type="radio" name="wd-orm" value="a"> A. 모든 ID를 JavaScript 배열로 모아 <code>IN (...ids)</code>에 전달한다.</label><br>
+      <label><input type="radio" name="wd-orm" value="b"> B. lock에만 조회 ID 배열을 사용하고, 삭제 조건은 query builder subquery로 다시 계산한다.</label><br>
+      <label><input type="radio" name="wd-orm" value="c"> C. DB FK cascade에 모두 맡긴다.</label><br>
+      <button type="button" onclick="document.getElementById('wd-orm-result').hidden=false">결과 보기</button>
+      <output id="wd-orm-result" hidden aria-live="polite"><strong>정답: B.</strong> lock 대상은 애플리케이션이 정렬해 획득하되, 대량 삭제 범위는 DB subquery로 재평가한다.</output>
+    </fieldset>
+    <fieldset><legend>WD-LOCK-02 — owner lock을 획득한 뒤 execution이 남아 있는지 다시 확인할 때 필요한 쿼리는?</legend>
+      <label><input type="radio" name="wd-lock" value="a"> A. owner를 찾았던 모든 hierarchy join을 그대로 다시 수행한다.</label><br>
+      <label><input type="radio" name="wd-lock" value="b"> B. execution의 PK 존재만 다시 확인한다. parent 삭제는 owner lock 아래에서 자식부터 수행되므로 execution 존재가 hierarchy 존재도 보장한다.</label><br>
+      <label><input type="radio" name="wd-lock" value="c"> C. lock 이후에는 아무 재확인도 하지 않는다.</label><br>
+      <button type="button" onclick="document.getElementById('wd-lock-result').hidden=false">결과 보기</button>
+      <output id="wd-lock-result" hidden aria-live="polite"><strong>정답: B.</strong> lock 전에 기다리던 탈퇴가 끝났을 수 있으므로 존재 재확인은 필요하지만, lock 획득 뒤에는 PK 재확인으로 충분하다.</output>
+    </fieldset>
     <fieldset><legend>WD-ERR-01 — lock 대기 후 사용자가 삭제된 경우 repository는 무엇을 반환/던져야 하나?</legend>
       <label><input type="radio" name="wd-err" value="a"> A. 모든 FK 오류를 전역에서 USER_NOT_FOUND로 바꾼다.</label><br>
       <label><input type="radio" name="wd-err" value="b"> B. 해당 repository가 이미 정한 DomainException을 직접 던지고, 예상 못 한 DB 오류는 그대로 둔다.</label><br>
@@ -39,7 +62,7 @@
       <output id="wd-err-result" hidden aria-live="polite"><strong>정답: B.</strong> 경합으로 사라진 리소스는 정상적인 not-found 계약으로 처리하되, 다른 DB 결함을 USER_NOT_FOUND로 오분류하지 않는다.</output>
     </fieldset>
     </section><section id="non-goals"><h2>범위 밖</h2>
-    <p>외부 오브젝트 스토리지 삭제, 비동기 purge job, lifecycle 상태는 이번 동기 구현에 포함하지 않는다.</p>
+    <p>외부 오브젝트 스토리지 삭제, 비동기 purge job, lifecycle 상태 및 물리 core 모듈 분리(#10)는 이번 동기 구현에 포함하지 않는다.</p>
     </section></article></main>
   </body>
 </html>

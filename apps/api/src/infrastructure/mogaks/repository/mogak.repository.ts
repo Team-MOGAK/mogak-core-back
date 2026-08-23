@@ -418,8 +418,7 @@ export class MogakRepository implements MogakRepositoryPort {
       const [stillOwned] = await tx
         .select({ id: mogaks.id })
         .from(mogaks)
-        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-        .where(and(eq(mogaks.id, input.mogak.id), eq(modarats.userId, owner.userId)));
+        .where(eq(mogaks.id, input.mogak.id));
       if (stillOwned === undefined) throw new MogakPersistenceException('Mogak did not exist');
       const [createdJogak] = await tx
         .insert(jogaks)
@@ -615,9 +614,7 @@ export class MogakRepository implements MogakRepositoryPort {
       const [stillOwned] = await tx
         .select({ id: jogaks.id })
         .from(jogaks)
-        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
-        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-        .where(and(eq(jogaks.id, input.jogakId), eq(modarats.userId, owner.userId)));
+        .where(eq(jogaks.id, input.jogakId));
       if (stillOwned === undefined) return null;
       const [execution] = await tx
         .insert(jogakExecutions)
@@ -652,10 +649,7 @@ export class MogakRepository implements MogakRepositoryPort {
       const [stillExists] = await tx
         .select({ id: jogakExecutions.id })
         .from(jogakExecutions)
-        .innerJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
-        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
-        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-        .where(and(eq(jogakExecutions.id, input.executionId), eq(modarats.userId, owner.userId)));
+        .where(eq(jogakExecutions.id, input.executionId));
       if (stillExists === undefined) return null;
       const [execution] = await tx
         .update(jogakExecutions)

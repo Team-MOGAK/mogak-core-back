@@ -2,7 +2,7 @@
 <html lang="ko">
   <head><meta charset="utf-8"><title>회원 탈퇴 전체 삭제 구현 기록</title></head>
   <body>
-    <header><p><strong>구현 제어 상태:</strong> 구현 점검 중 · <strong>기준:</strong> <a href="user-withdrawal-full-purge-design.html">승인된 동기 전체 삭제 설계</a></p></header>
+    <header><p><strong>구현 제어 상태:</strong> 구현 중 · <strong>기준:</strong> <a href="user-withdrawal-full-purge-design.html">승인된 동기 전체 삭제 설계</a></p></header>
     <h1>회원 탈퇴 전체 삭제 구현 기록</h1>
     <p><strong>설계 기준:</strong> user-withdrawal-full-purge-design.html</p>
     <ul>
@@ -11,7 +11,8 @@
       <li>공통 transaction advisory lock helper를 만들고 Auth, User, Consent, Mogak, Post, Social의 mutation에 적용한다.</li>
       <li>삭제 및 HTTP 계약 테스트로 회귀를 확인한다.</li>
     </ul>
-    <section><h2>검증 근거</h2><ul><li><code>pnpm typecheck</code> 통과.</li><li>전체 unit Jest: 55 suites, 256 tests 통과.</li><li>전체 PostgreSQL integration Jest: 4 suites, 17 tests 통과.</li><li>Prettier check, ESLint, <code>pnpm build</code>, <code>git diff --check</code> 통과.</li><li>독립 no-write 최종 검토 통과.</li></ul></section>
+    <section><h2>승인된 추가 범위</h2><p>2026-08-23 승인: 탈퇴 cascade의 CTE·<code>DELETE USING</code>·테이블명 raw SQL을 Drizzle query builder/subquery로 교체했다. 또한 advisory lock 후 중복 hierarchy join을 PK 존재 재확인으로 축소했다. HTTP 204, 도메인 오류, transaction 및 lock 집합은 유지한다.</p></section>
+    <section><h2>검증 근거</h2><ul><li><code>pnpm typecheck</code> 통과.</li><li>전체 unit Jest: 55 suites, 256 tests 통과.</li><li>전체 PostgreSQL integration Jest: 4 suites, 17 tests 통과.</li><li>Prettier check, ESLint, <code>pnpm build</code>, <code>git diff --check</code> 통과.</li><li>탈퇴 persistence에서 CTE, <code>DELETE USING</code>, <code>tx.execute</code> raw deletion이 남지 않았음을 검색으로 확인.</li><li>독립 no-write 최종 검토 통과.</li></ul></section>
     <section><h2>이슈 등록</h2><p><strong>해결됨 — 직접 사용자 FK 생성 경로의 lock 후 재검증 누락:</strong> <code>createModarat</code>, <code>createSession</code>, 두 동의 upsert가 lock 뒤 동일 transaction에서 <code>users</code>를 재조회한다. 사용자가 없으면 컨텍스트별 전용 예외를 던지고 서비스 경계에서만 <code>USER_NOT_FOUND</code>로 변환한다. 전역 FK 23503 변환은 사용하지 않는다.</p><p><strong>해결됨 — schedule weekday purge 테이블명 불일치:</strong> 실제 PostgreSQL 통합 테스트에서 단수형 <code>jogak_schedule_weekday</code> 참조가 실패한 것을 발견했다. 런타임 schema와 같은 복수형 <code>jogak_schedule_weekdays</code>로 수정했고, 게시물 의존 관계 삭제·rollback·두 connection advisory-lock 대기 테스트를 포함한 전체 integration suite가 통과했다.</p><p><strong>해결됨 — lock 경합 증거:</strong> 통합 테스트는 두 번째 connection의 <code>pg_locks.granted=false</code>를 확인한 뒤 첫 transaction을 commit하고 실제 <code>AuthRepository.deleteUser()</code> 완료를 확인한다.</p></section>
     <section><h2>운영 이해 점검</h2><p>확인 중. 운영자는 DB 통합 환경에서 advisory lock 대기, rollback, A/B 데이터 보존 suite를 실행해 결과를 확인해야 한다.</p></section>
   </body>
