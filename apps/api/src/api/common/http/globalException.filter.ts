@@ -126,23 +126,10 @@ function unhandledExceptionLog(exception: unknown): {
 
 function safeErrorSnapshot(error: Error): Error {
   const snapshot = new Error();
-  assignSafeErrorString(snapshot, error, 'name');
-  assignSafeErrorString(snapshot, error, 'message');
-  assignSafeErrorString(snapshot, error, 'stack');
+  snapshot.name = error.name;
+  snapshot.message = error.message;
+  snapshot.stack = error.stack;
   return snapshot;
-}
-
-function assignSafeErrorString(
-  snapshot: Error,
-  error: Error,
-  field: 'name' | 'message' | 'stack',
-): void {
-  try {
-    const value = error[field];
-    if (typeof value === 'string') snapshot[field] = value;
-  } catch {
-    // A hostile error getter must not make exception handling fail.
-  }
 }
 
 function appErrorForDomainCode(code: string): AppErrorDefinition {
