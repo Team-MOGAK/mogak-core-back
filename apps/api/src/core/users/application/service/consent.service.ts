@@ -44,7 +44,7 @@ export class ConsentService {
     await this.validate(commands);
     try {
       await this.repository.upsertUserConsents(userId, commands, new Date());
-    } catch (error: unknown) {
+    } catch (error) {
       this.throwUserNotFoundAfterLock(error);
     }
   }
@@ -62,7 +62,7 @@ export class ConsentService {
     }
     try {
       return await this.repository.updateMarketingConsents(userId, command, new Date());
-    } catch (error: unknown) {
+    } catch (error) {
       this.throwUserNotFoundAfterLock(error);
     }
   }

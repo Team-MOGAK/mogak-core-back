@@ -22,7 +22,7 @@ export class MogakService implements OwnedMogakPort {
         title: requiredTrimmed(input.title),
         color: requiredTrimmed(input.color),
       });
-    } catch (error: unknown) {
+    } catch (error) {
       if (error instanceof ModaratUserNotFoundAfterLockException) {
         throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       }
