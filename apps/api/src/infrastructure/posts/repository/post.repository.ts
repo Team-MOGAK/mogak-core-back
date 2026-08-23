@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
@@ -41,6 +41,8 @@ type UpdatedPostRecord = Readonly<{ id: number; contents: string; updatedAt: Dat
 
 @Injectable()
 export class PostRepository implements PostRepositoryPort {
+  private readonly logger = new Logger(PostRepository.name);
+
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async createForOccurrence(
@@ -63,12 +65,26 @@ export class PostRepository implements PostRepositoryPort {
         .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
         .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
         .where(eq(jogaks.id, input.jogakId));
-      if (stillOwned === undefined) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
+      if (stillOwned === undefined) {
+        this.logger.warn({
+          event: 'resource_not_found_after_user_lock',
+          resource: 'JOGAK',
+          operation: 'create_post_for_occurrence',
+        });
+        throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
+      }
       const [author] = await tx
         .select({ id: users.id })
         .from(users)
         .where(eq(users.id, input.authorId));
-      if (author === undefined) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      if (author === undefined) {
+        this.logger.warn({
+          event: 'resource_not_found_after_user_lock',
+          resource: 'USER',
+          operation: 'create_post_for_occurrence',
+        });
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
       const [insertedExecution] = await tx
         .insert(jogakExecutions)
         .values({
@@ -265,12 +281,26 @@ export class PostRepository implements PostRepositoryPort {
       // Re-read after locks: withdrawal may have deleted the post while this
       // request was waiting.
       const stillRelated = await this.relatedUserIdsForPost(tx, input.postId, input.userId);
-      if (stillRelated.length === 1) throw new DomainException(DomainErrorCode.POST_NOT_FOUND);
+      if (stillRelated.length === 1) {
+        this.logger.warn({
+          event: 'resource_not_found_after_user_lock',
+          resource: 'POST',
+          operation: 'toggle_like',
+        });
+        throw new DomainException(DomainErrorCode.POST_NOT_FOUND);
+      }
       const [actor] = await tx
         .select({ id: users.id })
         .from(users)
         .where(eq(users.id, input.userId));
-      if (actor === undefined) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      if (actor === undefined) {
+        this.logger.warn({
+          event: 'resource_not_found_after_user_lock',
+          resource: 'USER',
+          operation: 'toggle_like',
+        });
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
       const [created] = await tx
         .insert(postLikes)
         .values(input)
@@ -309,13 +339,25 @@ export class PostRepository implements PostRepositoryPort {
       const relatedUsers = await this.relatedUserIdsForPost(tx, input.postId, input.authorId);
       await lockUsersForTransaction(tx, relatedUsers);
       if ((await this.relatedUserIdsForPost(tx, input.postId, input.authorId)).length === 1) {
+        this.logger.warn({
+          event: 'resource_not_found_after_user_lock',
+          resource: 'POST',
+          operation: 'create_comment',
+        });
         throw new DomainException(DomainErrorCode.POST_NOT_FOUND);
       }
       const [author] = await tx
         .select({ id: users.id })
         .from(users)
         .where(eq(users.id, input.authorId));
-      if (author === undefined) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      if (author === undefined) {
+        this.logger.warn({
+          event: 'resource_not_found_after_user_lock',
+          resource: 'USER',
+          operation: 'create_comment',
+        });
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
       const [created] = await tx
         .insert(postComments)
         .values(input)

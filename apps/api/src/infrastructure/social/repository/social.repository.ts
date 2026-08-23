@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
@@ -36,6 +36,8 @@ import type {
 
 @Injectable()
 export class SocialRepository implements SocialRepositoryPort {
+  private readonly logger = new Logger(SocialRepository.name);
+
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async findUserByNickname(nickname: string): Promise<SocialUserResult | null> {
@@ -46,14 +48,19 @@ export class SocialRepository implements SocialRepositoryPort {
     return user ?? null;
   }
 
-  async createFollow(command: FollowCommand): Promise<boolean> {
-    return this.db.transaction(async (tx) => {
+  async createFollow(command: FollowCommand): Promise<void> {
+    await this.db.transaction(async (tx) => {
       await lockUsersForTransaction(tx, [command.followerId, command.followingId]);
       const existing = await tx
         .select({ id: users.id })
         .from(users)
         .where(inArray(users.id, [command.followerId, command.followingId]));
       if (existing.length !== new Set([command.followerId, command.followingId]).size) {
+        this.logger.warn({
+          event: 'resource_not_found_after_user_lock',
+          resource: 'USER',
+          operation: 'create_follow',
+        });
         throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       }
       const [created] = await tx
@@ -61,18 +68,22 @@ export class SocialRepository implements SocialRepositoryPort {
         .values(command)
         .onConflictDoNothing({ target: [follows.followerId, follows.followingId] })
         .returning({ id: follows.id });
-      return created !== undefined;
+      if (created === undefined) {
+        throw new DomainException(DomainErrorCode.FOLLOW_ALREADY_EXISTS);
+      }
     });
   }
 
-  async deleteFollow(command: FollowCommand): Promise<boolean> {
-    return this.db.transaction(async (tx) => {
+  async deleteFollow(command: FollowCommand): Promise<void> {
+    await this.db.transaction(async (tx) => {
       await lockUsersForTransaction(tx, [command.followerId, command.followingId]);
       const deleted = await tx
         .delete(follows)
         .where(andFollow(command))
         .returning({ id: follows.id });
-      return deleted.length === 1;
+      if (deleted.length !== 1) {
+        throw new DomainException(DomainErrorCode.FOLLOW_NOT_FOUND);
+      }
     });
   }
 

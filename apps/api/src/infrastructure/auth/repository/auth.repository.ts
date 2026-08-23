@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
@@ -29,6 +29,8 @@ import {
 
 @Injectable()
 export class AuthRepository implements AuthPersistencePort {
+  private readonly logger = new Logger(AuthRepository.name);
+
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async findUserById(userId: number): Promise<AuthUser | null> {
@@ -143,7 +145,14 @@ export class AuthRepository implements AuthPersistencePort {
       await this.db.transaction(async (tx) => {
         await lockUsersForTransaction(tx, [userId]);
         const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
-        if (user === undefined) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+        if (user === undefined) {
+          this.logger.warn({
+            event: 'resource_not_found_after_user_lock',
+            resource: 'USER',
+            operation: 'create_session',
+          });
+          throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+        }
         await tx.insert(authSessions).values({ ...session, userId });
       });
     } catch (error: unknown) {

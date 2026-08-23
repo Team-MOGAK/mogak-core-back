@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, count, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
@@ -46,6 +46,8 @@ type DeletionTransaction = Pick<Database, 'delete' | 'select'>;
 
 @Injectable()
 export class MogakRepository implements MogakRepositoryPort {
+  private readonly logger = new Logger(MogakRepository.name);
+
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   async createModarat(input: CreateModaratInput): Promise<ModaratResult> {
@@ -55,7 +57,14 @@ export class MogakRepository implements MogakRepositoryPort {
         .select({ id: users.id })
         .from(users)
         .where(eq(users.id, input.userId));
-      if (user === undefined) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      if (user === undefined) {
+        this.logger.warn({
+          event: 'resource_not_found_after_user_lock',
+          resource: 'USER',
+          operation: 'create_modarat',
+        });
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
       const [created] = await tx
         .insert(modarats)
         .values({ userId: input.userId, title: input.title, color: input.color })
