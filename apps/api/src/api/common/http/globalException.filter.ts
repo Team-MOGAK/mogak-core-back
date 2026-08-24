@@ -96,22 +96,27 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 }
 
-function databaseErrorDetails(
-  exception: unknown,
-): Readonly<{ code?: string; constraint?: string; table?: string }> | undefined {
-  if (!(exception instanceof Error) || !('cause' in exception)) return undefined;
-  const cause = exception.cause;
-  if (typeof cause !== 'object' || cause === null) return undefined;
-  const details = cause as Record<string, unknown>;
-  const code = typeof details.code === 'string' ? details.code : undefined;
-  const constraint = typeof details.constraint === 'string' ? details.constraint : undefined;
-  const table = typeof details.table === 'string' ? details.table : undefined;
-  if (code === undefined && constraint === undefined && table === undefined) return undefined;
-  const result: { code?: string; constraint?: string; table?: string } = {};
-  if (code !== undefined) result.code = code;
-  if (constraint !== undefined) result.constraint = constraint;
-  if (table !== undefined) result.table = table;
-  return result;
+type DatabaseErrorDetails = Readonly<{
+  code?: string;
+  constraint?: string;
+  table?: string;
+}>;
+
+function databaseErrorDetails(exception: unknown): DatabaseErrorDetails | undefined {
+  const cause = exception instanceof Error ? exception.cause : undefined;
+  if (!isRecord(cause)) return undefined;
+
+  const details = {
+    code: stringOrUndefined(cause.code),
+    constraint: stringOrUndefined(cause.constraint),
+    table: stringOrUndefined(cause.table),
+  } satisfies DatabaseErrorDetails;
+
+  return Object.values(details).some((value) => value !== undefined) ? details : undefined;
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
 }
 
 function unhandledExceptionLog(exception: unknown): {
