@@ -8,6 +8,10 @@ import { configureApp } from '@api/app.setup';
 import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 import { SocialService } from '@core/social/application/service/social.service';
+import {
+  pinoGlobalExceptionFilterTestImports,
+  pinoGlobalExceptionFilterTestProviders,
+} from '../../fixtures/pinoGlobalExceptionFilter.fixture';
 import { SocialController } from '@api/social/presentation/controller/social.controller';
 
 describe('소셜 HTTP 계약', () => {
@@ -25,8 +29,13 @@ describe('소셜 HTTP 계약', () => {
   beforeEach(async () => {
     jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
+      imports: pinoGlobalExceptionFilterTestImports,
       controllers: [SocialController],
-      providers: [{ provide: SocialService, useValue: social }, RegisteredUserGuard],
+      providers: [
+        ...pinoGlobalExceptionFilterTestProviders,
+        { provide: SocialService, useValue: social },
+        RegisteredUserGuard,
+      ],
     })
       .overrideGuard(AccessTokenGuard)
       .useValue({
