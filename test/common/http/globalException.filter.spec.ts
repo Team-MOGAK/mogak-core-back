@@ -425,7 +425,6 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
     expect(error).toHaveBeenCalledWith(
       {
         event: 'unhandled_exception',
-        database: undefined,
         err: expect.objectContaining({ name: exception.name, message: exception.message }),
       },
       'Unhandled exception',
@@ -454,8 +453,11 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
     expect(error).toHaveBeenCalledWith(
       {
         event: 'unhandled_exception',
-        database: { code: '23503', constraint: 'mogak_modarat_id_fkey', table: 'mogak' },
-        err: expect.objectContaining({ name: exception.name, message: exception.message }),
+        err: expect.objectContaining({
+          name: exception.name,
+          message: exception.message,
+          database: { code: '23503', constraint: 'mogak_modarat_id_fkey', table: 'mogak' },
+        }),
       },
       'Unhandled exception',
     );

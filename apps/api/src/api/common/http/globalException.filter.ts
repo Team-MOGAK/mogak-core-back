@@ -79,7 +79,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       });
     } else if (exception instanceof HttpException) {
       if (exception.getStatus() >= HttpStatus.INTERNAL_SERVER_ERROR) {
-        this.logger.error({ err: safeErrorSnapshot(exception) }, 'Unhandled HTTP exception');
+        this.logger.error({ err: exceptionDetails(exception) }, 'Unhandled HTTP exception');
       }
     } else {
       this.logger.error(unhandledExceptionLog(exception), 'Unhandled exception');
@@ -97,9 +97,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 }
 
 type DatabaseErrorDetails = Readonly<{
-  code?: string;
-  constraint?: string;
-  table?: string;
+  code?: string | undefined;
+  constraint?: string | undefined;
+  table?: string | undefined;
+}>;
+
+type ExceptionDetails = Readonly<{
+  name: string;
+  message: string;
+  stack?: string | undefined;
+  database?: DatabaseErrorDetails | undefined;
 }>;
 
 function databaseErrorDetails(exception: unknown): DatabaseErrorDetails | undefined {
@@ -121,20 +128,19 @@ function stringOrUndefined(value: unknown): string | undefined {
 
 function unhandledExceptionLog(exception: unknown): {
   event: 'unhandled_exception';
-  database: ReturnType<typeof databaseErrorDetails>;
-  err?: Error;
+  err?: ExceptionDetails;
 } {
-  const database = databaseErrorDetails(exception);
-  if (!(exception instanceof Error)) return { event: 'unhandled_exception', database };
-  return { event: 'unhandled_exception', database, err: safeErrorSnapshot(exception) };
+  if (!(exception instanceof Error)) return { event: 'unhandled_exception' };
+  return { event: 'unhandled_exception', err: exceptionDetails(exception) };
 }
 
-function safeErrorSnapshot(error: Error): Error {
-  const snapshot = new Error();
-  snapshot.name = error.name;
-  snapshot.message = error.message;
-  snapshot.stack = error.stack;
-  return snapshot;
+function exceptionDetails(error: Error): ExceptionDetails {
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    database: databaseErrorDetails(error),
+  };
 }
 
 function appErrorForDomainCode(code: string): AppErrorDefinition {

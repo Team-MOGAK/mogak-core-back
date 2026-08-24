@@ -33,8 +33,8 @@
           <p>
             기존 production Nest <code>Logger</code> 직접 생성 5곳(<code>GlobalExceptionFilter</code>과
             Mogak·Post·Social·Consent repository)을 <code>@InjectPinoLogger(클래스명)</code>로 전환했다.
-            원본 예외는 <code>safeErrorSnapshot</code>의 입력으로만 읽고, 새 Error snapshot을 Pino의
-            <code>err</code> 필드로 기록한다.
+            원본 예외는 허용 필드만 추출한 plain object로 변환하고, Pino의 <code>err</code> 필드로
+            기록한다. DB 오류 식별자는 <code>err.database</code> 아래에만 포함한다.
           </p>
           <p>
             잠금 후 누락 경고는 중복된 <code>resource</code> 필드 대신
@@ -96,8 +96,9 @@
                   직렬화할 수 있었다.
                 </td>
                 <td>
-                  새 Error snapshot에 name/message/stack만 복사했다. 실제 Pino stream에서
-                  <code>response.token</code>, password, query, parameters, cause secret이 없음을 검증했다.
+                  안전한 <code>err</code> object에 name/message/stack과 allowlist된 DB 식별자만 복사했다.
+                  실제 Pino stream에서 <code>response.token</code>, password, query, parameters,
+                  cause secret이 없음을 검증했다.
                 </td>
               </tr>
               <tr>
