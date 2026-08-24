@@ -12,8 +12,8 @@ import { configureApp } from '@api/app.setup';
 import { GlobalExceptionFilter } from '@api/common/http/globalException.filter';
 import { createPinoHttpOptions } from '@infra/logging/pinoHttp.options';
 
-@Controller('logger-context')
-class LoggerContextController {
+@Controller('pino-logging-test')
+class PinoLoggingTestController {
   @Get()
   get(): never {
     throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
@@ -54,7 +54,7 @@ describe('nestjs-pino 요청 컨텍스트', () => {
           pinoHttp: [createPinoHttpOptions('test', 'info'), stream],
         }),
       ],
-      controllers: [LoggerContextController],
+      controllers: [PinoLoggingTestController],
       providers: [{ provide: APP_FILTER, useClass: GlobalExceptionFilter }],
     }).compile();
     const app = module.createNestApplication();
@@ -64,9 +64,9 @@ describe('nestjs-pino 요청 컨텍스트', () => {
     await app.listen(0);
 
     try {
-      await request(app.getHttpServer()).get('/logger-context').expect(404);
-      await request(app.getHttpServer()).get('/logger-context/http-error').expect(500);
-      await request(app.getHttpServer()).get('/logger-context/unhandled-error').expect(500);
+      await request(app.getHttpServer()).get('/pino-logging-test').expect(404);
+      await request(app.getHttpServer()).get('/pino-logging-test/http-error').expect(500);
+      await request(app.getHttpServer()).get('/pino-logging-test/unhandled-error').expect(500);
       await new Promise<void>((resolve) => setImmediate(resolve));
 
       const logs = lines.flatMap((line) =>
