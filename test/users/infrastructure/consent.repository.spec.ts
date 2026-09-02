@@ -1,4 +1,5 @@
 import { testMock } from '../../testMock';
+import { pinoLoggerStub } from '../../fixtures/pinoLogger.fixture';
 
 import type { Database } from '@infra/database/database.provider';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
@@ -19,18 +20,23 @@ describe('동의 저장소', () => {
       const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
         callback({ select: selectAfterLock, insert }),
       );
-      const repository = new ConsentRepository({
-        transaction,
-        ...(method === 'updateMarketingConsents'
-          ? {
-              select: testMock().mockReturnValue({
-                from: testMock().mockReturnValue({
-                  where: testMock().mockResolvedValue([{ id: 1, code: 'MARKETING', active: true }]),
+      const repository = new ConsentRepository(
+        {
+          transaction,
+          ...(method === 'updateMarketingConsents'
+            ? {
+                select: testMock().mockReturnValue({
+                  from: testMock().mockReturnValue({
+                    where: testMock().mockResolvedValue([
+                      { id: 1, code: 'MARKETING', active: true },
+                    ]),
+                  }),
                 }),
-              }),
-            }
-          : {}),
-      } as unknown as Database);
+              }
+            : {}),
+        } as unknown as Database,
+        pinoLoggerStub(),
+      );
 
       const call =
         method === 'upsertUserConsents'
@@ -44,13 +50,16 @@ describe('동의 저장소', () => {
   );
 
   it('비활성 마케팅 동의 항목을 UserPersistenceException으로 보고한다', async () => {
-    const repository = new ConsentRepository({
-      select: testMock().mockReturnValue({
-        from: testMock().mockReturnValue({
-          where: testMock().mockResolvedValue([{ id: 1, code: 'MARKETING', active: false }]),
+    const repository = new ConsentRepository(
+      {
+        select: testMock().mockReturnValue({
+          from: testMock().mockReturnValue({
+            where: testMock().mockResolvedValue([{ id: 1, code: 'MARKETING', active: false }]),
+          }),
         }),
-      }),
-    } as unknown as Database);
+      } as unknown as Database,
+      pinoLoggerStub(),
+    );
 
     await expect(
       repository.updateMarketingConsents(

@@ -24,6 +24,7 @@ import {
 } from '@infra/database/schema';
 import { AuthRepository } from '@infra/auth/repository/auth.repository';
 import { PostRepository } from '@infra/posts/repository/post.repository';
+import { pinoLoggerStub } from '../fixtures/pinoLogger.fixture';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {
@@ -172,7 +173,7 @@ describe('게시글 PostgreSQL 통합', () => {
       cause: { code: '23503' },
     });
     await expect(
-      new PostRepository(db as never).deleteOwnedPost({
+      new PostRepository(db as never, pinoLoggerStub()).deleteOwnedPost({
         postId: fixture.postId,
         authorId: fixture.userId,
       }),

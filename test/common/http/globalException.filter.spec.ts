@@ -1,18 +1,33 @@
-import { HttpStatus, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { HttpStatus, ServiceUnavailableException } from '@nestjs/common';
 import { jest } from '@jest/globals';
 import { ThrottlerException } from '@nestjs/throttler';
+import type { PinoLogger } from 'nestjs-pino';
 
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { GlobalExceptionFilter } from '@api/common/http/globalException.filter';
 
+const logger = { warn: jest.fn(), error: jest.fn() };
+
+function testLogger(): PinoLogger {
+  return logger as unknown as PinoLogger;
+}
+
+function resetLogger(): void {
+  logger.warn.mockReset();
+  logger.error.mockReset();
+}
+
 describe('GlobalExceptionFilter의 rate limit 처리', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    resetLogger();
+  });
 
   it('ThrottlerException은 기본 429 응답과 안전한 거절 로그로 처리한다', () => {
     const exception = new ThrottlerException();
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = logger.warn;
     const host = {
       switchToHttp: () => ({
         getRequest: () => ({
@@ -28,7 +43,7 @@ describe('GlobalExceptionFilter의 rate limit 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(exception, host as never);
+    new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
 
     expect(status).toHaveBeenCalledWith(429);
     expect(json).toHaveBeenCalledWith({
@@ -48,12 +63,14 @@ describe('GlobalExceptionFilter의 rate limit 처리', () => {
 });
 
 describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    resetLogger();
+  });
 
   it('DomainException은 정의된 상태와 오류 코드로 응답한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     const host = {
       switchToHttp: () => ({
         getRequest: () => ({ method: 'GET', route: { path: '/users/:id' }, params: { id: '42' } }),
@@ -61,7 +78,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
+    new GlobalExceptionFilter(testLogger()).catch(
       new DomainException(DomainErrorCode.USER_NOT_FOUND),
       host as never,
     );
@@ -79,7 +96,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
   it('Z005가 아닌 DomainException도 정제된 요청 원문과 오류 정보를 warn 로그에 남긴다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = logger.warn;
     const host = {
       switchToHttp: () => ({
         getRequest: () => ({
@@ -94,7 +111,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
+    new GlobalExceptionFilter(testLogger()).catch(
       new DomainException(DomainErrorCode.USER_NOT_FOUND),
       host as never,
     );
@@ -117,7 +134,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
   it('권한 거부도 같은 도메인 예외 로그 형식을 사용한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = logger.warn;
     const host = {
       switchToHttp: () => ({
         getRequest: () => ({
@@ -129,7 +146,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
+    new GlobalExceptionFilter(testLogger()).catch(
       new DomainException(DomainErrorCode.FORBIDDEN),
       host as never,
     );
@@ -148,7 +165,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
   it('Z005는 원문 요청값을 남기되 인증 필드를 재귀적으로 제거한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = logger.warn;
     const host = {
       switchToHttp: () => ({
         getRequest: () => ({
@@ -171,7 +188,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
+    new GlobalExceptionFilter(testLogger()).catch(
       new DomainException(DomainErrorCode.INVALID_PARAMETER),
       host as never,
     );
@@ -198,7 +215,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
   it('multipart 원문과 배열 형태 content-type을 생략한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = logger.warn;
     const host = {
       switchToHttp: () => ({
         getRequest: () => ({
@@ -211,7 +228,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
+    new GlobalExceptionFilter(testLogger()).catch(
       new DomainException(DomainErrorCode.INVALID_PARAMETER),
       host as never,
     );
@@ -226,7 +243,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
   it('정제 중 접근 오류가 나도 Z005 응답을 유지하고 요청값은 생략한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = logger.warn;
     const body = {};
     Object.defineProperty(body, 'broken', {
       enumerable: true,
@@ -241,7 +258,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
+    new GlobalExceptionFilter(testLogger()).catch(
       new DomainException(DomainErrorCode.INVALID_PARAMETER),
       host as never,
     );
@@ -257,7 +274,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
   it('최상위 요청 필드 접근 오류가 나도 DomainException 응답을 유지한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = logger.warn;
     const request = { method: 'GET', route: { path: '/users/:id' }, params: { id: '42' } };
     Object.defineProperty(request, 'query', {
       enumerable: true,
@@ -272,7 +289,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
+    new GlobalExceptionFilter(testLogger()).catch(
       new DomainException(DomainErrorCode.USER_NOT_FOUND),
       host as never,
     );
@@ -288,7 +305,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
   it('과도한 원문 문자열과 순환 구조를 잘라낸다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = logger.warn;
     const circular: Record<string, unknown> = { page: 'wrong', comment: 'a'.repeat(1_001) };
     circular.self = circular;
     const host = {
@@ -298,7 +315,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
+    new GlobalExceptionFilter(testLogger()).catch(
       new DomainException(DomainErrorCode.INVALID_PARAMETER),
       host as never,
     );
@@ -314,12 +331,15 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
 });
 
 describe('GlobalExceptionFilter의 core 예외 처리', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    resetLogger();
+  });
 
   it('DomainException를 기존 AppErrorCode HTTP 계약으로 변환한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const warn = logger.warn;
     const host = {
       switchToHttp: () => ({
         getRequest: () => ({ method: 'GET', route: { path: '/users/:id' }, params: { id: '42' } }),
@@ -327,7 +347,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
+    new GlobalExceptionFilter(testLogger()).catch(
       new DomainException(DomainErrorCode.USER_NOT_FOUND),
       host as never,
     );
@@ -354,7 +374,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
   it('등록되지 않은 DomainException code는 내부 서버 오류로 변환한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    logger.warn.mockClear();
     const host = {
       switchToHttp: () => ({
         getRequest: () => ({
@@ -366,7 +386,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(
+    new GlobalExceptionFilter(testLogger()).catch(
       new DomainException('UNMAPPED_CORE_ERROR' as DomainErrorCode),
       host as never,
     );
@@ -382,13 +402,16 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
 });
 
 describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    resetLogger();
+  });
 
   it('500 응답을 만들고 원인 스택을 error 로그에 남긴다', () => {
     const exception = new Error('database connection failed');
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const error = logger.error;
     const getRequest = jest.fn(() => ({ body: { token: 'must-not-log' } }));
     const host = {
       switchToHttp: () => ({
@@ -397,11 +420,14 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(exception, host as never);
+    new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
 
     expect(error).toHaveBeenCalledWith(
-      { event: 'unhandled_exception', database: undefined },
-      exception.stack,
+      {
+        event: 'unhandled_exception',
+        err: expect.objectContaining({ name: exception.name, message: exception.message }),
+      },
+      'Unhandled exception',
     );
     expect(getRequest).not.toHaveBeenCalled();
     expect(status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
@@ -419,29 +445,36 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
     });
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const error = logger.error;
     const host = { switchToHttp: () => ({ getResponse: () => ({ status }) }) };
 
-    new GlobalExceptionFilter().catch(exception, host as never);
+    new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
 
     expect(error).toHaveBeenCalledWith(
       {
         event: 'unhandled_exception',
-        database: { code: '23503', constraint: 'mogak_modarat_id_fkey', table: 'mogak' },
+        err: expect.objectContaining({
+          name: exception.name,
+          message: exception.message,
+          database: { code: '23503', constraint: 'mogak_modarat_id_fkey', table: 'mogak' },
+        }),
       },
-      exception.stack,
+      'Unhandled exception',
     );
   });
 });
 
 describe('GlobalExceptionFilter의 서버 오류 처리', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    resetLogger();
+  });
 
   it('5xx HttpException은 원인 스택을 error 로그에 남긴다', () => {
     const exception = new ServiceUnavailableException('upstream unavailable');
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));
-    const error = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const error = logger.error;
     const getRequest = jest.fn(() => ({ body: { token: 'must-not-log' } }));
     const host = {
       switchToHttp: () => ({
@@ -450,9 +483,12 @@ describe('GlobalExceptionFilter의 서버 오류 처리', () => {
       }),
     };
 
-    new GlobalExceptionFilter().catch(exception, host as never);
+    new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
 
-    expect(error).toHaveBeenCalledWith('Unhandled HTTP exception', exception.stack);
+    expect(error).toHaveBeenCalledWith(
+      { err: expect.objectContaining({ name: exception.name, message: exception.message }) },
+      'Unhandled HTTP exception',
+    );
     expect(getRequest).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,5 @@
 import { testMock } from '../../testMock';
+import { pinoLoggerStub } from '../../fixtures/pinoLogger.fixture';
 
 import type { Database } from '@infra/database/database.provider';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
@@ -14,7 +15,10 @@ describe('모각 저장소', () => {
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
       callback({ select, insert }),
     );
-    const repository = new MogakRepository({ transaction } as unknown as Database);
+    const repository = new MogakRepository(
+      { transaction } as unknown as Database,
+      pinoLoggerStub(),
+    );
 
     await expect(
       repository.createModarat({ userId: 7, title: '모다랫', color: '#000000' }),
@@ -33,7 +37,10 @@ describe('모각 저장소', () => {
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
       callback({ execute: testMock(), select, insert }),
     );
-    const repository = new MogakRepository({ transaction } as unknown as Database);
+    const repository = new MogakRepository(
+      { transaction } as unknown as Database,
+      pinoLoggerStub(),
+    );
 
     await expect(
       repository.createModarat({ userId: 7, title: '모다랫', color: '#000000' }),
@@ -48,9 +55,12 @@ describe('모각 저장소', () => {
       status: 'CANCELLED',
       jogakTitleSnapshot: '조각',
     });
-    const repository = new MogakRepository({
-      query: { jogakExecutions: { findFirst } },
-    } as unknown as Database);
+    const repository = new MogakRepository(
+      {
+        query: { jogakExecutions: { findFirst } },
+      } as unknown as Database,
+      pinoLoggerStub(),
+    );
 
     await expect(repository.findExecution(2, '2026-07-25')).rejects.toBeInstanceOf(
       MogakPersistenceException,

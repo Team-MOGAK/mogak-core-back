@@ -1,4 +1,5 @@
 import { testMock } from '../../testMock';
+import { pinoLoggerStub } from '../../fixtures/pinoLogger.fixture';
 
 import type { Database } from '@infra/database/database.provider';
 import { PostPersistenceException } from '@core/posts/domain/exception/postPersistence.exception';
@@ -17,7 +18,7 @@ describe('게시글 저장소', () => {
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
       callback({ execute: testMock(), select, insert }),
     );
-    const repository = new PostRepository({ transaction } as unknown as Database);
+    const repository = new PostRepository({ transaction } as unknown as Database, pinoLoggerStub());
 
     await expect(
       repository.createComment({ postId: 1, authorId: 2, contents: '댓글' }),
@@ -32,7 +33,7 @@ describe('게시글 저장소', () => {
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
       callback({ execute: testMock(), select, insert }),
     );
-    const repository = new PostRepository({ transaction } as unknown as Database);
+    const repository = new PostRepository({ transaction } as unknown as Database, pinoLoggerStub());
 
     await expect(
       repository.createComment({ postId: 1, authorId: 2, contents: '댓글' }),

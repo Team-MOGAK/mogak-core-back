@@ -1,6 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
 
-import { GlobalExceptionFilter } from './common/http/globalException.filter';
 import { MERGE_PATCH_MEDIA_TYPE } from './common/http/mergePatch.decorator';
 
 type ExpressApplication = {
@@ -31,6 +30,4 @@ export function configureApp(
       credentials: false,
     });
   }
-
-  app.useGlobalFilters(new GlobalExceptionFilter());
 }

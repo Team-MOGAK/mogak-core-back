@@ -2,11 +2,12 @@ import {
   Catch,
   HttpException,
   HttpStatus,
-  Logger,
   type ArgumentsHost,
   type ExceptionFilter,
 } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
+import { InjectPinoLogger } from 'nestjs-pino';
+import type { PinoLogger } from 'nestjs-pino';
 import type { Response } from 'express';
 
 import { DomainException } from '@core/common/error/domainException';
@@ -48,7 +49,10 @@ const MAX_LOG_STRING_LENGTH = 1_000;
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(GlobalExceptionFilter.name);
+  constructor(
+    @InjectPinoLogger(GlobalExceptionFilter.name)
+    private readonly logger: PinoLogger,
+  ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
@@ -75,16 +79,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       });
     } else if (exception instanceof HttpException) {
       if (exception.getStatus() >= HttpStatus.INTERNAL_SERVER_ERROR) {
-        this.logger.error('Unhandled HTTP exception', exception.stack);
+        this.logger.error({ err: exceptionDetails(exception) }, 'Unhandled HTTP exception');
       }
     } else {
-      this.logger.error(
-        {
-          event: 'unhandled_exception',
-          database: databaseErrorDetails(exception),
-        },
-        exception instanceof Error ? exception.stack : undefined,
-      );
+      this.logger.error(unhandledExceptionLog(exception), 'Unhandled exception');
     }
 
     const error =
@@ -98,23 +96,51 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 }
 
-function databaseErrorDetails(
-  exception: unknown,
-): Readonly<{ code?: string; constraint?: string; table?: string }> | undefined {
-  if (!(exception instanceof Error) || !('cause' in exception)) return undefined;
-  const cause = exception.cause;
-  if (typeof cause !== 'object' || cause === null) return undefined;
-  const details = cause as Record<string, unknown>;
-  const code = typeof details.code === 'string' ? details.code : undefined;
-  const constraint = typeof details.constraint === 'string' ? details.constraint : undefined;
-  const table = typeof details.table === 'string' ? details.table : undefined;
-  return code === undefined && constraint === undefined && table === undefined
-    ? undefined
-    : {
-        ...(code === undefined ? {} : { code }),
-        ...(constraint === undefined ? {} : { constraint }),
-        ...(table === undefined ? {} : { table }),
-      };
+type DatabaseErrorDetails = Readonly<{
+  code?: string | undefined;
+  constraint?: string | undefined;
+  table?: string | undefined;
+}>;
+
+type ExceptionDetails = Readonly<{
+  name: string;
+  message: string;
+  stack?: string | undefined;
+  database?: DatabaseErrorDetails | undefined;
+}>;
+
+function databaseErrorDetails(exception: unknown): DatabaseErrorDetails | undefined {
+  const cause = exception instanceof Error ? exception.cause : undefined;
+  if (!isRecord(cause)) return undefined;
+
+  const details = {
+    code: stringOrUndefined(cause.code),
+    constraint: stringOrUndefined(cause.constraint),
+    table: stringOrUndefined(cause.table),
+  } satisfies DatabaseErrorDetails;
+
+  return Object.values(details).some((value) => value !== undefined) ? details : undefined;
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function unhandledExceptionLog(exception: unknown): {
+  event: 'unhandled_exception';
+  err?: ExceptionDetails;
+} {
+  if (!(exception instanceof Error)) return { event: 'unhandled_exception' };
+  return { event: 'unhandled_exception', err: exceptionDetails(exception) };
+}
+
+function exceptionDetails(error: Error): ExceptionDetails {
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    database: databaseErrorDetails(error),
+  };
 }
 
 function appErrorForDomainCode(code: string): AppErrorDefinition {
