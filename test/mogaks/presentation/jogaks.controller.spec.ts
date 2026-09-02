@@ -8,6 +8,10 @@ import { configureApp } from '@api/app.setup';
 import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 import { JogaksService } from '@core/mogaks/application/service/jogaks.service';
+import {
+  pinoGlobalExceptionFilterTestImports,
+  pinoGlobalExceptionFilterTestProviders,
+} from '../../fixtures/pinoGlobalExceptionFilter.fixture';
 import { JogaksController } from '@api/mogaks/presentation/controller/jogaks.controller';
 
 describe('조각 HTTP 계약', () => {
@@ -27,8 +31,13 @@ describe('조각 HTTP 계약', () => {
   beforeEach(async () => {
     jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
+      imports: pinoGlobalExceptionFilterTestImports,
       controllers: [JogaksController],
-      providers: [{ provide: JogaksService, useValue: jogaks }, RegisteredUserGuard],
+      providers: [
+        ...pinoGlobalExceptionFilterTestProviders,
+        { provide: JogaksService, useValue: jogaks },
+        RegisteredUserGuard,
+      ],
     })
       .overrideGuard(AccessTokenGuard)
       .useValue({

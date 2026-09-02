@@ -17,6 +17,7 @@ import {
 } from '@infra/database/schema';
 import { JogaksService } from '@core/mogaks/application/service/jogaks.service';
 import { MogakRepository } from '@infra/mogaks/repository/mogak.repository';
+import { pinoLoggerStub } from '../fixtures/pinoLogger.fixture';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {
@@ -53,7 +54,7 @@ describe('모각 PostgreSQL 통합', () => {
       .returning({ id: posts.id });
     if (post === undefined) throw new Error('post fixture insert did not return a row');
 
-    const repository = new MogakRepository(db as unknown as Database);
+    const repository = new MogakRepository(db as unknown as Database, pinoLoggerStub());
     await expect(repository.deleteOwnedModarat(fixture.userId, fixture.modaratId)).resolves.toBe(
       true,
     );
@@ -139,7 +140,7 @@ describe('모각 PostgreSQL 통합', () => {
     );
 
     const service = new JogaksService(
-      new MogakRepository(db as unknown as Database),
+      new MogakRepository(db as unknown as Database, pinoLoggerStub()),
       () => '2026-07-23',
     );
 
@@ -177,7 +178,7 @@ describe('모각 PostgreSQL 통합', () => {
       .values({ scheduleId: successor.id, weekday: 'THURSDAY' });
 
     const service = new JogaksService(
-      new MogakRepository(db as unknown as Database),
+      new MogakRepository(db as unknown as Database, pinoLoggerStub()),
       () => '2026-07-23',
     );
 
@@ -236,7 +237,7 @@ describe('모각 PostgreSQL 통합', () => {
       weekday: 'FRIDAY',
     });
     const service = new JogaksService(
-      new MogakRepository(db as unknown as Database),
+      new MogakRepository(db as unknown as Database, pinoLoggerStub()),
       () => '2026-07-23',
     );
 
@@ -286,7 +287,7 @@ describe('모각 PostgreSQL 통합', () => {
       .where(eq(jogakSchedules.jogakId, fixture.jogakId));
     if (before === undefined) throw new Error('schedule fixture did not exist');
     const service = new JogaksService(
-      new MogakRepository(db as unknown as Database),
+      new MogakRepository(db as unknown as Database, pinoLoggerStub()),
       () => '2026-07-23',
     );
 
@@ -330,7 +331,7 @@ describe('모각 PostgreSQL 통합', () => {
       weekdays: ['WEDNESDAY'],
     });
     const service = new JogaksService(
-      new MogakRepository(db as unknown as Database),
+      new MogakRepository(db as unknown as Database, pinoLoggerStub()),
       () => '2026-07-23',
     );
 
@@ -377,7 +378,7 @@ describe('모각 PostgreSQL 통합', () => {
       });
     if (execution === undefined) throw new Error('execution fixture insert did not return a row');
     const service = new JogaksService(
-      new MogakRepository(db as unknown as Database),
+      new MogakRepository(db as unknown as Database, pinoLoggerStub()),
       () => '2026-07-23',
     );
 

@@ -1,5 +1,7 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { InjectPinoLogger } from 'nestjs-pino';
+import type { PinoLogger } from 'nestjs-pino';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
 import type { Database } from '../../database/database.provider';
@@ -35,9 +37,10 @@ import type {
 
 @Injectable()
 export class SocialRepository implements SocialRepositoryPort {
-  private readonly logger = new Logger(SocialRepository.name);
-
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    @InjectPinoLogger(SocialRepository.name) private readonly logger: PinoLogger,
+  ) {}
 
   async findUserByNickname(nickname: string): Promise<SocialUserResult | null> {
     const user = await this.db.query.users.findFirst({
@@ -55,8 +58,7 @@ export class SocialRepository implements SocialRepositoryPort {
         .where(inArray(users.id, [command.followerId, command.followingId]));
       if (existing.length !== new Set([command.followerId, command.followingId]).size) {
         this.logger.warn({
-          event: 'resource_not_found_after_user_lock',
-          resource: 'USER',
+          event: 'user_not_found_after_lock',
           operation: 'create_follow',
         });
         throw new DomainException(DomainErrorCode.USER_NOT_FOUND);

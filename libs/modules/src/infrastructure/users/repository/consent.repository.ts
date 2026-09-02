@@ -1,5 +1,7 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
+import { InjectPinoLogger } from 'nestjs-pino';
+import type { PinoLogger } from 'nestjs-pino';
 
 import type { ConsentRepositoryPort } from '@core/users/application/port/consent.repository.port';
 import type {
@@ -18,9 +20,10 @@ import { consentItems, userConsents, users } from '../../database/schema';
 
 @Injectable()
 export class ConsentRepository implements ConsentRepositoryPort {
-  private readonly logger = new Logger(ConsentRepository.name);
-
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    @InjectPinoLogger(ConsentRepository.name) private readonly logger: PinoLogger,
+  ) {}
 
   async listActiveItems(): Promise<ConsentItemState[]> {
     return this.db
@@ -64,8 +67,7 @@ export class ConsentRepository implements ConsentRepositoryPort {
       const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
       if (user === undefined) {
         this.logger.warn({
-          event: 'resource_not_found_after_user_lock',
-          resource: 'USER',
+          event: 'user_not_found_after_lock',
           operation: 'upsert_user_consents',
         });
         throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
@@ -130,8 +132,7 @@ export class ConsentRepository implements ConsentRepositoryPort {
       const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
       if (user === undefined) {
         this.logger.warn({
-          event: 'resource_not_found_after_user_lock',
-          resource: 'USER',
+          event: 'user_not_found_after_lock',
           operation: 'update_marketing_consents',
         });
         throw new DomainException(DomainErrorCode.USER_NOT_FOUND);

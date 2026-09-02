@@ -11,6 +11,10 @@ import { configureApp } from '@api/app.setup';
 import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
+import {
+  pinoGlobalExceptionFilterTestImports,
+  pinoGlobalExceptionFilterTestProviders,
+} from '../../fixtures/pinoGlobalExceptionFilter.fixture';
 import { ConsentService } from '@core/users/application/service/consent.service';
 import { MetadataService } from '@core/users/application/service/metadata.service';
 import { UserService } from '@core/users/application/service/user.service';
@@ -42,6 +46,7 @@ describe('사용자 HTTP 계약', () => {
     role = 'USER';
     const moduleRef = await Test.createTestingModule({
       imports: [
+        ...pinoGlobalExceptionFilterTestImports,
         ThrottlerModule.forRoot({
           storage: new BoundedThrottlerStorage(),
           throttlers: [{ ttl: 60_000, limit: 300 }],
@@ -49,6 +54,7 @@ describe('사용자 HTTP 계약', () => {
       ],
       controllers: [UsersController, ConsentController, MetadataController],
       providers: [
+        ...pinoGlobalExceptionFilterTestProviders,
         { provide: UserService, useValue: users },
         { provide: ConsentService, useValue: consents },
         { provide: MetadataService, useValue: metadata },

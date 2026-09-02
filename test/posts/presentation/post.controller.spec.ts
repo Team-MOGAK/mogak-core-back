@@ -9,6 +9,10 @@ import { configureApp } from '@api/app.setup';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { STORAGE_PORT, type StoragePort } from '@core/storage/application/storage.port';
 import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
+import {
+  pinoGlobalExceptionFilterTestImports,
+  pinoGlobalExceptionFilterTestProviders,
+} from '../../fixtures/pinoGlobalExceptionFilter.fixture';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 import { PostService } from '@core/posts/application/service/post.service';
 import { PostController } from '@api/posts/presentation/controller/post.controller';
@@ -33,8 +37,10 @@ describe('게시글 HTTP 계약', () => {
   beforeEach(async () => {
     jest.resetAllMocks();
     const moduleRef = await Test.createTestingModule({
+      imports: pinoGlobalExceptionFilterTestImports,
       controllers: [PostController],
       providers: [
+        ...pinoGlobalExceptionFilterTestProviders,
         { provide: PostService, useValue: posts },
         { provide: STORAGE_PORT, useValue: storage },
         RegisteredUserGuard,
