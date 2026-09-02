@@ -10,10 +10,7 @@ import {
   type SocialIdentityValidation,
 } from '../../domain/policy/socialIdentity.policy';
 import type { SocialProvider } from '../../domain/vo/socialProvider.vo';
-import {
-  DuplicateEmailException,
-  DuplicateSocialAccountException,
-} from '../../domain/exception/authPersistence.exception';
+import { DuplicateSocialAccountException } from '../../domain/exception/authPersistence.exception';
 import type { AuthPersistencePort } from '../port/authPersistence.port';
 import type { AuthTokenVerifierPort } from '../port/authTokenVerifier.port';
 import type { SessionTokenIssuerPort } from '../port/sessionTokenIssuer.port';
@@ -49,30 +46,17 @@ export class AuthService {
     }
 
     this.throwForInvalidIdentity(validateNewSocialIdentity(identity));
-    if (
-      identity.email !== null &&
-      (await this.authPersistence.findUserByEmail(identity.email)) !== null
-    ) {
-      throw new DomainException(DomainErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
-    }
-
     try {
       const newUser = await this.authPersistence.createAccount(identity);
       return this.issueSession(newUser, 'NEW');
     } catch (error) {
-      if (
-        error instanceof DuplicateEmailException ||
-        error instanceof DuplicateSocialAccountException
-      ) {
+      if (error instanceof DuplicateSocialAccountException) {
         const winner = await this.authPersistence.findUserBySocialIdentity(
           identity.provider,
           identity.providerUserId,
         );
         if (winner !== null) {
           return this.issueSession(winner, 'RESUME');
-        }
-        if (error instanceof DuplicateEmailException) {
-          throw new DomainException(DomainErrorCode.SOCIAL_ACCOUNT_LINK_REQUIRED);
         }
       }
       throw error;

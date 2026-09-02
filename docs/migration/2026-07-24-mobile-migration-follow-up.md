@@ -63,6 +63,27 @@
 3. `false` 상태에서는 `POST /api/users/join`만으로 가입을 완료한다. 가입 요청에도 방금 받은 access token을 `Authorization` 헤더로 보낸다.
 4. 가입 응답도 새 `tokens`를 돌려주므로, **기존 두 토큰을 모두 새 값으로 원자적으로 교체**한 뒤 홈으로 이동한다. 이전 `PENDING` 세션의 access token은 더 이상 사용하지 않는다.
 
+가입 요청은 앱에서 auth context별 single-flight로 직렬화해 동일 세션의 중복 제출을 막는다. 각
+가입 시도에는 로컬 `joinAttemptId`와 `authGeneration`을 붙이고, 로그아웃·계정 전환은 generation을
+증가시켜 이전 가입 시도를 무효화한다. 그래도 첫 요청이
+가입을 완료해 기존 세션을 교체한 뒤 후속 요청이 도착하면 `403 / T005`
+(`LOGOUT_TOKEN`)이 될 수 있다. 이 응답이 `/join`에서 발생하면 앱은 즉시 토큰을 지우지 말고,
+같은 `joinAttemptId`의 진행 중 가입 요청 결과를 먼저 확인한다. 같은 generation에서 해당
+가입 시도가 성공해 저장한 최신 access/refresh pair일 때만 원자적으로 채택하고 홈으로 이동한다.
+단순히 다른 pair가 저장되어 있다는 이유로 채택하지 않는다. 최신 pair가 없으면
+오래된 토큰으로 `/api/users/join`이나 `/api/auth/refresh`를 반복하지 않고 로그인 화면으로
+이동한다. 이 경로에서는 provider 자동 로그인을 수행하지 않아 명시적인 로그아웃 의도를 되살리지
+않는다.
+
+프런트 구현 규칙:
+
+- `joinInFlight`는 전역 하나가 아니라 현재 `authGeneration`에 귀속한다.
+- 가입 성공 응답은 요청의 generation이 아직 현재일 때만 access/refresh pair를 원자적으로 저장한다.
+- `T005`에서 pair를 삭제할 때는 요청 당시 pair와 generation이 아직 일치하는 경우에만
+  `clearIfMatches`를 수행한다. 로그아웃이나 계정 전환으로 generation이 바뀌었으면 아무 것도
+  삭제하지 않는다.
+- 진행 중인 가입 시도가 취소·무효화된 뒤 도착한 응답은 토큰 저장이나 홈 이동에 사용하지 않는다.
+
 가입 전에 다음 공개 메타데이터를 읽어 선택 UI를 구성한다.
 
 - `GET /api/metadata/jobs`
@@ -90,7 +111,13 @@ Authorization: Bearer <accessToken>
 - access token 만료 시 `POST /api/auth/refresh`를 호출하고 body가 아니라 `RefreshToken: <refreshToken>` 헤더로 refresh token을 보낸다.
 - 성공 응답은 새 `{ accessToken, refreshToken }`다. refresh token은 회전하므로 두 토큰을 함께 교체한다.
 - 한 기기에서 만료 요청이 여러 개 동시에 나갈 수 있다. 앱 네트워크 계층에서 refresh 호출은 한 번만 수행하고, 대기 중이던 원래 요청은 새 access token으로 한 번 재시도한다. 같은 refresh token을 병렬로 사용하면 한 요청만 성공할 수 있다.
-- refresh 실패(`T001`, `T002`, `T003`, `T005`) 또는 재시도도 실패한 경우, 저장된 두 토큰을 지우고 로그인 화면으로 이동한다.
+- `T006`(`TOKEN_REFRESH_REQUIRED`, HTTP 403)은 가입 완료 직후 남은 PENDING access token 신호다. 공통 네트워크 계층에서 refresh를 single-flight로 1회 수행하고 원 요청을 1회만 재시도한다. refresh가 PENDING으로 계속 발급되거나 재시도도 `T006`이면 가입 화면으로 이동하며 무한 재시도하지 않는다.
+- `/join`의 `T005`는 stale 후속 요청일 수 있으므로 같은 auth generation의 `joinAttemptId`와
+  진행 중인 single-flight 결과를 먼저 확인한다. 해당 시도가 저장한 pair일 때만 채택하고, 단순히
+  다른 계정의 pair가 존재한다는 이유로 채택하지 않는다. 같은 시도의 최신 pair가 없으면 오래된
+  토큰으로 재시도하지 않고 로그인 화면으로 이동한다. `/join` 이외의 `T005`는 기존과 같이
+  저장된 두 토큰을 지우고 로그인 화면으로 이동한다.
+- 그 밖의 refresh 실패(`T001`, `T002`, `T003`) 또는 재시도도 실패한 경우, 저장된 두 토큰을 지우고 로그인 화면으로 이동한다. `/join` 이외의 `T005`도 기존과 같이 즉시 이 흐름을 따른다.
 - 여러 기기 로그인은 허용한다. `POST /api/auth/logout`은 현재 access token이 가리키는 **현재 기기 세션만** 종료한다. 성공 여부와 관계없이 앱은 로컬 토큰을 제거한다.
 - `POST /api/auth/withdraw`는 회원과 연결 데이터를 hard delete한다. 성공 응답 `result.isDeleted`가 `true`면 로컬 토큰과 사용자 캐시·이미지 캐시를 모두 지우고 온보딩으로 이동한다. 다시 사용하려면 소셜 로그인부터 새로 시작한다.
 
@@ -216,6 +243,7 @@ multipart 요청의 JSON에는 기존처럼 `targetDate`를 넣으며, 이 값�
 | `Z005` 입력값 오류 | 기존 요청을 그대로 반복하지 말고 해당 입력을 수정하게 안내 |
 | `Z006` Storage 비활성 | 이미지 기능만 비활성·안내; 로그인이나 텍스트 게시글로 전체 로그아웃하지 않음 |
 | HTTP 429 요청 제한 | 짧은 재시도 대기 또는 입력 반복 방지; 본문은 `{ statusCode: 429, message: "ThrottlerException: Too Many Requests" }`이며 로그인·refresh·닉네임 확인에 특히 적용 |
+| `T006` PENDING access token | refresh single-flight 1회 후 원 요청 1회 재시도; 같은 `T006`이면 가입 화면으로 이동하고 반복 금지 |
 | `T001`, `T002`, `T003`, `T005` 인증 오류 | refresh가 가능한 경우 단일 갱신 후 1회 재시도, 그 외에는 로컬 세션 제거 후 로그인 |
 | `M003` 실행 상태 전이 오류 | 날짜별 목록을 다시 조회해 서버 상태로 UI를 복구 |
 

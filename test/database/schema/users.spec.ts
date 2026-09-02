@@ -26,9 +26,7 @@ describe('사용자와 인증 데이터베이스 스키마', () => {
   });
 
   it('정합성에 필요한 사용자와 동의 고유성 규칙만 정의한다', () => {
-    expect(uniqueConstraintNames(users)).toEqual(
-      expect.arrayContaining(['users_nickname_unique', 'users_email_unique']),
-    );
+    expect(uniqueConstraintNames(users)).toEqual(['users_nickname_unique']);
     expect(uniqueConstraintNames(consentItems)).toContain('uq_consent_item_code');
     expect(uniqueConstraintNames(userConsents)).toContain('uq_user_consent_user_item');
     expect(uniqueConstraintNames(socialAccounts)).toEqual(

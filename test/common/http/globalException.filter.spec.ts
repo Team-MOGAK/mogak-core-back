@@ -145,6 +145,35 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     });
   });
 
+  it('PENDING access token 갱신 요구를 HTTP 403 T006으로 응답한다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({ method: 'GET', route: { path: '/users/profile' } }),
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter().catch(
+      new DomainException(DomainErrorCode.TOKEN_REFRESH_REQUIRED),
+      host as never,
+    );
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.FORBIDDEN);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'FORBIDDEN',
+        code: 'T006',
+        message: '최신 권한 토큰으로 갱신이 필요합니다',
+      }),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ code: 'T006', status: 'FORBIDDEN' }),
+    );
+  });
+
   it('Z005는 원문 요청값을 남기되 인증 필드를 재귀적으로 제거한다', () => {
     const json = jest.fn();
     const status = jest.fn(() => ({ json }));

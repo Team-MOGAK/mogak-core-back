@@ -4,7 +4,6 @@ import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import {
   AuthPersistenceException,
-  DuplicateEmailException,
   DuplicateSocialAccountException,
 } from '@core/auth/domain/exception/authPersistence.exception';
 import { AuthRepository } from '@infra/auth/repository/auth.repository';
@@ -17,18 +16,6 @@ const identity = {
 };
 
 describe('인증 저장소', () => {
-  it('이메일 고유성 위반을 DuplicateEmailException으로 변환한다', async () => {
-    const transaction = testMock().mockRejectedValue({
-      code: '23505',
-      constraint: 'users_email_unique',
-    });
-    const repository = new AuthRepository({ transaction } as unknown as Database);
-
-    await expect(repository.createAccount(identity)).rejects.toBeInstanceOf(
-      DuplicateEmailException,
-    );
-  });
-
   it('소셜 식별자 고유성 위반을 DuplicateSocialAccountException으로 변환한다', async () => {
     const transaction = testMock().mockRejectedValue({
       code: '23505',
@@ -135,9 +122,7 @@ describe('인증 저장소', () => {
       query: { users: { findFirst } },
     } as unknown as Database);
 
-    await expect(repository.findUserByEmail('mogak@example.test')).rejects.toBeInstanceOf(
-      AuthPersistenceException,
-    );
+    await expect(repository.findUserById(7)).rejects.toBeInstanceOf(AuthPersistenceException);
     expect(findFirst).toHaveBeenCalledTimes(1);
   });
 

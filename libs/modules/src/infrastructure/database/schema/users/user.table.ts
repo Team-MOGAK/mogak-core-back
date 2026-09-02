@@ -19,8 +19,5 @@ export const users = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [
-    unique('users_nickname_unique').on(table.nickname),
-    unique('users_email_unique').on(table.email),
-  ],
+  (table) => [unique('users_nickname_unique').on(table.nickname)],
 );

@@ -5,13 +5,6 @@ export class AuthPersistenceException extends Error {
   }
 }
 
-export class DuplicateEmailException extends AuthPersistenceException {
-  constructor() {
-    super('Duplicate email constraint violation');
-    this.name = 'DuplicateEmailException';
-  }
-}
-
 export class DuplicateSocialAccountException extends AuthPersistenceException {
   constructor() {
     super('Duplicate social account constraint violation');
