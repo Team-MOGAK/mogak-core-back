@@ -41,12 +41,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify application
-        run: pnpm verify:local
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Run lint
+        run: pnpm lint
+
+      - name: Run typecheck
+        run: pnpm typecheck
+
+      - name: Build application
+        run: pnpm build
+
+      - name: Run non-database tests
+        run: pnpm test --runInBand
 
       - name: Build runtime image
         run: docker build --target runtime --tag mogak-core-back:ci .
-
-      - name: Clean up local verification resources
-        if: ${{ always() }}
-        run: docker compose down --volumes --remove-orphans
