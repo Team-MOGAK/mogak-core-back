@@ -2,19 +2,23 @@
 name: CI
 
 "on":
-  pull_request:
-    branches:
-      - main
+  # 모든 브랜치 push에서 기본 CI를 실행한다.
   push:
     branches:
-      - main
+      - "**"
+  # PR 대상 브랜치를 제한하지 않는다.
+  pull_request:
+    branches:
+      - "**"
+  # 필요할 때 Actions 화면에서 같은 CI를 수동 실행할 수 있다.
+  workflow_dispatch: {}
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   verify:
