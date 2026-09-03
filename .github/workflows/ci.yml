@@ -1,15 +1,16 @@
 ---
 name: CI
+run-name: CI / ${{ github.event_name }} / ${{ github.head_ref || github.ref_name }}
 
 "on":
   # 모든 브랜치 push에서 기본 CI를 실행한다.
   push:
     branches:
       - "**"
-  # PR 대상 브랜치를 제한하지 않는다.
+  # main 병합 게이트만 PR 이벤트로 검증한다. 그 외 브랜치는 push CI가 담당한다.
   pull_request:
     branches:
-      - "**"
+      - main
   # 필요할 때 Actions 화면에서 같은 CI를 수동 실행할 수 있다.
   workflow_dispatch: {}
 
@@ -59,6 +60,17 @@ jobs:
 
       - name: Run non-database tests
         run: pnpm test --runInBand
+
+  build-image:
+    name: Build runtime image
+    if: ${{ github.event_name == 'pull_request' || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
       - name: Build runtime image
         run: docker build --target runtime --tag mogak-core-back:ci .
