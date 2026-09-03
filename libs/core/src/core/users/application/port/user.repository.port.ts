@@ -1,5 +1,6 @@
 import type {
   CompleteRegistrationCommand,
+  ReplaceSessionCommand,
   UpdateJobCommand,
   UpdateNicknameCommand,
   UpdateProfileImageCommand,
@@ -15,6 +16,7 @@ export interface UserRepositoryPort {
   completeRegistration(
     command: CompleteRegistrationCommand,
   ): Promise<Readonly<{ id: number; nickname: string }>>;
+  replaceSession(command: ReplaceSessionCommand): Promise<void>;
   updateNickname(command: UpdateNicknameCommand): Promise<boolean>;
   updateJob(command: UpdateJobCommand): Promise<boolean>;
   updateProfileImageKey(command: UpdateProfileImageCommand): Promise<boolean>;

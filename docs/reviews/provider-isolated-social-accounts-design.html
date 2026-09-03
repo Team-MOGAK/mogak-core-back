@@ -1,0 +1,1022 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>provider별 독립 소셜 계정 설계</title>
+    <style>
+      :root {
+        font-family: system-ui, sans-serif;
+        line-height: 1.55;
+        color-scheme: light dark;
+      }
+      body {
+        max-width: 960px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      header,
+      section,
+      aside {
+        border: 1px solid #8886;
+        border-radius: 0.5rem;
+        padding: 1rem;
+        margin: 1rem 0;
+      }
+      nav a {
+        margin-right: 0.8rem;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #8886;
+        padding: 0.5rem;
+        text-align: left;
+        vertical-align: top;
+      }
+      .risk {
+        border-left: 0.35rem solid #b45309;
+      }
+      .slide[hidden],
+      .result[hidden] {
+        display: none;
+      }
+      .controls {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        margin-top: 1rem;
+      }
+      output {
+        display: block;
+        margin-top: 0.75rem;
+      }
+      code {
+        overflow-wrap: anywhere;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p>
+        <strong>설계 단계:</strong> 구현 재승인됨 (2026-09-02) · <strong>강도:</strong> 고위험 (인증·데이터
+        제약·마이그레이션)
+      </p>
+      <dl>
+        <dt>목적 (purpose)</dt>
+        <dd>서로 다른 소셜 provider의 계정을 독립 사용자 계정으로 생성·로그인한다.</dd>
+        <dt>사용자 (audience)</dt>
+        <dd>Apple·Kakao·Google 소셜 로그인 사용자와 API·DB 운영 담당자.</dd>
+        <dt>문제 (problem)</dt>
+        <dd>
+          현재 이메일 유니크 제약과 이메일 중복 차단 때문에 같은 이메일의 다른 provider 사용자가
+          가입하지 못한다.
+        </dd>
+        <dt>핵심 흐름 (core-flow)</dt>
+        <dd>
+          provider 토큰 검증 → (provider, providerUserId) 조회 → 기존 identity 로그인 또는 새
+          users·social_account 생성 → 세션 발급.
+        </dd>
+      </dl>
+      <p>
+        작성: <time datetime="2026-08-24">2026-08-24</time> · 갱신:
+        <time datetime="2026-08-30">2026-08-30</time> · 추적 목적 식별자만 기록하며 파일명은 목적 기준이다.
+      </p>
+    </header>
+    <nav aria-label="설계 탐색">
+      <a href="#goal">목표</a><a href="#model">모델</a><a href="#concurrency">동시성</a
+      ><a href="#improvements">개선안</a><a href="#role-freshness-review">role 재검토</a
+      ><a href="#invariants">불변식</a><a href="#migration">마이그레이션</a
+      ><a href="#verification">검증</a><a href="#grilling-state">개선 결정</a
+      ><a href="#control">이해 점검</a><a href="#approval">승인</a>
+    </nav>
+    <main>
+      <article>
+        <section id="goal">
+          <h1>provider별 독립 소셜 계정</h1>
+          <p>
+            같은 이메일이라도 provider가 다르면 서로 다른 사용자로 취급한다. 계정의 유일 식별자는
+            <code>(provider, providerUserId)</code>이며, 이메일은 연락·프로필 속성일 뿐 계정 병합
+            키가 아니다.
+          </p>
+          <h2>비목표</h2>
+          <ul>
+            <li>이메일 기반 자동 계정 연결·병합</li>
+            <li>provider 간 로그인 세션 공유</li>
+            <li>기존 사용자 데이터 병합·이관</li>
+            <li>이메일 중복을 이유로 한 <code>U012</code> 차단</li>
+          </ul>
+        </section>
+        <section id="model">
+          <h2>경계와 상태 전이</h2>
+          <figure>
+            <svg
+              viewBox="0 0 900 190"
+              role="img"
+              aria-labelledby="flow-title flow-desc"
+              width="100%"
+            >
+              <title id="flow-title">provider별 계정 식별 흐름</title>
+              <desc id="flow-desc">
+                검증된 provider와 subject를 exact lookup한다. 있으면 해당 사용자 세션을 발급하고,
+                없으면 이메일과 무관하게 새 사용자와 소셜 계정을 만든다.
+              </desc>
+              <rect
+                x="10"
+                y="65"
+                width="130"
+                height="55"
+                rx="8"
+                fill="none"
+                stroke="currentColor"
+              />
+              <text x="30" y="98">토큰 검증</text>
+              <path d="M140 92h55" stroke="currentColor" />
+              <path d="M190 87l10 5-10 5" fill="currentColor" />
+              <rect
+                x="200"
+                y="65"
+                width="180"
+                height="55"
+                rx="8"
+                fill="none"
+                stroke="currentColor"
+              />
+              <text x="217" y="98">provider + subject 조회</text>
+              <path d="M380 92h55" stroke="currentColor" />
+              <path d="M430 87l10 5-10 5" fill="currentColor" />
+              <rect
+                x="440"
+                y="20"
+                width="180"
+                height="55"
+                rx="8"
+                fill="none"
+                stroke="currentColor"
+              />
+              <text x="460" y="53">기존 사용자 세션</text>
+              <rect
+                x="440"
+                y="115"
+                width="230"
+                height="55"
+                rx="8"
+                fill="none"
+                stroke="currentColor"
+              />
+              <text x="460" y="148">새 users + social_account</text>
+              <path d="M530 120V78" stroke="currentColor" />
+              <path d="M525 88l5-10 5 10" fill="currentColor" />
+            </svg>
+            <figcaption>
+              이메일 값은 두 계정에 중복될 수 있으며, exact social identity가 로그인·동시성 복구의
+              유일한 기준이다.
+            </figcaption>
+          </figure>
+          <ol>
+            <li>
+              외부 provider를 검증하고 요청 provider와 identity provider가 일치하는지 확인한다.
+            </li>
+            <li><code>social_account(provider, provider_user_id)</code>로 조회한다.</li>
+            <li>조회되면 그 <code>user_id</code>에 세션을 발급한다.</li>
+            <li>
+              조회되지 않으면 이메일 중복 여부와 무관하게 <code>users</code>와
+              <code>social_account</code>를 하나의 transaction으로 생성한다.
+            </li>
+            <li>
+              동시 생성 충돌은 같은 exact identity 재조회로 복구하고, 이메일 충돌은 더 이상 분기하지
+              않는다.
+            </li>
+          </ol>
+        </section>
+        <section id="concurrency">
+          <h2>동일 identity 동시 로그인과 가입 상태</h2>
+          <p>
+            <code>PENDING</code>은 “계정 생성 중” 플래그가 아니라
+            <strong
+              >사용자 행과 소셜 identity는 이미 생성됐지만 가입 정보가 아직 완료되지 않은
+              상태</strong
+            >다. 단, A와 B의 provider가 다르면 같은 이메일이어도 exact identity가 다르므로 각각
+            사용자 1명씩, 총 2명의 <code>PENDING</code> 계정이 생긴다. 아래 동시성 복구는 같은
+            provider·같은 subject의 중복 요청에만 적용된다.
+          </p>
+          <table>
+            <caption>
+              동시 요청의 저장·응답 상태
+            </caption>
+            <thead>
+              <tr>
+                <th>요청</th>
+                <th>DB 결과</th>
+                <th>응답</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>A: 생성 transaction 선점</td>
+                <td><code>users</code> 1건 + <code>social_account</code> 1건 + A 세션 1건</td>
+                <td><code>NEW</code>, <code>PENDING</code> 가입 화면</td>
+              </tr>
+              <tr>
+                <td>B: unique 충돌 후 exact identity 재조회</td>
+                <td>새 사용자는 만들지 않음 + B 세션 1건 추가</td>
+                <td>
+                  <code>RESUME</code>, 같은 <code>userId</code>의 <code>PENDING</code> 가입 화면
+                </td>
+              </tr>
+              <tr>
+                <td>다른 provider, 같은 이메일</td>
+                <td>이메일과 무관하게 별도 users·social_account·세션 생성</td>
+                <td>
+                  각 요청이 <code>NEW</code>, 각자 다른 <code>userId</code>의
+                  <code>PENDING</code> 가입 화면
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            같은 exact identity의 경우 서버에는 세션 2개가 생길 수 있지만 계정 생성 상태가 2개
+            생기는 것은 아니다. 이는 기기별 동시 로그인을 허용하는 현재 세션 모델과 일치한다. 동일
+            브라우저에서는 프런트가 auth context별 join 요청을 single-flight로 직렬화해 중복 제출을
+            억제한다. 예외적으로 중복 요청이 서버에 도달하면 stale 요청의 <code>T005</code>를 같은
+            <code>joinAttemptId</code>와 <code>authGeneration</code>의 결과 확인으로 흡수한다. 서로 다른
+            기기라면 두 세션 모두 같은 사용자의 가입 화면을 가리킨다. 반대로
+            다른 provider의 같은 이메일은 의도적으로 서로 다른 사용자·세션·가입 화면이다.
+          </p>
+          <aside class="risk">
+            <strong>가입 완료 race:</strong> 두 세션이 동시에 <code>POST /api/users/join</code>을
+            제출하면 현재 <code>role = 'PENDING'</code> 조건부 update를 먼저 통과한 한 요청만
+            <code>USER</code>가 된다. 서로 다른 세션의 후속 요청은 기존 가입 결과와 자기 세션의
+            최신 USER token을 받아 멱등 복구한다. 같은 <code>currentSessionId</code>의 후속 요청은
+            앞선 요청이 세션을 이미 교체했으므로 도착 시점에 따라 일반적인 stale 세션 오류인
+            <code>403/T005</code>로 종료될 수 있다. 프런트는 auth context별
+            <code>joinAttemptId</code>를 single-flight로 직렬화하고, 같은 시도의 결과와 최신 공용
+            token pair만 확인한다.
+          </aside>
+        </section>
+        <section id="onboarding-token">
+          <h2>가입 전 token의 의미</h2>
+          <p>
+            <code>PENDING</code> 사용자에게도 access/refresh token을 발급하는 것은 provider 인증을
+            통과한 사용자가 가입 완료 API를 호출할 수 있게 하기 위한 것이다. 이 token은 가입 진행용
+            인증 세션이며, 가입 완료 사용자와 같은 권한을 의미하지 않는다.
+          </p>
+          <table>
+            <caption>
+              가입 전·후 token 권한 경계
+            </caption>
+            <thead>
+              <tr>
+                <th>상태</th>
+                <th>허용 흐름</th>
+                <th>차단 흐름</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>PENDING</code></td>
+                <td><code>POST /api/users/join</code> — <code>AccessTokenGuard</code>만 적용</td>
+                <td>프로필·게시글·모각 등 <code>RegisteredUserGuard</code> 경로</td>
+              </tr>
+              <tr>
+                <td><code>USER</code></td>
+                <td>가입 완료 사용자용 전체 인증 경로</td>
+                <td>유효하지 않은 세션·token</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            가입 전 token 자체를 발급하지 않으려면 별도의 onboarding token과 전용 guard/계약이
+            필요하다. 현재 API는 <code>/api/users/join</code>에 access token을 사용하므로, 이번
+            범위에서는 PENDING token을 유지하고 권한 경계를 테스트한다.
+          </p>
+        </section>
+        <section id="improvements">
+          <h2>동시 가입 개선안 (제안)</h2>
+          <ol>
+            <li>
+              <strong>PENDING token 유지:</strong> provider 인증 직후 가입 API를 호출하는 데
+              필요하므로 access/refresh token은 계속 발급한다. 등록 완료 권한은 여전히
+              <code>RegisteredUserGuard</code>로 제한한다.
+            </li>
+            <li>
+              <strong>기존 승인안 — 재검토 대상:</strong> access token의 role이
+              <code>PENDING</code>이면 인증 시 현재 user row를 확인한다. DB role이 이미
+              <code>USER</code>라면 현재 요청 principal을 <code>USER</code>로 승격하고,
+              refresh에서는 최신 role이 담긴 새 access token을 발급한다. DB role이 여전히
+              PENDING이면 그대로 둔다.
+            </li>
+            <li>
+              <strong>가입 완료 원자성:</strong>
+              <code>UPDATE users ... WHERE role = 'PENDING'</code>에서 먼저 성공한 요청만
+              닉네임·직업·주소·동의를 확정한다. 뒤 요청은 기존 USER 상태를 재확인해 기존 가입 결과와
+              서로 다른 세션이면 새 USER 세션을 반환하며, generic persistence 오류를 내지 않는다.
+              동일 <code>currentSessionId</code>의 후속 요청은 세션이 이미 비활성화되었으므로
+              <code>LOGOUT_TOKEN</code>(HTTP 403/T005)으로 종료할 수 있다. 어느 경우에도
+              뒤 요청의 입력으로 기존 가입 정보를 덮어쓰지 않는다.
+            </li>
+            <li>
+              <strong>세션 모델:</strong> A/B 로그인 세션을 하나로 합치거나 강제 로그아웃하지
+              않는다. 두 세션은 같은 userId를 가리킬 수 있고, role 최신화·가입 완료 결과로 일관된
+              상태를 얻는다.
+            </li>
+          </ol>
+          <p>
+            <strong>대안으로 보류:</strong> 가입 전 token을 별도 onboarding token으로 분리하거나,
+            가입 완료 시 다른 세션을 모두 폐기하는 방식은 API 계약·다중 기기 UX를 크게 바꾸므로 이번
+            범위에서 제외한다.
+          </p>
+        </section>
+        <section id="role-freshness-review">
+          <h2>role 최신화 재검토 (승인된 설계)</h2>
+          <p>
+            <strong>결정:</strong> <code>registrationContinuation</code> 같은 내부 표식을 제거하고,
+            access token의 <code>PENDING</code> role은 refresh 전까지 그대로 유지한다. 이 표식은
+            JWT·DB에 저장되지는 않지만, “일반 USER token”과 “가입 완료 뒤 남은 PENDING token”을
+            구분하기 위한 요청 전용 예외 상태라 표준 도메인 모델로 보기 어렵다.
+          </p>
+          <dl>
+            <dt>결정</dt>
+            <dd>
+              가입 완료의 정확성과 세션 교체에는 표식이 필요하지 않다. 가입 응답의 새 token을
+              저장하고, 다른 탭의 오래된 token은 공통 HTTP client가 refresh 1회 후 원 요청을 1회만
+              재시도한다.
+            </dd>
+            <dt>근거·가정</dt>
+            <dd>
+              수동으로 각 화면이 retry하지 않고 인증 계층에서 single-flight refresh를 수행하며, 현재
+              refresh API가 DB의 최신 role로 access token을 발급한다는 전제다.
+            </dd>
+            <dt>가장 강한 반증 또는 완화</dt>
+            <dd>
+              일반 <code>403 FORBIDDEN</code>을 무조건 refresh 대상으로 삼으면 권한 부족 요청을
+              반복할 수 있다. 가입 완료 직후 proactive refresh를 우선하고, stale token을 구분해야
+              한다면 명시적인 오류 신호와 1회 재시도·무한 루프 방지 규칙을 프런트 공통 계층에 둔다.
+            </dd>
+            <dt>미룬 범위·재검토 조건</dt>
+            <dd>
+              공통 token interceptor를 제공할 수 없는 클라이언트가 있거나 refresh 없이 즉시 USER
+              전용 API가 반드시 동작해야 한다면, <code>effectiveRole</code>을 명시하는 대안을 별도
+              승인한다. 화면별 retry 구현은 채택하지 않는다.
+            </dd>
+          </dl>
+          <table>
+            <caption>
+              기존 승인안과 승인된 변경의 경계
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">경계</th>
+                <th scope="col">기존 승인안</th>
+                <th scope="col">재검토 제안</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>access 인증</td>
+                <td>PENDING token이면 DB role을 읽어 principal을 USER로 승격</td>
+                <td>서명된 token role을 유지하고 세션 활성 여부만 확인</td>
+              </tr>
+              <tr>
+                <td>가입 API</td>
+                <td>승격된 principal의 <code>registrationContinuation</code>으로 재발급 허용</td>
+                <td>
+                  persisted USER이면서 <code>current.role === 'PENDING'</code>인 경우에만 재발급
+                </td>
+              </tr>
+              <tr>
+                <td>refresh</td>
+                <td colspan="2">DB의 현재 role을 읽어 USER token을 발급</td>
+              </tr>
+              <tr>
+                <td>USER 전용 API</td>
+                <td>DB role을 확인한 해당 요청은 즉시 통과 가능</td>
+                <td>
+                  오래된 PENDING token은 refresh 전까지 <code>RegisteredUserGuard</code>에서 차단
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <ol>
+            <li>
+              <code>authenticateAccessToken</code>은 JWT 검증과 활성 세션 확인만 수행하고
+              principal의 role을 바꾸지 않는다. 따라서 일반 요청마다 DB role을 재조회하지 않는다.
+            </li>
+            <li>
+              <code>POST /api/users/join</code>은 이미 persisted <code>USER</code>이면
+              <code>current.role === 'PENDING'</code>일 때만 기존 가입 결과와 최신 USER 세션을
+              반환한다. 일반 USER token은 <code>USER_ALREADY_EXISTS</code>로 거부한다.
+            </li>
+            <li>
+              클라이언트가 가입 완료 뒤 USER 전용 API를 호출하려면 refresh token으로 최신 access
+              token을 먼저 교체한다. 이는 정상적인 stale PENDING 경로이며, 별도 onboarding token이나
+              provider 재조회는 추가하지 않는다. 단, 동일 <code>currentSessionId</code> 중복
+              <code>/join</code>에서 <code>T005</code>가 오면 stale 요청으로 간주하되, 같은
+              <code>authGeneration</code>의 진행 중 가입 결과와 그 결과가 저장한 최신 공용 pair만
+              확인한다. 다른 계정의 pair는 채택하지 않는다. pair가 없으면 오래된 token으로 refresh나
+              provider 자동 로그인을 시도하지 않고 로그인 화면으로 이동한다.
+            </li>
+          </ol>
+          <aside class="risk">
+            <strong>이 결론이 실패한다면:</strong> 클라이언트가 가입 완료 직후 오래된 access
+            token만으로 USER 전용 API가 계속 동작한다고 가정할 수 있다. 이 경우 refresh를 명시적으로
+            수행하게 하거나, 즉시 승격이 제품 요구사항인지 별도로 승인해야 한다.
+          </aside>
+          <aside class="risk">
+            <strong>승인된 서버 계약:</strong>
+            <code>RegisteredUserGuard</code>는 현재 <code>request.user.role</code>만 보고
+            <code>FORBIDDEN</code>을 반환한다. 표식 제거 후 <code>role === 'PENDING'</code>이면
+            <code>TOKEN_REFRESH_REQUIRED</code> 오류 코드(<code>HTTP 403 / T006</code>)를 반환하도록
+            바꾸면, 일반 USER
+            권한 부족의 <code>FORBIDDEN</code>과 refresh 대상 요청을 프런트가 구분할 수 있다. 이
+            분기는 “stale인지 아직 미가입인지”를 토큰만으로 판정하는 것은 아니므로, 프런트는 refresh
+            1회와 원 요청 1회만 수행하고 같은 코드가 반복되면 가입 화면으로 보낸다.
+          </aside>
+          <p>
+            <strong>미룬 범위:</strong> 즉시 USER 권한이 꼭 필요하다면 <code>tokenRole</code>과
+            <code>effectiveRole</code>을 명시적으로 분리하는 대안을 재검토한다. 지금은 표식과 매
+            요청 DB 조회를 제거하는 최소 변경만 제안한다.
+          </p>
+        </section>
+        <section id="invariants">
+          <h2>결정과 불변식</h2>
+          <table>
+            <caption>
+              상황별 결과
+            </caption>
+            <thead>
+              <tr>
+                <th>상황</th>
+                <th>판정</th>
+                <th>결과</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>같은 provider·같은 subject</td>
+                <td>기존 identity</td>
+                <td>기존 사용자에 세션 발급</td>
+              </tr>
+              <tr>
+                <td>다른 provider 또는 다른 subject, 이메일 동일</td>
+                <td>새 identity</td>
+                <td>새 사용자·새 소셜 계정 생성</td>
+              </tr>
+              <tr>
+                <td>다른 provider 또는 subject, 이메일 상이</td>
+                <td>새 identity</td>
+                <td>새 사용자·새 소셜 계정 생성</td>
+              </tr>
+              <tr>
+                <td>동일 identity 동시 로그인</td>
+                <td>social identity unique 충돌</td>
+                <td>exact identity 재조회 후 한 사용자에 각 세션 발급</td>
+              </tr>
+              <tr>
+                <td>서로 다른 세션의 동시 가입 완료</td>
+                <td><code>UPDATE ... WHERE role = 'PENDING'</code> 선착순</td>
+                <td>첫 요청만 USER 전이·동의 확정, 후속 요청은 자기 USER 세션으로 복구</td>
+              </tr>
+              <tr>
+                <td>같은 <code>currentSessionId</code>의 중복 가입 완료</td>
+                <td>후속 세션 교체의 삭제 결과 0행</td>
+                <td>
+                  <code>403/T005 LOGOUT_TOKEN</code>; 프런트는 같은
+                  <code>authGeneration</code>·<code>joinAttemptId</code>의 pair만 확인
+                </td>
+              </tr>
+              <tr>
+                <td>검증 실패·알 수 없는 persistence 오류</td>
+                <td>안전한 복구 불가</td>
+                <td>기존 도메인·persistence 오류 유지</td>
+              </tr>
+            </tbody>
+          </table>
+          <aside class="risk">
+            <strong>핵심 위험:</strong> 이메일 유니크 제거는 데이터 모델 변경이다. 기존에 동일
+            이메일을 가진 사용자 행이 이미 있으면 마이그레이션은 허용해야 하며, downstream에서
+            이메일을 계정 키로 가정하는 조회·복구 코드를 함께 점검해야 한다.
+          </aside>
+        </section>
+        <section id="migration">
+          <h2>변경 경계와 마이그레이션</h2>
+          <ul>
+            <li><code>users_email_unique</code> 제약을 제거하는 Drizzle migration을 추가한다.</li>
+            <li>
+              <code>users.email</code> 컬럼 자체와 <code>social_account.email</code> 저장은
+              유지한다.
+            </li>
+            <li>
+              <code>AuthService.login</code>의 <code>findUserByEmail</code> 사전 차단과
+              <code>DuplicateEmailException → U012</code> 분기를 제거한다.
+            </li>
+            <li>
+              <code>(provider, providerUserId)</code> unique와
+              <code>(userId, provider)</code> unique는 유지한다.
+            </li>
+            <li>
+              이메일을 사용자 검색·계정 식별자로 쓰는 다른 인증 경로가 있는지 검색하고, 발견 시 이
+              설계의 범위에 포함해 함께 수정하거나 명시적으로 잔여 위험으로 기록한다.
+            </li>
+          </ul>
+          <p>
+            롤백은 새 migration을 역순으로 실행할 수 있지만, 그 시점에 중복 이메일 행이 생성되어
+            있으면 제약 복원이 실패할 수 있다. 따라서 롤백 전 중복 이메일 점검이 필요하다.
+          </p>
+        </section>
+        <section id="verification">
+          <h2>검증 계획</h2>
+          <ul>
+            <li>
+              AuthService 단위: 같은 이메일·다른 provider → 새 계정·<code>NEW</code>·서로 다른
+              userId.
+            </li>
+            <li>
+              AuthService 단위: 같은 provider·같은 subject → 기존 계정 <code>RESUME</code> 또는
+              <code>REGISTERED</code>.
+            </li>
+            <li>
+              AuthService 단위: social identity unique 충돌 후 exact identity를 재조회해 경쟁 요청의
+              사용자를 정상 재개하고, identity를 찾지 못한 persistence 오류는 그대로 전파하는지
+              확인한다.
+            </li>
+            <li>
+              동시 로그인 integration: 같은 exact identity 두 요청이 users/social_account 1건,
+              auth_sessions 2건, 같은 userId의 NEW/RESUME 결과가 되는지 확인한다.
+            </li>
+            <li>
+              가입 완료 race: 두 PENDING 세션의 join 동시 요청에서 한 번만 USER 전이가 일어나고 두
+              번째 요청은 서로 다른 세션이면 새 USER 세션을 받는다. 같은 세션의 stale 요청은
+              Guard를 통과한 시점에 따라 성공 경합 후 <code>403/T005</code>가 될 수 있으며, 첫 응답의
+              replacement session이 남는지 확인한다.
+            </li>
+            <li>
+              repository/integration: users에 같은 email 두 행과 각각의 social identity가 저장된다.
+            </li>
+            <li>
+              schema/migration: 실제 DB에서 <code>users_email_unique</code> 제거 후 중복 이메일
+              insert가 성공하고 social identity unique는 여전히 동작한다.
+            </li>
+            <li>
+              전체 검색·회귀: 이메일 기반 인증·세션·탈퇴·사용자 조회가 계정 식별자로 오인하지 않는지
+              확인한다.
+            </li>
+          </ul>
+          <p>
+            예정 명령: <code>pnpm test --runInBand</code>, <code>pnpm typecheck</code>,
+            <code>pnpm lint</code>, 필요 시 테스트 DB 대상 <code>pnpm test:integration</code>.
+          </p>
+        </section>
+        <section id="grilling-state">
+          <h2>설계 의사결정 질문 (grilling) — G1·G2 재확정·구현 승인</h2>
+          <p>
+            기존 승인안은 provider별 독립 계정, PENDING token-role 유지, T006 분기까지 확정했다.
+            이번 리뷰에서 발견한 프런트 릴리스 의존성과 동일 세션 중복 가입 처리는 동작·계약을
+            바꾸므로 별도 결정했다. migration 적용 자체는 이번 결정의 대상이 아니다.
+          </p>
+          <dl>
+            <dt>진행 상태</dt>
+            <dd>G1-A·G2-C 결정됨 · 구현 재승인됨</dd>
+            <dt>결정 트리</dt>
+            <dd>
+              G1-A로 T006 서버 계약과 프런트 interceptor의 별도 릴리스 gate를 유지한다. 기존 G2-A의
+              U017 보장·자동 login 복구는 AUTH-005 검토에서 폐기하고, G2-C로 stale
+              <code>/join</code>의 <code>T005</code> 허용과 프런트 single-flight·최신 pair 확인을
+              사용한다. 이 변경에 대한 구현 재승인은 2026-09-02 대화에서 확인되었다.
+            </dd>
+            <dt>현재 frontier</dt>
+            <dd>
+              G1-A·G2-C가 확정되었고 구현 재승인을 받았다. 설계-control에서 확인한 경계와 실패 시
+              후속 동작을 구현·검증 기록에 반영한다. 기존 U017 관련 기록은 대체됨으로 표시한다.
+            </dd>
+            <dt>확정된 전제</dt>
+            <dd>
+              일반 <code>403/T004</code>는 refresh 대상이 아니며, <code>T006</code>만 single-flight
+              refresh 1회와 원 요청 1회를 허용한다. migration 미적용 상태로 새 provider 동작을
+              배포하지 않는다.
+            </dd>
+          </dl>
+          <table>
+            <caption>개선 결정 트리와 권고</caption>
+            <thead>
+              <tr>
+                <th scope="col">ID</th>
+                <th scope="col">결정</th>
+                <th scope="col">선택지</th>
+                <th scope="col">권고·트레이드오프</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>G1</code></td>
+                <td>T006 프런트 계약의 이번 작업 범위</td>
+                <td>
+                  A. 서버 T006 계약·백엔드 contract test·handoff를 고정하고 프런트 interceptor는
+                  별도 릴리스 gate로 둔다. B. 서버가 매 요청 DB role 조회/자동 승격해 프런트 refresh
+                  계약을 없앤다.
+                </td>
+                <td>
+                  <strong>A 선택:</strong> 현재 승인안과 일치하고 매 요청 DB 부하·권한 경계 변화를
+                  피한다. 프런트 interceptor 없이는 stale 세션 UX가 완성되지 않으므로 별도 릴리스
+                  gate로 추적한다.
+                </td>
+              </tr>
+              <tr>
+                <td><code>G2</code></td>
+                <td>동일 <code>currentSessionId</code>의 중복 <code>/join</code></td>
+                <td>
+                  A. stale 요청을 명시적 <code>U017</code>으로 매핑하고 provider login으로 복구한다.
+                  B. idempotency key와 durable response replay를 도입한다. C. 서버의 세션 상태를
+                  추가하지 않고 stale 요청의 <code>T005</code>를 허용하며, 프런트에서 join을
+                  single-flight로 직렬화하고 같은 <code>joinAttemptId</code>의 최신 pair만 확인한다.
+                </td>
+                <td>
+                  <strong>C 선택:</strong> 서버 tombstone·멱등 응답 저장·추가 migration 없이 현재
+                  세션 모델을 유지한다. 프런트는 같은 <code>authGeneration</code>의 진행 중 join
+                  결과와 그 결과가 저장한 공용 token pair만 확인하고, pair가 없을 때만 로그인 화면으로
+                  보낸다. stale token으로
+                  <code>/refresh</code>를 반복하거나 T005에서 provider 자동 로그인을 수행하지 않는다.
+                  A는 logout과 replacement를 구분할 서버 상태가 필요하고, B는 token 결과 보관·암호화·
+                  만료 정책이 추가되어 현재 범위보다 크다.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <aside class="risk">
+            <strong>잔여 위험:</strong> 서버는 동일 세션 stale 요청에 <code>T005</code>를 반환할 수
+            있으므로 프런트가 이를 즉시 전역 로그아웃으로 처리하면 첫 요청의 최신 pair를 지울 수
+            있다. 프런트는 같은 <code>authGeneration</code>·<code>joinAttemptId</code>의 결과만 복구하고,
+            generation이 바뀐 로그아웃·계정 전환 뒤에는 진행 중 응답을 폐기해야 한다. 이
+            single-flight·조건부 삭제를 프런트 릴리스 gate로 검증해야 한다. G1을 정하지 않으면 T006
+            배포 뒤 stale PENDING 세션이 로그인 화면으로 이탈하거나 무한 재시도할 수 있다.
+          </aside>
+        </section>
+        <section id="control">
+          <h2>설계 이해 점검</h2>
+          <p>
+            <strong>상태:</strong> 점검 제공됨. G1-A·G2-C 결정에 맞춰 동일 세션 stale 처리와 T006
+            릴리스 경계를 포함하도록 질문을 갱신했다. HTML의 로컬 선택 결과는 Codex에 자동 전달되지
+            않으며, 설계 승인은 대화에서 별도로 확인했다.
+          </p>
+          <form id="quiz">
+            <p id="progress" aria-live="polite">1 / 14 · 답변 0개</p>
+            <fieldset class="slide" data-answer="b">
+              <legend>Q1. 계정 식별의 기준은 무엇인가?</legend>
+              <label><input type="radio" name="q1" value="a" /> 이메일</label><br /><label
+                ><input type="radio" name="q1" value="b" /> provider와 providerUserId의 조합</label
+              ><br /><label><input type="radio" name="q1" value="c" /> 닉네임</label>
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" data-answer="a" hidden>
+              <legend>Q2. Google과 Kakao가 같은 이메일을 반환하고 subject가 다르면?</legend>
+              <label
+                ><input type="radio" name="q2" value="a" /> 이메일 중복과 무관하게 새 사용자 계정을
+                만든다</label
+              ><br /><label
+                ><input type="radio" name="q2" value="b" /> 기존 계정에 자동 연결한다</label
+              ><br /><label><input type="radio" name="q2" value="c" /> 항상 U012를 반환한다</label>
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" data-answer="c" hidden>
+              <legend>Q3. 제거하는 것은 무엇이며 유지하는 것은 무엇인가?</legend>
+              <label
+                ><input type="radio" name="q3" value="a" /> users.email 컬럼과 social unique를 모두
+                제거한다</label
+              ><br /><label
+                ><input type="radio" name="q3" value="b" /> social identity unique만 제거한다</label
+              ><br /><label
+                ><input type="radio" name="q3" value="c" /> users.email unique만 제거하고 social
+                identity unique는 유지한다</label
+              >
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" data-answer="b" hidden>
+              <legend>Q4. 같은 provider·subject의 동시 가입 충돌은 어떻게 복구하는가?</legend>
+              <label
+                ><input type="radio" name="q4" value="a" /> 이메일이 같은 아무 사용자에게
+                발급한다</label
+              ><br /><label
+                ><input type="radio" name="q4" value="b" /> exact social identity를 재조회해
+                승자에게 발급한다</label
+              ><br /><label
+                ><input type="radio" name="q4" value="c" /> 무조건 새 사용자를 추가한다</label
+              >
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" data-answer="a" hidden>
+              <legend>Q5. 제약을 다시 복원해야 할 때 먼저 확인할 운영 증거는?</legend>
+              <label
+                ><input type="radio" name="q5" value="a" /> 중복 이메일 사용자 행이 있는지 읽기
+                전용으로 점검한다</label
+              ><br /><label
+                ><input type="radio" name="q5" value="b" /> 중복 행을 임의로 삭제한다</label
+              ><br /><label
+                ><input type="radio" name="q5" value="c" /> 모든 소셜 계정을 병합한다</label
+              >
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" data-answer="c" hidden>
+              <legend>Q6. 구현 완료 판단에 필요한 회귀 검증은?</legend>
+              <label><input type="radio" name="q6" value="a" /> 로그인 성공 한 건만 확인한다</label
+              ><br /><label
+                ><input type="radio" name="q6" value="b" /> 이메일 중복만 확인하고 downstream 조회는
+                보지 않는다</label
+              ><br /><label
+                ><input type="radio" name="q6" value="c" /> 다른 provider의 동일 이메일 생성, 동일
+                identity 재로그인, DB unique·전체 인증 회귀를 확인한다</label
+              >
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" data-answer="b" hidden>
+              <legend>Q7. Apple과 Kakao가 같은 이메일을 반환하지만 provider가 다르면?</legend>
+              <label
+                ><input type="radio" name="q7" value="a" /> exact identity 재조회로 같은 userId를
+                공유한다</label
+              ><br /><label
+                ><input type="radio" name="q7" value="b" /> 각각 새 users·social_account·세션을
+                만들고 서로 다른 PENDING 계정이 될 수 있다</label
+              ><br /><label><input type="radio" name="q7" value="c" /> 항상 U012로 차단한다</label>
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset class="slide" data-answer="c" hidden>
+              <legend>
+                Q8. 같은 exact identity의 A/B 로그인 뒤 A가 가입을 완료하면 B의 기존 access token은?
+              </legend>
+              <label
+                ><input type="radio" name="q8" value="a" /> DB role 변경과 동시에 token의 role도
+                자동 변경된다</label
+              ><br /><label
+                ><input type="radio" name="q8" value="b" /> B가 만든 별도 사용자도 자동으로 USER가
+                된다</label
+              ><br /><label
+                ><input type="radio" name="q8" value="c" /> B 세션은 남을 수 있지만 기존 token은
+                PENDING일 수 있어 refresh 또는 재로그인이 필요하다</label
+              >
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset
+              class="slide"
+              data-answer="c"
+              data-explanation="같은 currentSessionId의 후속 /join은 세션 교체 타이밍에 따라 T005가 될 수 있습니다. 프런트는 같은 authGeneration·joinAttemptId의 진행 결과만 확인해야 합니다."
+              data-correction="stale token으로 /join·/refresh를 반복하거나 다른 계정의 pair를 채택하면 세션 혼동 또는 로그아웃 의도 복구가 발생할 수 있습니다."
+              data-next="join single-flight, generation 무효화, 조건부 token 삭제를 확인하세요."
+              hidden
+            >
+              <legend>Q9. 동일 currentSessionId의 중복 /join에서 먼저 성공한 요청이 세션을 교체했다면?</legend>
+              <label
+                ><input type="radio" name="q9" value="a" /> 같은 access/refresh token으로 /join을
+                다시 호출한다</label
+              ><br /><label
+                ><input type="radio" name="q9" value="b" /> 후속 요청은 항상 409
+                <code>U017</code>로 받고 provider login API를 호출한다</label
+              ><br /><label
+                ><input type="radio" name="q9" value="c" /> 후속 요청은 T005가 될 수 있으므로 같은
+                authGeneration·joinAttemptId의 최신 pair만 확인하고, 없을 때 로그인 화면으로 이동한다</label
+              >
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset
+              class="slide"
+              data-answer="b"
+              data-explanation="access token의 role은 서명된 token 값대로 PENDING으로 남고, USER 전용 경로는 refresh 뒤에 허용됩니다."
+              data-correction="오래된 PENDING token을 매 요청 USER로 승격하면 token 권한 경계가 흐려집니다."
+              data-next="refresh 전후의 RegisteredUserGuard 경계를 확인하세요."
+              hidden
+            >
+              <legend>
+                Q10. A가 가입을 완료한 뒤 B의 기존 PENDING access token으로 프로필을 요청하면?
+              </legend>
+              <label
+                ><input type="radio" name="q10" value="a" /> DB role이 USER이므로 즉시 USER 전용
+                API를 통과한다</label
+              ><br /><label
+                ><input type="radio" name="q10" value="b" /> token role은 PENDING으로 남아 USER 전용
+                guard에서 차단되고 refresh가 필요하다</label
+              ><br /><label
+                ><input type="radio" name="q10" value="c" /> provider를 다시 조회해야만
+                통과한다</label
+              >
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset
+              class="slide"
+              data-answer="b"
+              data-explanation="persisted USER를 만난 가입 API는 PENDING token의 미완료 흐름만 멱등 재개하고, 일반 USER token은 재발급 경계를 우회할 수 없습니다."
+              data-correction="가입 API의 재발급 조건은 DB role만이 아니라 검증된 token의 원래 role도 함께 봐야 합니다."
+              data-next="PENDING token과 USER token의 호출 결과를 각각 확인하세요."
+              hidden
+            >
+              <legend>
+                Q11. persisted USER 상태에서 가입 API를 호출할 때 재발급을 허용할 token은?
+              </legend>
+              <label
+                ><input type="radio" name="q11" value="a" /> PENDING·USER token 모두 최신 USER
+                세션을 재발급한다</label
+              ><br /><label
+                ><input type="radio" name="q11" value="b" /> PENDING token만 재발급하고 USER token은
+                <code>USER_ALREADY_EXISTS</code>로 거부한다</label
+              ><br /><label
+                ><input type="radio" name="q11" value="c" /> 두 token 모두 persistence 오류로
+                처리한다</label
+              >
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset
+              class="slide"
+              data-answer="a"
+              data-explanation="role 전환이 필요한 경계는 refresh와 가입 API가 이미 DB를 읽으므로, 일반 access 인증마다 추가 조회할 필요가 없습니다."
+              data-correction="매 요청 DB role 재조회는 표식을 유지하기 위한 비용이며, signed token과 refresh 경계로 대체할 수 있습니다."
+              data-next="일반 access 요청, 가입 API, refresh의 DB 조회 지점을 구분해 보세요."
+              hidden
+            >
+              <legend>
+                Q12. 재검토 제안이 일반 access 인증에서 DB role을 다시 읽지 않는 이유는?
+              </legend>
+              <label
+                ><input type="radio" name="q12" value="a" /> signed token의 role은 그대로 신뢰하고,
+                role 전환이 필요한 가입 API·refresh에서만 DB를 읽기 때문이다</label
+              ><br /><label
+                ><input type="radio" name="q12" value="b" /> 이메일이 항상 최신 role을 보장하기
+                때문이다</label
+              ><br /><label
+                ><input type="radio" name="q12" value="c" /> 소셜 provider를 매 요청 호출하기
+                때문이다</label
+              >
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset
+              class="slide"
+              data-answer="b"
+              data-explanation="T006은 stale PENDING access token을 뜻하므로 공통 네트워크 계층에서 refresh를 single-flight로 한 번만 수행하고 원 요청을 한 번만 재시도합니다."
+              data-correction="일반 403/T004까지 refresh하면 권한 부족 오류를 무한 재시도할 수 있습니다. 매 요청 DB role 조회로 대체하는 안은 G1-B입니다."
+              data-next="T006 재시도 한도와 두 번째 T006의 가입 화면 분기를 확인하세요."
+              hidden
+            >
+              <legend>Q13. G1-A에서 프런트가 refresh 대상으로 삼는 오류는?</legend>
+              <label
+                ><input type="radio" name="q13" value="a" /> 모든 HTTP 403</label
+              ><br /><label
+                ><input type="radio" name="q13" value="b" /> <code>T006</code>만 refresh 1회와
+                원 요청 1회 재시도</label
+              ><br /><label
+                ><input type="radio" name="q13" value="c" /> 서버가 매 요청 DB role을 읽도록 바꾼
+                뒤에는 오류를 처리하지 않는다</label
+              >
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <fieldset
+              class="slide"
+              data-answer="c"
+              data-explanation="G2-C에서 T005는 stale /join의 종료 신호일 수 있습니다. 같은 authGeneration·joinAttemptId의 결과가 저장한 pair일 때만 이를 채택하고, 없을 때 로그인 화면으로 이동합니다."
+              data-correction="다른 계정의 pair를 채택하거나 T005에서 stale token refresh/provider 자동 로그인을 수행하면 세션 혼동 또는 로그아웃 의도 복구가 발생할 수 있습니다."
+              data-next="T005의 전역 처리와 /join의 single-flight 예외를 구분하세요."
+              hidden
+            >
+              <legend>Q14. G2-C의 /join에서 T005를 받았고 최신 pair가 없다면?</legend>
+              <label
+                ><input type="radio" name="q14" value="a" /> stale token으로 /refresh를 반복한다</label
+              ><br /><label
+                ><input type="radio" name="q14" value="b" /> provider SDK 로그인을 자동 수행해
+                로그인 상태를 복구한다</label
+              ><br /><label
+                ><input type="radio" name="q14" value="c" /> 오래된 token으로 재시도하지 않고
+                로그인 화면으로 이동한다</label
+              >
+              <div class="result" hidden>
+                <strong>상태:</strong> <span></span>
+                <p class="explanation"></p>
+                <p class="next"></p>
+              </div>
+            </fieldset>
+            <div class="controls">
+              <button type="button" id="prev">이전</button
+              ><button type="button" id="next">다음</button
+              ><button type="button" id="submit">제출</button>
+            </div>
+            <output id="overall" aria-live="polite"></output>
+          </form>
+        </section>
+        <section id="approval">
+          <h2>승인 상태</h2>
+          <p>
+            <strong>구현 재승인됨 (2026-09-02).</strong> G1-A로
+            <code>TOKEN_REFRESH_REQUIRED</code>(HTTP 403 / T006) 서버 계약·백엔드 contract test·handoff를
+            고정하고 프런트 interceptor는 별도 릴리스 gate로 둔다. G2-C로 동일
+            <code>currentSessionId</code> 중복 <code>/join</code>의 stale 후속 요청에
+            <code>HTTP 403/T005</code>를 허용한다. 프런트는 join을 single-flight로 직렬화하고,
+            T005에서 같은 <code>authGeneration</code>·<code>joinAttemptId</code>의 결과가 저장한 최신
+            token pair만 확인하며 pair가 없을 때만 로그인 화면으로 이동한다. 오래된 token으로
+            refresh를 반복하거나 provider 자동 로그인을 수행하지 않는다. 일반
+            <code>FORBIDDEN</code>의 무조건 refresh, 별도 onboarding token, 타 세션 일괄 폐기는 계속
+            범위에서 제외한다.
+          </p>
+          <p>
+            연결된 구현 제어 기록:
+            <code>provider-isolated-social-accounts-implementation.html</code>
+          </p>
+        </section>
+      </article>
+    </main>
+    <script>
+      (() => {
+        const slides = [...document.querySelectorAll('.slide')];
+        const progress = document.querySelector('#progress');
+        const overall = document.querySelector('#overall');
+        let index = 0;
+        const show = () => {
+          slides.forEach((slide, i) => {
+            slide.hidden = i !== index;
+          });
+          const answered = slides.filter((slide) => slide.querySelector('input:checked')).length;
+          progress.textContent = `${index + 1} / ${slides.length} · 답변 ${answered}개`;
+        };
+        document.querySelector('#prev').onclick = () => {
+          index = Math.max(0, index - 1);
+          show();
+        };
+        document.querySelector('#next').onclick = () => {
+          index = Math.min(slides.length - 1, index + 1);
+          show();
+        };
+        document.querySelectorAll('input').forEach((input) => {
+          input.onchange = show;
+        });
+        document.querySelector('#submit').onclick = () => {
+          let correct = 0;
+          slides.forEach((slide) => {
+            const chosen = slide.querySelector('input:checked')?.value;
+            const ok = chosen === slide.dataset.answer;
+            const card = slide.querySelector('.result');
+            card.hidden = false;
+            card.querySelector('span').textContent = ok ? '확립' : '보류';
+            card.querySelector('.explanation').textContent = ok
+              ? (slide.dataset.explanation ?? '선택한 동작이 설계 기준과 일치합니다.')
+              : (slide.dataset.correction ?? '해당 불변식과 실패 경계를 다시 확인하세요.');
+            card.querySelector('.next').textContent = ok
+              ? (slide.dataset.next ?? '다음 질문 또는 별도 설계 승인을 검토하세요.')
+              : (slide.dataset.next ?? '해당 불변식과 실패 경계를 다시 확인하세요.');
+            if (ok) correct += 1;
+          });
+          overall.textContent = `${correct}/${slides.length}개 일치. 이 결과는 로컬 이해 점검용이며 승인 기록과 별개입니다.`;
+          show();
+        };
+        show();
+      })();
+    </script>
+  </body>
+</html>

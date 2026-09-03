@@ -4,11 +4,13 @@ import { and, eq } from 'drizzle-orm';
 import type { UserRepositoryPort } from '@core/users/application/port/user.repository.port';
 import type {
   CompleteRegistrationCommand,
+  ReplaceSessionCommand,
   UpdateJobCommand,
   UpdateNicknameCommand,
   UpdateProfileImageCommand,
 } from '@core/users/application/type/user.command';
 import {
+  CurrentSessionNotActiveException,
   DuplicateNicknameException,
   UserPersistenceException,
 } from '@core/users/domain/exception/userPersistence.exception';
@@ -104,11 +106,19 @@ export class UserRepository implements UserRepositoryPort {
           })
           .where(and(eq(users.id, command.userId), eq(users.role, 'PENDING')))
           .returning({ id: users.id, nickname: users.nickname });
-        const nickname = registered?.nickname;
-        if (registered === undefined || nickname === null || nickname === undefined) {
-          throw new UserPersistenceException(
-            'Pending user registration update did not return a row',
-          );
+        if (registered === undefined || registered.nickname === null) {
+          const [existing] = await tx
+            .select({ id: users.id, nickname: users.nickname, role: users.role })
+            .from(users)
+            .where(eq(users.id, command.userId))
+            .for('update');
+          if (existing?.role !== 'USER' || existing.nickname === null) {
+            throw new UserPersistenceException(
+              'Pending user registration update did not return a row',
+            );
+          }
+          await replaceSession(tx, command);
+          return { id: existing.id, nickname: existing.nickname };
         }
 
         for (const consent of command.consents) {
@@ -132,33 +142,50 @@ export class UserRepository implements UserRepositoryPort {
             });
         }
 
-        await tx.insert(authSessions).values({
-          id: command.replacementSession.id,
-          userId: command.userId,
-          refreshTokenHash: command.replacementSession.refreshTokenHash,
-          expiresAt: command.replacementSession.expiresAt,
-        });
-        await tx
-          .delete(authSessions)
-          .where(
-            and(
-              eq(authSessions.id, command.currentSessionId),
-              eq(authSessions.userId, command.userId),
-            ),
-          );
-        return { id: registered.id, nickname };
+        await replaceSession(tx, command);
+        return { id: registered.id, nickname: registered.nickname };
       });
     } catch (error: unknown) {
       throw asUserPersistenceException(error, 'Failed to complete user registration');
     }
   }
+
+  async replaceSession(command: ReplaceSessionCommand): Promise<void> {
+    try {
+      await this.db.transaction(async (tx) => replaceSession(tx, command));
+    } catch (error: unknown) {
+      throw asUserPersistenceException(error, 'Failed to replace auth session');
+    }
+  }
+}
+
+async function replaceSession(
+  tx: Pick<Database, 'insert' | 'delete'>,
+  command: ReplaceSessionCommand | CompleteRegistrationCommand,
+): Promise<void> {
+  const deleted = await tx
+    .delete(authSessions)
+    .where(
+      and(eq(authSessions.id, command.currentSessionId), eq(authSessions.userId, command.userId)),
+    )
+    .returning({ id: authSessions.id });
+  if (deleted.length !== 1) {
+    throw new CurrentSessionNotActiveException();
+  }
+
+  await tx.insert(authSessions).values({
+    id: command.replacementSession.id,
+    userId: command.userId,
+    refreshTokenHash: command.replacementSession.refreshTokenHash,
+    expiresAt: command.replacementSession.expiresAt,
+  });
 }
 
 function asRegistrationCandidate(user: UserRecord): RegistrationCandidate {
   if (user.role !== 'PENDING' && user.role !== 'USER') {
     throw new UserPersistenceException(`Unsupported persisted user role: ${user.role}`);
   }
-  return { id: user.id, email: user.email, role: user.role };
+  return { id: user.id, email: user.email, nickname: user.nickname, role: user.role };
 }
 
 function asUserPersistenceException(error: unknown, message: string): UserPersistenceException {

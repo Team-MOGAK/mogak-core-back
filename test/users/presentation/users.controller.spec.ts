@@ -10,6 +10,7 @@ import { BoundedThrottlerStorage } from '@api/common/http/boundedThrottler.stora
 import { configureApp } from '@api/app.setup';
 import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import {
   pinoGlobalExceptionFilterTestImports,
   pinoGlobalExceptionFilterTestProviders,
@@ -121,6 +122,27 @@ describe('사용자 HTTP 계약', () => {
     expect(users.join).not.toHaveBeenCalled();
   });
 
+  it('stale 가입 세션은 403 T005로 전달한다', async () => {
+    users.join.mockRejectedValue(new DomainException(DomainErrorCode.LOGOUT_TOKEN));
+
+    await request(app.getHttpServer())
+      .post('/api/users/join')
+      .send({ nickname: '모각러', job: '개발', address: '서울', consents: [] })
+      .expect(403)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          status: 'FORBIDDEN',
+          code: 'T005',
+          message: '로그아웃된 토큰입니다',
+        });
+      });
+
+    expect(users.join).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, role: 'USER', sessionId: expect.any(String) }),
+      expect.objectContaining({ nickname: '모각러' }),
+    );
+  });
+
   it('같은 IP의 닉네임 검증 요청은 분당 예순 번째까지만 서비스에 전달한다', async () => {
     users.verifyNickname.mockResolvedValue(undefined);
 
@@ -144,7 +166,10 @@ describe('사용자 HTTP 계약', () => {
     metadata.jobs.mockResolvedValue([{ id: 1, name: '개발/데이터' }]);
 
     role = 'PENDING';
-    await request(app.getHttpServer()).get('/api/users/profile').expect(403);
+    await request(app.getHttpServer())
+      .get('/api/users/profile')
+      .expect(403)
+      .expect(({ body }) => expect(body).toMatchObject({ status: 'FORBIDDEN', code: 'T006' }));
 
     role = 'USER';
     await request(app.getHttpServer())

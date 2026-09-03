@@ -11,3 +11,10 @@ export class DuplicateNicknameException extends UserPersistenceException {
     this.name = 'DuplicateNicknameException';
   }
 }
+
+export class CurrentSessionNotActiveException extends UserPersistenceException {
+  constructor() {
+    super('Current auth session is no longer active');
+    this.name = 'CurrentSessionNotActiveException';
+  }
+}

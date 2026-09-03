@@ -10,7 +10,10 @@ import type { MetadataRepositoryPort } from '@core/users/application/port/metada
 import type { UserRepositoryPort } from '@core/users/application/port/user.repository.port';
 import { ConsentService } from '@core/users/application/service/consent.service';
 import { UserService } from '@core/users/application/service/user.service';
-import { DuplicateNicknameException } from '@core/users/domain/exception/userPersistence.exception';
+import {
+  CurrentSessionNotActiveException,
+  DuplicateNicknameException,
+} from '@core/users/domain/exception/userPersistence.exception';
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 function currentPendingUser(): AuthenticatedPrincipal {
@@ -34,6 +37,7 @@ function userRepository(): UserRepositoryPort {
     findById: testMock(),
     findProfile: testMock(),
     completeRegistration: testMock(),
+    replaceSession: testMock(),
     updateNickname: testMock(),
     updateJob: testMock(),
     updateProfileImageKey: testMock(),
@@ -145,6 +149,7 @@ describe('사용자 서비스', () => {
     jest.mocked(users.findById).mockResolvedValue({
       id: 7,
       email: 'mogak@example.test',
+      nickname: null,
       role: 'PENDING',
     });
     jest.mocked(users.existsByNickname).mockResolvedValue(false);
@@ -178,6 +183,7 @@ describe('사용자 서비스', () => {
     jest.mocked(users.findById).mockResolvedValue({
       id: 7,
       email: 'mogak@example.test',
+      nickname: null,
       role: 'PENDING',
     });
     jest.mocked(metadata.findJobByName).mockResolvedValue({ id: 2, name: '개발/데이터' });
@@ -233,5 +239,131 @@ describe('사용자 서비스', () => {
         replacementSession: expect.objectContaining({ id: expect.any(String) }),
       }),
     );
+  });
+
+  it('오래된 PENDING 세션이 이미 완료된 사용자를 다시 가입시키면 최신 USER 세션으로 교체한다', async () => {
+    const users = userRepository();
+    jest.mocked(users.findById).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: '기존닉네임',
+      role: 'USER',
+    });
+    const service = new UserService(
+      users,
+      metadataRepository(),
+      new ConsentService(consentRepository()),
+      sessionTokenIssuer(),
+      storage(),
+    );
+
+    await expect(
+      service.join(currentPendingUser(), {
+        nickname: '새닉네임',
+        job: '개발/데이터',
+        address: '서울특별시',
+        consents: [],
+      }),
+    ).resolves.toEqual({
+      userId: 7,
+      nickname: '기존닉네임',
+      tokens: { accessToken: 'access', refreshToken: 'refresh' },
+    });
+    expect(users.replaceSession).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 7, currentSessionId: SESSION_ID }),
+    );
+    expect(users.completeRegistration).not.toHaveBeenCalled();
+  });
+
+  it('일반 USER access token으로 가입 API를 호출해 refresh 세션을 재발급하지 않는다', async () => {
+    const users = userRepository();
+    jest.mocked(users.findById).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: '기존닉네임',
+      role: 'USER',
+    });
+    const service = new UserService(
+      users,
+      metadataRepository(),
+      new ConsentService(consentRepository()),
+      sessionTokenIssuer(),
+      storage(),
+    );
+
+    await expect(
+      service.join(
+        { userId: 7, role: 'USER', sessionId: SESSION_ID },
+        {
+          nickname: '새닉네임',
+          job: '개발/데이터',
+          address: '서울특별시',
+          consents: [],
+        },
+      ),
+    ).rejects.toEqual(new DomainException(DomainErrorCode.USER_ALREADY_EXISTS));
+    expect(users.replaceSession).not.toHaveBeenCalled();
+  });
+
+  it('이미 교체된 current session으로 가입 완료를 재요청하면 T005를 반환한다', async () => {
+    const users = userRepository();
+    const metadata = metadataRepository();
+    const consents = consentRepository();
+    jest.mocked(users.findById).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: null,
+      role: 'PENDING',
+    });
+    jest.mocked(metadata.findJobByName).mockResolvedValue({ id: 2, name: '개발/데이터' });
+    jest.mocked(metadata.findAddressByName).mockResolvedValue({ id: 3, name: '서울특별시' });
+    jest.mocked(consents.findItemsByIds).mockResolvedValue([]);
+    jest.mocked(consents.listActiveItems).mockResolvedValue([]);
+    jest
+      .mocked(users.completeRegistration)
+      .mockRejectedValue(new CurrentSessionNotActiveException());
+    const service = new UserService(
+      users,
+      metadata,
+      new ConsentService(consents),
+      sessionTokenIssuer(),
+      storage(),
+    );
+
+    await expect(
+      service.join(currentPendingUser(), {
+        nickname: '모각러',
+        job: '개발/데이터',
+        address: '서울특별시',
+        consents: [],
+      }),
+    ).rejects.toEqual(new DomainException(DomainErrorCode.LOGOUT_TOKEN));
+  });
+
+  it('이미 교체된 current session으로 완료 사용자가 가입을 재요청하면 T005를 반환한다', async () => {
+    const users = userRepository();
+    jest.mocked(users.findById).mockResolvedValue({
+      id: 7,
+      email: 'mogak@example.test',
+      nickname: '기존닉네임',
+      role: 'USER',
+    });
+    jest.mocked(users.replaceSession).mockRejectedValue(new CurrentSessionNotActiveException());
+    const service = new UserService(
+      users,
+      metadataRepository(),
+      new ConsentService(consentRepository()),
+      sessionTokenIssuer(),
+      storage(),
+    );
+
+    await expect(
+      service.join(currentPendingUser(), {
+        nickname: '새닉네임',
+        job: '개발/데이터',
+        address: '서울특별시',
+        consents: [],
+      }),
+    ).rejects.toEqual(new DomainException(DomainErrorCode.LOGOUT_TOKEN));
   });
 });

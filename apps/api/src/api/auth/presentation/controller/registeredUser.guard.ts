@@ -7,6 +7,9 @@ import type { AuthenticatedPrincipal } from '@core/auth/application/type/authent
 export class RegisteredUserGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<{ user?: AuthenticatedPrincipal }>();
+    if (request.user?.role === 'PENDING') {
+      throw new DomainException(DomainErrorCode.TOKEN_REFRESH_REQUIRED);
+    }
     if (request.user?.role !== 'USER') throw new DomainException(DomainErrorCode.FORBIDDEN);
     return true;
   }
