@@ -20,7 +20,7 @@
 </head>
 <body>
 <header>
-  <p id="implementation-control-state" class="state">구현 통제 상태 · 구현 점검 중 — 원격 CI 검증 전</p>
+  <p id="implementation-control-state" class="state">구현 통제 상태 · 구현 완료 — 원격 CI 검증 완료</p>
   <h1>모든 브랜치·PR CI 구현 통제 기록</h1>
   <p>승인된 CI 재설계가 실제 workflow·설치 계약·이미지 빌드에 어떻게 반영됐는지와 남은 운영 확인을 분리해 기록한다.</p>
   <dl>
@@ -63,7 +63,7 @@
     <tr><td>workflow 재설계</td><td class="ok">구현 완료</td><td>트리거·8개 job·엄격한 aggregate를 반영. 정적 검증과 원격 run이 필요하다.</td></tr>
     <tr><td>DB/migration/CD 제외</td><td class="ok">구현 완료</td><td>workflow policy guard와 image 명령에 금지 경로가 없는지 확인한다.</td></tr>
     <tr><td>로컬 게이트</td><td class="ok">완료</td><td>format, lint, typecheck, build, non-DB Jest 57 suites / 274 tests, script tests 3/3, diff 검증 통과.</td></tr>
-    <tr><td>GitHub 원격 run</td><td class="pending">대기</td><td>push 후 branch push·PR의 8개 검사와 aggregate를 확인한다.</td></tr>
+    <tr><td>GitHub 원격 run</td><td class="ok">완료</td><td><a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953615476">push 33953615476</a>와 <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953706658">PR 33953706658</a>에서 8개 job과 각 aggregate가 모두 성공했다.</td></tr>
     <tr><td>ruleset/CODEOWNERS</td><td class="pending">관리자 적용</td><td>실제 관리자/team을 임의로 정하지 않고, <code>CI Required</code> 필수 등록과 <code>.github/**</code> 리뷰 경계를 별도 설정한다.</td></tr>
   </tbody></table></div>
 </section>
@@ -83,10 +83,10 @@
     <li><code>CI=true pnpm install --frozen-lockfile</code>, <code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>, <code>pnpm build</code>, <code>git diff --check</code>가 통과했다.</li>
     <li><code>pnpm test --runInBand</code>는 최신 main 병합 후 57 suites / 274 tests 전부 통과했다.</li>
     <li><code>pnpm test:verify-local</code>는 3/3 통과했으며 실제 DB migration은 실행하지 않았다.</li>
-    <li>actionlint v1.7.12의 공식 macOS arm64 자산을 checksum 검증 후 실행해 workflow lint가 통과했고, YAML CI policy 구조 검사도 통과했다. GitHub Linux runner의 동일 단계는 원격 run에서 확인한다.</li>
+    <li>actionlint v1.7.12의 공식 macOS arm64 자산을 checksum 검증 후 실행해 workflow lint가 통과했고, YAML CI policy 구조 검사도 통과했다. GitHub Linux runner의 동일 단계도 두 원격 run에서 성공했다.</li>
     <li>로컬 Docker daemon은 현재 접근할 수 없어 image build 성공은 GitHub-hosted runner에서 확인한다.</li>
   </ul>
-  <p class="subtle">이 시점에는 새 workflow를 원격에서 통과했다고 기록하지 않는다. 원격 검증 후 run URL·head SHA·각 job 결과로 이 문서를 갱신한다.</p>
+  <p class="subtle">두 원격 run 모두 head SHA <code>bdc8f66000cebb2c36a14e93afef2cf72f5aafab</code>에서 각 job과 aggregate가 성공했다. PR의 현재 check 목록에서도 Format, Lint, Typecheck, Test, Script tests, Application build, Workflow lint, Runtime image build, CI Required가 pass다.</p>
 </section>
 <section id="residual-risks">
   <h2>6. 잔여 위험·운영 인수 조건</h2>

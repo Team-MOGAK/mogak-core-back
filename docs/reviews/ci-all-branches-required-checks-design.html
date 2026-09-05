@@ -27,7 +27,7 @@
 </head>
 <body>
 <header>
-  <p class="state">설계 기준안 · Standard · 설계 승인됨 — CI 구현 진행 중</p>
+  <p class="state">설계 기준안 · Standard · 설계 승인됨 — 구현 및 원격 검증 완료</p>
   <h1>모든 브랜치·PR에 같은 CI 기준</h1>
   <p>검사 종류는 브랜치 이름에 따라 줄이지 않는다. 실행 계기, 검사 결과, 병합 허용 조건을 각각 정의한다.</p>
   <dl>
@@ -154,7 +154,7 @@
     <li>Jest 선택 목록에서 DB 없는 E2E·로깅 integration 포함을 확인했다. 선택 목록 조회는 테스트 실행 성공 증거가 아니다.</li>
     <li><code>pnpm test:verify-local</code> 3/3 통과. 첫 시도는 localhost listen의 sandbox EPERM으로 2/3, localhost 권한을 허용한 재실행에서 3/3 통과했다. DB/migration 실행 없음.</li>
     <li>GitHub에서 PR #15 open, rulesets 빈 목록, main unprotected를 조회했다. 최신 main은 CI 브랜치가 포함한 main 이후 3개 커밋이 추가됐다.</li>
-    <li>새 workflow·공통 setup action·format 범위·Docker base digest 구현과 로컬 actionlint/policy 검증을 완료했다. 아직 원격 push 전이므로 GitHub에서 새 정책이 통과했다고 주장하지 않는다.</li>
+    <li>새 workflow·공통 setup action·format 범위·Docker base digest 구현과 로컬 actionlint/policy 검증을 완료했다. push <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953615476">33953615476</a>와 PR <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953706658">33953706658</a>에서 8개 job과 aggregate가 모두 성공했다.</li>
   </ul>
 </section>
 <section id="grilling-state">
@@ -221,20 +221,20 @@
   <noscript><p>JavaScript가 꺼져 있으면 모든 질문을 읽을 수 있으나 자동 채점·탐색은 제공되지 않는다.</p></noscript>
 </section>
 <section id="approval-state">
-  <h2>12. 설계 채택과 구현은 다음 단계</h2>
-  <p>상태: 설계 승인됨 · 구현 진행 중. 현재 feature 워크트리에는 최신 main 병합 후 <code>.github/workflows/ci.yml</code> 전면 재작성, 공통 setup action, <code>package.json</code>의 format 검사 범위, Docker base digest 고정이 반영됐다.</p>
-  <p>연결된 <a href="ci-all-branches-required-checks-implementation.html">구현 통제 문서</a>에 실제 diff·검증 결과·잔여 위험을 기록한다. GitHub 보호 규칙과 실제 관리자가 지정된 CODEOWNERS는 저장소 관리자와 별도 적용·확인해야 한다.</p>
+  <h2>12. 설계 채택과 구현 결과</h2>
+  <p>상태: 설계 승인됨 · 구현 및 원격 검증 완료. 현재 feature 브랜치에는 최신 main 병합 후 <code>.github/workflows/ci.yml</code> 전면 재작성, 공통 setup action, <code>package.json</code>의 format 검사 범위, Docker base digest 고정이 반영됐다.</p>
+  <p>연결된 <a href="ci-all-branches-required-checks-implementation.html">구현 통제 문서</a>에 실제 diff·검증 결과·잔여 위험을 기록했다. GitHub 보호 규칙과 실제 관리자가 지정된 CODEOWNERS는 저장소 관리자와 별도 적용·확인해야 한다.</p>
 </section>
 <section id="review">
   <h2>독립 검토 반영</h2>
   <p>읽기 전용 설계 리뷰를 받아 합산 조건을 step 내부에 명시하고, skip 지시문 예외와 workflow 자체의 리뷰 경계를 추가했다. 고정된 검사는 명시적 job으로 단순화하고, 과거 커밋 재실행이 새 커밋 검사를 취소하지 않도록 동시 실행 그룹에 SHA를 포함했다.</p>
-  <p>초기 읽기 전용 검토에서 합산 조건, skip 예외, workflow 리뷰 경계, SHA 포함 동시 실행을 보강했다. 구현 후 actionlint·로컬 게이트·원격 CI로 새 정책을 검증한다. 자동 브라우저 렌더링은 로컬 파일 URL 정책으로 거부되어 시각 검증을 완료하지 못했으며 HTML 구조·스크립트 문법만 검사했다.</p>
+  <p>초기 읽기 전용 검토에서 합산 조건, skip 예외, workflow 리뷰 경계, SHA 포함 동시 실행을 보강했다. actionlint·로컬 게이트·원격 push/PR CI로 새 정책을 검증했다. 자동 브라우저 렌더링은 로컬 파일 URL 정책으로 거부되어 시각 검증을 완료하지 못했으며 HTML 구조·스크립트 문법만 검사했다.</p>
 </section>
 <section id="sources">
   <h2>근거 링크</h2>
   <ul>
     <li><a href="https://github.com/Team-MOGAK/mogak-core-back/pull/15">검토 대상 PR #15</a></li>
-    <li><a href="https://github.com/Team-MOGAK/mogak-core-back/blob/a4b10283488e3341d68bac196979e8776af4cbe1/.github/workflows/ci.yml">현재 workflow</a></li>
+    <li><a href="https://github.com/Team-MOGAK/mogak-core-back/blob/bdc8f66000cebb2c36a14e93afef2cf72f5aafab/.github/workflows/ci.yml">구현된 workflow</a></li>
     <li><a href="https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows">GitHub: 이벤트별 Git 상태·PR·수동 실행</a></li>
     <li><a href="https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax">GitHub: matrix fail-fast·needs·동시 실행</a></li>
     <li><a href="https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks">GitHub: 필수 체크·skip·merge queue</a></li>
