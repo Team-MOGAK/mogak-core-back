@@ -3,17 +3,13 @@ name: CI
 run-name: CI / ${{ github.event_name }} / ${{ github.head_ref || github.ref_name }}
 
 'on':
-  # Every branch push gets the complete CI suite. Tag pushes are intentionally excluded.
-  push:
-    branches:
-      - '**'
-  # Every PR target branch gets the same suite, including PRs between feature branches.
+  # The PR is the merge-validation boundary. Do not rerun the same full suite
+  # on source-branch pushes while an open PR is being updated.
   pull_request:
     types:
       - opened
       - synchronize
       - reopened
-      - edited
       - ready_for_review
   # Prepare the same required check for a future merge queue without enabling one here.
   merge_group:
@@ -26,7 +22,8 @@ permissions:
   contents: read
 
 concurrency:
-  # Keep different SHAs observable; replace only duplicate runs for the same event/ref/SHA.
+  # Keep distinct PR/merge-group/manual contexts observable; replace only duplicate
+  # runs for the same event/ref/SHA.
   group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
@@ -182,8 +179,8 @@ jobs:
             file = ENV.fetch("WORKFLOW_FILE")
             workflow = YAML.load_file(file)
             events = workflow.fetch("on")
-            expected_pr_types = %w[opened synchronize reopened edited ready_for_review]
-            raise "push must cover every branch" unless events.fetch("push").fetch("branches") == ["**"]
+            expected_pr_types = %w[opened synchronize reopened ready_for_review]
+            raise "push trigger must be absent" if events.key?("push")
             raise "pull_request must not narrow target branches" unless events.fetch("pull_request").keys == ["types"]
             raise "pull_request types changed" unless events.fetch("pull_request").fetch("types") == expected_pr_types
             raise "merge_group checks_requested is required" unless events.fetch("merge_group").fetch("types") == ["checks_requested"]
@@ -231,7 +228,7 @@ jobs:
         run: docker build --pull --target runtime --tag mogak-core-back:ci .
 
   ci-required:
-    name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'CI Required' || github.event_name == 'workflow_dispatch' && 'CI Manual' || 'CI Push' }}
+    name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'CI Required' || 'CI Manual' }}
     if: ${{ always() }}
     needs:
       - format
