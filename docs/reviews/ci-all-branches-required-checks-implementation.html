@@ -20,7 +20,7 @@
 </head>
 <body>
 <header>
-  <p id="implementation-control-state" class="state">구현 통제 상태 · 구현 완료 — 원격 CI 검증 완료</p>
+  <p id="implementation-control-state" class="state">구현 통제 상태 · 리뷰 변경 요청 — 원격 CI 통과, 운영 게이트 보강 필요</p>
   <h1>모든 브랜치·PR CI 구현 통제 기록</h1>
   <p>승인된 CI 재설계가 실제 workflow·설치 계약·이미지 빌드에 어떻게 반영됐는지와 남은 운영 확인을 분리해 기록한다.</p>
   <dl>
@@ -103,8 +103,32 @@
   <p>승인 설계의 방향은 유지했다. 구현 세부로 actionlint를 release <code>v1.7.12</code>와 공식 SHA256로 고정했고, Dockerfile의 base image도 실제 manifest digest로 고정했다. 기존 단일 <code>verify</code>와 조건부 image job은 제거했다.</p>
   <p>GitHub ruleset/CODEOWNERS는 계정·team을 임의로 지정하면 잘못된 보호를 만들 수 있어 저장소 파일 변경에서 제외했다. 이는 설계 이탈이 아니라 관리자 입력이 필요한 외부 설정의 보류다.</p>
 </section>
+<section id="review">
+  <h2>8. 구현 리뷰</h2>
+  <dl>
+    <dt>리뷰 유형</dt><dd>자기 변경 리뷰 · 작성자 Hyunstone · 리뷰어 Codex</dd>
+    <dt>대상</dt><dd>PR #15 · <code>origin/main...04afc80</code> · CI workflow, composite action, package script, Dockerfile, 운영 설정 경계</dd>
+    <dt>리뷰 상태</dt><dd class="pending">변경 요청 · blocker 1건, non-blocking 보강 3건</dd>
+  </dl>
+  <div class="table-wrap"><table><caption>발견 사항</caption><thead><tr><th>ID / 심각도</th><th>상태·근거</th><th>영향과 최소 대응</th></tr></thead><tbody>
+    <tr><td><strong>R-001 · Blocker</strong></td><td class="pending">open<br><code>.github/workflows/ci.yml:213-215</code><br>원격 rulesets <samp>0</samp>, main protection <samp>404 Branch not protected</samp>, CODEOWNERS <samp>404</samp>.</td><td><code>CI Required</code>라는 job을 만들었지만 GitHub가 그 체크를 required로 강제하지 않고, workflow 자체를 실제 관리자 리뷰 경계로 잠그지도 않았다. CI는 현재 운영 병합 게이트가 아니다. 관리자가 main ruleset에 PR 경유·<code>CI Required</code>·최신 상태 요구를 등록하고, 실제 team/account를 지정한 CODEOWNERS로 <code>.github/**</code>와 검사 계약을 보호해야 한다.</td></tr>
+    <tr><td><strong>R-002 · P2</strong></td><td class="pending">open<br><code>package.json:21-22</code><br><code>format:check</code>만 <code>.github/**/*.{yml,yaml}</code>를 검사한다.</td><td>개발자가 <code>pnpm format</code>을 실행해도 workflow/composite YAML은 고쳐지지 않아 CI가 계속 실패할 수 있다. <code>format</code>에도 check와 동일한 glob을 추가해 수정 명령과 검사 범위를 맞춰야 한다.</td></tr>
+    <tr><td><strong>R-003 · P2</strong></td><td class="pending">open<br><code>.github/workflows/ci.yml:161-162</code><br>actionlint가 <code>ci.yml</code> 하나만 입력으로 받는다.</td><td>현재 파일 하나에서는 통과하지만 새 workflow나 다른 YAML 확장자를 추가하면 semantic lint 대상에서 빠진다. 모든 workflow 파일을 glob/명시 목록으로 lint하고, composite action metadata도 별도 semantic 검증 경계를 둬야 한다.</td></tr>
+    <tr><td><strong>R-004 · P2</strong></td><td class="pending">open<br><code>.github/workflows/ci.yml:172-177</code><br>policy guard가 <code>workflow_dispatch</code> 존재를 assert하지 않는다.</td><td>수동 실행 트리거를 삭제해도 현재 policy guard는 통과할 수 있어 승인된 trigger 계약의 회귀를 놓친다. <code>events.key?("workflow_dispatch")</code>와 빈 설정 형태를 검사해야 한다.</td></tr>
+  </tbody></table></div>
+  <h3>검토된 실행 경로</h3>
+  <p>push/PR 이벤트 → 8개 독립 job → <code>if: always()</code> aggregate → 결과가 모두 <code>success</code>인지 검사하는 step의 흐름은 의도대로 동작했다. DB service·migration·CD 호출은 실행되지 않았고, runtime image도 push 없이 build만 수행됐다.</p>
+  <h3>검증 증거와 공백</h3>
+  <ul>
+    <li><a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953947957">push run 33953947957</a>와 <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33954163267">PR run 33954163267</a>에서 8개 job 및 aggregate 성공.</li>
+    <li>로컬 format, lint, typecheck, build, 57 suites / 274 tests, script tests 3/3, actionlint, YAML policy 검증 성공.</li>
+    <li>실패 job 지속·aggregate 실패 차단은 의도적 실패 run으로 검증하지 않았다. 현재 성공 run은 정상 경로 증거다.</li>
+    <li>merge queue의 실제 <code>merge_group</code> 실행과 GitHub ruleset에 의한 실제 병합 차단은 설정이 없어 미검증이다.</li>
+  </ul>
+  <aside><strong>리뷰 판단: blocker 있음.</strong> 코드 수준 CI 실행은 통과했지만 R-001이 해결되기 전에는 production merge gate로 인수하지 않는다. R-002~R-004는 운영 회귀를 줄이는 보강이며 수정 후 재리뷰가 필요하다.</aside>
+</section>
 <section id="developer-understanding">
-  <h2>8. 개발자 운영 이해 확인</h2>
+  <h2>9. 개발자 운영 이해 확인</h2>
   <p>상태: <strong>미실시</strong>. 아래는 구현 승인과 별개인 참고 질문이다. 답변 제출 없이도 구현은 진행할 수 있으며, 운영 인수 전에 팀이 확인한다.</p>
   <details><summary>확인할 질문</summary>
     <ol>
@@ -116,12 +140,13 @@
   </details>
 </section>
 <section id="sources">
-  <h2>근거 링크</h2>
+  <h2>10. 근거 링크</h2>
   <ul>
     <li><a href="ci-all-branches-required-checks-design.html">승인된 CI 설계 기준안</a></li>
     <li><a href="https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows">GitHub Actions 이벤트 트리거</a></li>
     <li><a href="https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks">GitHub 필수 상태 체크</a></li>
     <li><a href="https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs">GitHub workflow skip 지시문</a></li>
+    <li><a href="https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners">GitHub CODEOWNERS와 코드 소유자 승인</a></li>
     <li><a href="https://github.com/rhysd/actionlint/releases/tag/v1.7.12">actionlint v1.7.12 release</a></li>
   </ul>
 </section>
