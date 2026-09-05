@@ -47,7 +47,7 @@
 <main><article>
 <section id="findings">
   <h2>1. 확인한 결함과 설명 정정</h2>
-  <div class="table-wrap"><table><caption>실제 코드·GitHub 상태에 근거한 발견 사항</caption><thead><tr><th>항목</th><th>근거</th><th>영향</th></tr></thead><tbody>
+  <div class="table-wrap"><table><caption>설계 작성 시점의 코드·GitHub 상태에 근거한 발견 사항 (현재 적용 상태는 구현 통제 문서 참조)</caption><thead><tr><th>항목</th><th>근거</th><th>영향</th></tr></thead><tbody>
     <tr><td>PR 대상 main 제한</td><td><code>.github/workflows/ci.yml:11</code>의 <code>branches: [main]</code></td><td>기능 브랜치 간 PR, 다른 통합 브랜치 대상 PR의 병합 결과가 검사되지 않는다.</td></tr>
     <tr><td>하나의 직렬 verify job</td><td>format → lint → typecheck → build → Jest</td><td>Prettier 또는 lint 실패 시 뒤의 독립 검사 결과가 나오지 않는다. 직렬 자체가 일반적으로 잘못인 것은 아니지만 이번 요구와 맞지 않는다.</td></tr>
     <tr><td>검사 대상 누락</td><td><code>format:check</code>는 TS/JS/MJS 및 루트 JSON만 포함. <code>test:verify-local</code> 미호출.</td><td>CI YAML은 Prettier 대상 밖이며 DB 없이 실행 가능한 스크립트 테스트 3건이 빠져 있다.</td></tr>
@@ -105,8 +105,8 @@
   <h2>5. 성공 표시와 병합 강제를 연결한다</h2>
   <p>최종 합산 job은 8개 검사 모두를 <code>needs</code>에 명시하고 job 조건에는 <code>if: always()</code>만 둔다. 모든 결과가 정확히 <code>success</code>인지 <strong>job 내부 step에서 검사</strong>해 하나라도 다르면 exit 1이다. 성공 조건을 job의 if에 붙여 실패 시 합산 자체가 skipped가 되는 구현은 금지한다. 실패·취소·누락·skip은 성공으로 합산하지 않는다. 전체 workflow 취소나 runner 장애로 합산 자체가 완료되지 않은 경우도 병합 허용 근거가 될 수 없다.</p>
   <p>합산 job은 하나이며 PR/merge_group에서는 <code>CI Required</code>, 수동에서는 <code>CI Manual</code>로 표시한다. <code>CI Push</code>를 만들거나 push에 이름만 같은 skipped <code>CI Required</code> job을 만들지 않는다.</p>
-  <p>현재 main 보호가 없으므로 운영 적용에는 GitHub ruleset이 필요하다: PR 경유, GitHub Actions의 <code>CI Required</code> 필수, base 최신 상태 요구, 일반 우회 비허용. 장기 통합 브랜치가 추가되면 해당 대상에도 같은 병합 규칙을 적용하고 개인 작업 브랜치 push는 허용한다.</p>
-  <p>체크 이름과 GitHub Actions App 지정은 특정 workflow를 잠그는 장치가 아니다. <code>.github/</code> 전체(다른 workflow·공통 action·CODEOWNERS 자체 포함)와 검사 실행 계약을 바꾸는 파일에는 실제 관리자를 CODEOWNERS로 지정하고 보호 대상에서 해당 소유자 승인 및 오래된 승인 무효화를 요구하는 것을 권고한다. 관리자 계정/team을 임의로 만들지 않으며 설정 적용 전에 지정한다. 이는 신뢰 가능한 리뷰 경계이고, 같은 저장소의 기여자가 변경 가능한 검사 코드 전체를 암호학적으로 보장하는 장치는 아니다.</p>
+  <p>main에는 현재 <code>main_ci_rules</code> ruleset이 active이며, 운영 기준은 PR 경유, GitHub Actions의 <code>CI Required</code> 필수, strict 상태 확인, 일반 우회 비허용이다. 장기 통합 브랜치가 추가되면 해당 대상에도 같은 병합 규칙을 적용하고 개인 작업 브랜치 push는 허용한다.</p>
+  <p>체크 이름과 GitHub Actions App 지정은 특정 workflow를 잠그는 장치가 아니다. <code>.github/</code> 전체(다른 workflow·공통 action·CODEOWNERS 자체 포함)와 검사 실행 계약을 바꾸는 파일에는 실제 관리자를 CODEOWNERS로 지정하고 보호 대상에서 해당 소유자 승인 및 오래된 승인 무효화를 요구하는 것을 권고한다. 현재는 1인 개발 결정에 따라 승인 0·CODEOWNERS 미적용 위험을 수용하며, 협업 전환 시 실제 계정/team을 지정한다. 이는 신뢰 가능한 리뷰 경계이고, 같은 저장소의 기여자가 변경 가능한 검사 코드 전체를 암호학적으로 보장하는 장치는 아니다.</p>
   <aside>CI 실행 대상을 모든 브랜치로 만드는 것과 모든 개인 브랜치의 직접 push를 금지하는 것은 별개다. 모든 PR은 검사하되, 병합 강제 정책은 main 및 실제 공유 통합 대상에 적용한다.</aside>
   <p>GitHub는 skipped job을 병합 가능한 결과로 볼 수 있으므로 단순히 job을 required로 등록하는 것만으로 검증 완료를 보장하지 못한다. <a href="https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks">GitHub 필수 체크 문서</a>에 따라 합산 job의 실패 경로와 실제 병합 차단을 확인한다.</p>
 </section>
@@ -152,8 +152,8 @@
     <li>기존 CI 기준 <code>a4b1028</code>와 최신 main <code>c46d9fd</code>를 대조하고, 최신 main을 feature 워크트리에 병합했다. YAML·package scripts·Jest 설정·Dockerfile·가짜 DB/HTTP 테스트 구현을 다시 확인했다.</li>
     <li>Jest 선택 목록에서 DB 없는 E2E·로깅 integration 포함을 확인했다. 선택 목록 조회는 테스트 실행 성공 증거가 아니다.</li>
     <li><code>pnpm test:verify-local</code> 3/3 통과. 첫 시도는 localhost listen의 sandbox EPERM으로 2/3, localhost 권한을 허용한 재실행에서 3/3 통과했다. DB/migration 실행 없음.</li>
-    <li>GitHub에서 PR #15 open, rulesets 빈 목록, main unprotected를 조회했다. 최신 main은 CI 브랜치가 포함한 main 이후 3개 커밋이 추가됐다.</li>
-    <li>새 workflow·공통 setup action·format 범위·Docker base digest 구현과 로컬 actionlint/policy 검증을 완료했다. push <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953615476">33953615476</a>와 PR <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953706658">33953706658</a>에서 8개 job과 aggregate가 모두 성공했다.</li>
+    <li>설계 작성 시점에는 PR #15가 open이고 ruleset이 비어 있으며 main이 unprotected인 것을 조회했다. 이후 <code>main_ci_rules</code> ruleset을 main에 active로 적용했으며, 현재 적용 상태는 구현 통제 문서와 연결된 ruleset에서 확인한다.</li>
+    <li>새 workflow·공통 setup action·format 범위·Docker base digest 구현과 로컬 actionlint/policy 검증을 완료했다. 설계 시점의 push <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953615476">33953615476</a>와 PR <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953706658">33953706658</a>에 이어, 최신 PR <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33961592042">33961592042</a>에서 8개 job과 aggregate가 모두 성공했다.</li>
   </ul>
 </section>
 <section id="grilling-state">
