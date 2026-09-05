@@ -159,11 +159,23 @@ jobs:
           tar --extract --gzip --file "$archive" --directory /tmp actionlint
 
       - name: Lint GitHub Actions workflows
-        run: /tmp/actionlint .github/workflows/ci.yml
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow_files=()
+          while IFS= read -r workflow_file; do
+            workflow_files+=("$workflow_file")
+          done < <(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print | sort)
+          if (( ${#workflow_files[@]} == 0 )); then
+            echo "No GitHub Actions workflow files found" >&2
+            exit 1
+          fi
+          /tmp/actionlint "${workflow_files[@]}"
 
       - name: Assert repository CI policy
         env:
           WORKFLOW_FILE: .github/workflows/ci.yml
+          COMPOSITE_ACTION_FILE: .github/actions/setup-node-pnpm/action.yml
         shell: bash
         run: |
           ruby -ryaml -e '
@@ -175,6 +187,14 @@ jobs:
             raise "pull_request must not narrow target branches" unless events.fetch("pull_request").keys == ["types"]
             raise "pull_request types changed" unless events.fetch("pull_request").fetch("types") == expected_pr_types
             raise "merge_group checks_requested is required" unless events.fetch("merge_group").fetch("types") == ["checks_requested"]
+            raise "workflow_dispatch is required" unless events.key?("workflow_dispatch") && events.fetch("workflow_dispatch") == {}
+
+            action = YAML.load_file(ENV.fetch("COMPOSITE_ACTION_FILE"))
+            raise "composite action name is required" unless action.fetch("name").is_a?(String) && !action.fetch("name").empty?
+            raise "composite action description is required" unless action.fetch("description").is_a?(String) && !action.fetch("description").empty?
+            action_runs = action.fetch("runs")
+            raise "action must be composite" unless action_runs.fetch("using") == "composite"
+            raise "composite action steps are required" unless action_runs.fetch("steps").is_a?(Array) && !action_runs.fetch("steps").empty?
 
             check_jobs = %w[format lint typecheck test scripts build workflow-lint image]
             jobs = workflow.fetch("jobs")
