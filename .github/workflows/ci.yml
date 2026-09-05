@@ -1,0 +1,265 @@
+---
+name: CI
+run-name: CI / ${{ github.event_name }} / ${{ github.head_ref || github.ref_name }}
+
+'on':
+  # The PR is the merge-validation boundary. Do not rerun the same full suite
+  # on source-branch pushes while an open PR is being updated.
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+  # Prepare the same required check for a future merge queue without enabling one here.
+  merge_group:
+    types:
+      - checks_requested
+  # Allow an operator to verify a selected ref with the same complete suite.
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  # Keep distinct PR/merge-group/manual contexts observable; replace only duplicate
+  # runs for the same event/ref/SHA.
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Check formatting
+        run: pnpm format:check
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Run lint
+        run: pnpm lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Run typecheck
+        run: pnpm typecheck
+
+  test:
+    name: Test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Run non-database tests
+        run: pnpm test --runInBand
+
+  scripts:
+    name: Script tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Run database-free script tests
+        run: pnpm test:verify-local
+
+  build:
+    name: Application build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js and pnpm
+        uses: ./.github/actions/setup-node-pnpm
+
+      - name: Build application
+        run: pnpm build
+
+  workflow-lint:
+    name: Workflow lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out source
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Download actionlint
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="/tmp/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "$ACTIONLINT_SHA256" "$archive" | sha256sum --check
+          tar --extract --gzip --file "$archive" --directory /tmp actionlint
+
+      - name: Lint GitHub Actions workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow_files=()
+          while IFS= read -r workflow_file; do
+            workflow_files+=("$workflow_file")
+          done < <(find .github/workflows -type f \( -name '*.yml' -o -name '*.yaml' \) -print | sort)
+          if (( ${#workflow_files[@]} == 0 )); then
+            echo "No GitHub Actions workflow files found" >&2
+            exit 1
+          fi
+          /tmp/actionlint "${workflow_files[@]}"
+
+      - name: Assert repository CI policy
+        env:
+          WORKFLOW_FILE: .github/workflows/ci.yml
+          COMPOSITE_ACTION_FILE: .github/actions/setup-node-pnpm/action.yml
+        shell: bash
+        run: |
+          ruby -ryaml -e '
+            file = ENV.fetch("WORKFLOW_FILE")
+            workflow = YAML.load_file(file)
+            events = workflow.fetch("on")
+            expected_pr_types = %w[opened synchronize reopened ready_for_review]
+            raise "push trigger must be absent" if events.key?("push")
+            raise "pull_request must not narrow target branches" unless events.fetch("pull_request").keys == ["types"]
+            raise "pull_request types changed" unless events.fetch("pull_request").fetch("types") == expected_pr_types
+            raise "merge_group checks_requested is required" unless events.fetch("merge_group").fetch("types") == ["checks_requested"]
+            raise "workflow_dispatch is required" unless events.key?("workflow_dispatch") && events.fetch("workflow_dispatch") == {}
+
+            action = YAML.load_file(ENV.fetch("COMPOSITE_ACTION_FILE"))
+            raise "composite action name is required" unless action.fetch("name").is_a?(String) && !action.fetch("name").empty?
+            raise "composite action description is required" unless action.fetch("description").is_a?(String) && !action.fetch("description").empty?
+            action_runs = action.fetch("runs")
+            raise "action must be composite" unless action_runs.fetch("using") == "composite"
+            raise "composite action steps are required" unless action_runs.fetch("steps").is_a?(Array) && !action_runs.fetch("steps").empty?
+
+            check_jobs = %w[format lint typecheck test scripts build workflow-lint image]
+            jobs = workflow.fetch("jobs")
+            expected_jobs = (check_jobs + ["ci-required"]).sort
+            raise "unexpected CI jobs" unless jobs.keys.sort == expected_jobs
+            check_jobs.each do |job_id|
+              raise "#{job_id} must be independent" if jobs.fetch(job_id).key?("needs")
+            end
+            aggregate = jobs.fetch("ci-required")
+            raise "aggregate must wait for all checks" unless aggregate.fetch("needs").sort == check_jobs.sort
+            raise "aggregate must always run" unless aggregate.fetch("if").include?("always()")
+
+            forbidden = [["pnpm", "db:migrate"], ["pnpm", "test:integration"], ["pnpm", "verify:local"], ["docker", "compose"], ["docker", "push"], ["gcloud", "run"], ["gcloud", "builds"]]
+            contents = File.read(file)
+            forbidden.each do |tokens|
+              token = tokens.join(" ")
+              raise "forbidden CI command: #{token}" if contents.include?(token)
+            end
+            puts "CI policy structure OK"
+          '
+
+  image:
+    name: Runtime image build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Build runtime image (no push)
+        run: docker build --pull --target runtime --tag mogak-core-back:ci .
+
+  ci-required:
+    name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'CI Required' || 'CI Manual' }}
+    if: ${{ always() }}
+    needs:
+      - format
+      - lint
+      - typecheck
+      - test
+      - scripts
+      - build
+      - workflow-lint
+      - image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Assert every CI check succeeded
+        env:
+          FORMAT_RESULT: ${{ needs.format.result }}
+          LINT_RESULT: ${{ needs.lint.result }}
+          TYPECHECK_RESULT: ${{ needs.typecheck.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+          SCRIPTS_RESULT: ${{ needs.scripts.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          WORKFLOW_LINT_RESULT: ${{ needs['workflow-lint'].result }}
+          IMAGE_RESULT: ${{ needs.image.result }}
+        shell: bash
+        run: |
+          set -u
+          failed=0
+          for result in "$FORMAT_RESULT" "$LINT_RESULT" "$TYPECHECK_RESULT" "$TEST_RESULT" "$SCRIPTS_RESULT" "$BUILD_RESULT" "$WORKFLOW_LINT_RESULT" "$IMAGE_RESULT"; do
+            if [[ "$result" != "success" ]]; then
+              printf 'CI check did not succeed: %s\n' "$result" >&2
+              failed=1
+            fi
+          done
+          exit "$failed"
