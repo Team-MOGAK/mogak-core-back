@@ -19,7 +19,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint apps/api/src libs test scripts '*.ts'",
     "format": "prettier --write \"{apps/api/src,libs,test,scripts}/**/*.{ts,js,mjs}\" \"*.{json,mjs,ts}\"",
-    "format:check": "prettier --check \"{apps/api/src,libs,test,scripts}/**/*.{ts,js,mjs}\" \"*.{json,mjs,ts}\"",
+    "format:check": "prettier --check \"{apps/api/src,libs,test,scripts}/**/*.{ts,js,mjs}\" \"*.{json,mjs,ts}\" \".github/**/*.{yml,yaml}\"",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
     "test:e2e": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.config.ts test",
     "test:integration": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.db.config.ts",

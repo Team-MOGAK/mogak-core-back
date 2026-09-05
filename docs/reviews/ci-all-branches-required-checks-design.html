@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>모든 브랜치·PR의 CI와 병합 필수 체크 재설계</title>
+  <style>
+    :root{color-scheme:light;--ink:#182c35;--muted:#52636c;--line:#d7e0e1;--accent:#006b62;--bg:#f4f7f7}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,sans-serif}
+    header,nav,main,footer{max-width:1100px;margin:auto;padding:24px}header{padding-top:48px}
+    h1{font-size:clamp(26px,4vw,38px);line-height:1.25}h2{font-size:24px;margin-top:0}h3{font-size:18px}
+    a{color:var(--accent)}nav{display:flex;gap:16px;flex-wrap:wrap;padding-top:0}
+    section{background:white;border:1px solid var(--line);border-radius:12px;padding:26px;margin-bottom:22px;scroll-margin-top:16px}
+    dt{font-weight:650}dd{margin:0 0 12px}code,samp{font-size:.9em;overflow-wrap:anywhere}
+    table{border-collapse:collapse;width:100%;margin:16px 0}caption{text-align:left;font-weight:650;padding-bottom:8px}
+    th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:10px}th{background:#f1f6f5}
+    .table-wrap{overflow:auto}.state{color:var(--accent);font-weight:700}.subtle{color:var(--muted)}
+    aside{border-left:4px solid #b37923;padding:12px 16px;background:#fff8eb;margin:16px 0}
+    figure{margin:18px 0}figcaption{font-weight:650}.flow{display:grid;grid-template-columns:1fr 2fr 1fr;align-items:center;gap:18px}
+    .node{padding:15px;background:#edf6f4;border:1px solid #c3dcd6;border-radius:8px}.checks{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+    fieldset{border:1px solid var(--line);border-radius:8px;padding:16px}legend{font-weight:650}label{display:block;margin:10px 0;cursor:pointer}
+    button{background:var(--accent);color:white;border:0;padding:10px 18px;border-radius:7px;font:inherit;cursor:pointer}button:disabled{opacity:.45}
+    .controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:14px 0}.result{border-left:4px solid var(--accent);background:#edf6f4;padding:14px}
+    [hidden]{display:none!important}
+    @media(max-width:700px){header,nav,main,footer{padding:18px}section{padding:18px}.flow{grid-template-columns:1fr}th,td{min-width:150px}dd{margin-bottom:10px}}
+  </style>
+</head>
+<body>
+<header>
+  <p class="state">설계 기준안 · Standard · 설계 승인됨 — CI 구현 진행 중</p>
+  <h1>모든 브랜치·PR에 같은 CI 기준</h1>
+  <p>검사 종류는 브랜치 이름에 따라 줄이지 않는다. 실행 계기, 검사 결과, 병합 허용 조건을 각각 정의한다.</p>
+  <dl>
+    <dt>목적 (purpose)</dt><dd>모든 소스 변경을 같은 품질 기준으로 검사하고, 실패하거나 누락된 검사가 있는 변경의 병합을 차단한다.</dd>
+    <dt>사용자 (audience)</dt><dd>mogak-core-back 개발자, PR 리뷰어, 저장소 관리자.</dd>
+    <dt>문제 (problem)</dt><dd>PR 대상 main 제한, 검사 실패 뒤의 검증 생략, 빠진 검사 범위, 필수 체크 미설정으로 인한 불완전한 CI.</dd>
+    <dt>핵심 흐름 (core-flow)</dt><dd>브랜치 push / PR / 수동 실행 → 동일한 독립 검사 → 모든 결과의 엄격한 합산 → PR 필수 체크 → 보호 대상 브랜치의 병합 판단.</dd>
+    <dt>근거 기준점</dt><dd>PR #15의 <code>a4b1028</code>와 원격 main <code>c46d9fd</code>. 최신 main을 feature 워크트리에 병합한 뒤 이 기준안대로 CI 구현을 시작했다.</dd>
+    <dt>작성·갱신</dt><dd>작성 16:10 · 갱신 <time datetime="2026-09-05T16:36:58+09:00">2026-09-05 16:36 KST</time> · 추적: 기존 CI 재설계 요청.</dd>
+    <dt>산출물 라우팅</dt><dd>기존 CI/CD 설계는 배포·마이그레이션을 포함해 목적과 핵심 흐름이 다르다. 해당 문서를 덮어쓰지 않고 CI 전용 기준안을 만들었다. 구현 통제 문서는 <a href="ci-all-branches-required-checks-implementation.html">연결 문서</a>로 관리한다.</dd>
+  </dl>
+</header>
+<nav aria-label="설계 목차">
+  <a href="#findings">현황</a><a href="#goal">원칙</a><a href="#change-model">실행 정책</a><a href="#system-model">검사 구성</a>
+  <a href="#gate">병합 판정</a><a href="#image">이미지 판단</a><a href="#verification-plan">수용 기준</a><a href="#design-control-state">자기점검</a>
+</nav>
+<main><article>
+<section id="findings">
+  <h2>1. 확인한 결함과 설명 정정</h2>
+  <div class="table-wrap"><table><caption>실제 코드·GitHub 상태에 근거한 발견 사항</caption><thead><tr><th>항목</th><th>근거</th><th>영향</th></tr></thead><tbody>
+    <tr><td>PR 대상 main 제한</td><td><code>.github/workflows/ci.yml:11</code>의 <code>branches: [main]</code></td><td>기능 브랜치 간 PR, 다른 통합 브랜치 대상 PR의 병합 결과가 검사되지 않는다.</td></tr>
+    <tr><td>하나의 직렬 verify job</td><td>format → lint → typecheck → build → Jest</td><td>Prettier 또는 lint 실패 시 뒤의 독립 검사 결과가 나오지 않는다. 직렬 자체가 일반적으로 잘못인 것은 아니지만 이번 요구와 맞지 않는다.</td></tr>
+    <tr><td>검사 대상 누락</td><td><code>format:check</code>는 TS/JS/MJS 및 루트 JSON만 포함. <code>test:verify-local</code> 미호출.</td><td>CI YAML은 Prettier 대상 밖이며 DB 없이 실행 가능한 스크립트 테스트 3건이 빠져 있다.</td></tr>
+    <tr><td>병합 강제 조건 없음</td><td>API: repository rulesets <samp>[]</samp>; main 보호 조회 <samp>404 Branch not protected</samp></td><td>CI가 실패해도 이 저장소의 보호 규칙으로 병합을 막을 수 없다. 조회 가능한 설정의 현재 상태다.</td></tr>
+    <tr><td>E2E 제외 설명이 부정확</td><td>Jest 선택 목록에 <code>test/e2e/health.e2e.spec.ts</code>, <code>rateLimit.e2e.spec.ts</code>, 로깅 integration 포함.</td><td>실제 제외 기준은 DB 필요 여부다. 이름에 e2e/integration이 있다는 이유만으로 제외하지 않는다.</td></tr>
+    <tr><td>기존 성공은 제한된 증거</td><td>PR #15 미병합; 기존 성공은 <code>a4b1028</code> 기준.</td><td>저장소 모든 브랜치 적용, 최신 main 테스트 성공, 수동 UI 적용 완료를 뜻하지 않는다.</td></tr>
+  </tbody></table></div>
+</section>
+<section id="goal">
+  <h2>2. 변경 원칙과 범위</h2>
+  <p>모든 브랜치 push와 모든 PR 대상에서 Prettier, lint, typecheck, DB가 필요 없는 테스트 전체, 애플리케이션 빌드를 수행한다. 초기에는 경로 필터나 브랜치별 검사 축소를 두지 않는다.</p>
+  <p>CI YAML의 문법·표현식 검사와 runtime 이미지 조립 검증도 같은 이벤트에서 수행하는 것을 권고한다. 문서만 변경한 push와 draft PR도 동일하게 검사한다.</p>
+  <aside id="key-risk"><strong>유지할 불변식:</strong> DB 서비스·실제 DB 접속·마이그레이션·배포는 실행하지 않는다. 일반 Jest에 포함된 schema 정의 테스트나 가짜 저장소 테스트는 실행할 수 있다. 운영 자격증명을 runner에 전달하지 않는다.</aside>
+  <p id="non-goals">이번 설계의 완료는 CI 정책 확정이다. Cloud Build/Cloud Run 변경, 이미지 업로드, 컨테이너 서비스 기동, DB 테스트 도입은 별도 범위다. CI 성공은 배포 환경·DB 호환성 검증 성공을 뜻하지 않는다.</p>
+</section>
+<section id="change-model">
+  <h2>3. 언제, 무엇을 검사하는가</h2>
+  <div class="table-wrap"><table><caption>이벤트별로 검사 내용은 같고 검사하는 Git 상태가 다르다</caption><thead><tr><th>계기</th><th>검사 대상</th><th>검사 범위</th><th>최종 체크 이름 제안</th></tr></thead><tbody>
+    <tr><td>모든 브랜치 push</td><td>push된 브랜치의 마지막 커밋</td><td>전체 검사</td><td><code>CI Push</code></td></tr>
+    <tr><td>모든 대상 브랜치의 PR</td><td>PR head와 base를 합친 GitHub test merge commit</td><td>전체 검사</td><td><code>CI Required</code></td></tr>
+    <tr><td>main에 병합되어 발생한 push</td><td>실제로 main에 반영된 커밋</td><td>전체 검사</td><td><code>CI Push</code></td></tr>
+    <tr><td>수동 실행</td><td>선택한 ref</td><td>전체 검사</td><td><code>CI Manual</code></td></tr>
+    <tr><td>merge_group / checks_requested</td><td>병합 대기열의 test merge commit</td><td>전체 검사</td><td><code>CI Required</code></td></tr>
+  </tbody></table></div>
+  <p><code>push.branches: ['**']</code>, PR에는 브랜치 필터를 두지 않는다. PR은 <code>opened, synchronize, reopened, edited, ready_for_review</code>를 받는다. <code>edited</code>는 대상 브랜치 변경을 포함하기 위한 선택이며 제목·본문 수정에도 재실행되는 비용을 우선 수용한다. 태그 push는 자동 실행 대상이 아니다.</p>
+  <p>같은 push에서 push run과 PR run이 생기는 것은 별개의 Git 상태를 검사하기 때문이다. 중복이라는 이유만으로 둘 중 하나를 취소하지 않는다. 실행별로 event, head SHA, base SHA, 실제 checkout SHA를 요약에 남긴다.</p>
+  <p>동시 실행 그룹은 고정된 CI 식별자 + event + PR 번호 또는 ref + 검사 SHA로 구분한다. 서로 다른 SHA는 끝까지 검사하고, 같은 이벤트·ref·SHA의 중복 실행만 대체한다. 과거 SHA의 재실행이 새 SHA 검사를 취소하지 않도록 한다. GitHub의 실행 순서는 커밋 시간순으로 보장되지 않으므로 단순 ref 단위 취소를 “최신 커밋 보장”이라고 부르지 않는다.</p>
+  <p>플랫폼 예외: 커밋 메시지의 <code>[skip ci]</code> 등 GitHub skip 지시문은 workflow 자체를 시작하지 않게 한다. 팀 운영에서는 사용하지 않는 정책을 명시하고, 보호된 PR은 CI Required가 없으면 병합하지 못하도록 한다. 이 workflow 하나로 보호되지 않은 개인 브랜치의 skip 지시문까지 강제로 무력화할 수 있다고 보장하지 않는다.</p>
+  <p>PR 충돌이나 GitHub의 외부 기여자 실행 승인 대기는 통과가 아니다. base 갱신으로 기존 검증이 낡았으면 branch update 또는 merge queue 검증이 필요하다. <code>merge_group</code> 이벤트 지원은 준비하되 merge queue 자체는 이번에 활성화하지 않는다.</p>
+</section>
+<section id="system-model">
+  <h2>4. 검사별 독립 실행과 공통 설치</h2>
+  <figure>
+    <figcaption>같은 커밋을 독립적으로 검사하고, 모든 결과가 나온 뒤 병합 조건을 판정한다</figcaption>
+    <div class="flow"><div class="node">이벤트 발생<br>검사할 SHA 결정</div>
+    <div class="checks" aria-label="서로 독립적인 검사 목록">
+      <div class="node">Prettier</div><div class="node">ESLint</div><div class="node">TypeScript</div><div class="node">Jest</div>
+      <div class="node">스크립트 테스트</div><div class="node">애플리케이션 빌드</div><div class="node">CI 설정 검사</div><div class="node">이미지 빌드</div>
+    </div><div class="node">전체 결과 합산<br>전부 success일 때만 성공</div></div>
+    <p>독립 검사는 서로의 성공에 의존하지 않는다. runner 수가 부족하면 대기열에서 순차 배정되지만 lint 실패 때문에 테스트를 취소하지는 않는다.</p>
+  </figure>
+  <div class="table-wrap"><table><caption>권고 검사와 정확한 역할</caption><thead><tr><th>검사</th><th>명령 또는 구현 계약</th><th>잡을 수 있는 오류 / 한계</th></tr></thead><tbody>
+    <tr><td>Prettier</td><td><code>pnpm format:check</code>의 glob에 workflow·공통 action YAML 및 소스/설정 파일 포함</td><td>공백·형식. 기존 대규모 HTML/마이그레이션 생성 파일을 무작정 재포맷하지 않는다.</td></tr>
+    <tr><td>ESLint</td><td><code>pnpm lint</code></td><td>기존 규칙을 모든 소스·테스트·스크립트에 적용. 자동 수정 없이 실패로 보고한다.</td></tr>
+    <tr><td>TypeScript</td><td><code>pnpm typecheck</code></td><td>타입 검사. 실제 Nest 빌드를 대체하지 않는다.</td></tr>
+    <tr><td>일반 Jest</td><td><code>pnpm test --runInBand</code></td><td>단위·컨트롤러·아키텍처·DB 없는 E2E/통합 테스트. <code>test/database/**/*.integration.spec.ts</code> 제외 경계 유지.</td></tr>
+    <tr><td>스크립트 테스트</td><td><code>pnpm test:verify-local</code></td><td>현재 3건: 계획 출력 dry-run, 가짜 DB pool, localhost HTTP 가짜 서버. <code>pnpm verify:local</code> 실제 실행과 다르다.</td></tr>
+    <tr><td>애플리케이션 빌드</td><td><code>pnpm build</code></td><td>Nest compile·alias 변환·배포 파일 생성. 호스트 빌드를 유지해 이미지 없이도 원인을 찾는다.</td></tr>
+    <tr><td>CI 설정 검사</td><td>고정 버전·무결성 확인한 <code>actionlint</code>로 workflow 검사</td><td>YAML/Actions 문법·표현식·참조 오류. 런타임 트리거 동작은 실제 run으로 별도 검증한다.</td></tr>
+    <tr><td>이미지 빌드</td><td><code>docker build --target runtime --tag mogak-core-back:ci .</code></td><td>Dockerfile·Alpine 환경·production dependency 설치·COPY 경계. 이미지 push나 CMD 실행은 하지 않는다.</td></tr>
+  </tbody></table></div>
+  <p>고정된 8개 검사는 <code>format, lint, typecheck, test, scripts, build, workflow-lint, image</code>라는 명시적 독립 job으로 구성한다. 하나의 검사 실패 때문에 다른 job을 취소하지 않으며, 실패를 성공으로 취급하는 <code>continue-on-error</code>는 두지 않는다. 현재는 버전 조합이 없으므로 matrix를 도입하지 않고 각 결과를 직접 합산한다.</p>
+  <p>Node/pnpm 설치 단계는 저장소 내부 composite action 등 한곳에 모은다. 각 runner에서 frozen lockfile 설치를 하고 pnpm store 캐시만 재사용한다. runner 간 <code>node_modules</code> 공유나 별도 설치 산출물 업로드는 도입하지 않는다. 병렬화는 runner 사용 시간·설치 횟수를 늘리므로 실행 시간과 대기 시간을 함께 관찰한다.</p>
+</section>
+<section id="gate">
+  <h2>5. 성공 표시와 병합 강제를 연결한다</h2>
+  <p>최종 합산 job은 8개 검사 모두를 <code>needs</code>에 명시하고 job 조건에는 <code>if: always()</code>만 둔다. 모든 결과가 정확히 <code>success</code>인지 <strong>job 내부 step에서 검사</strong>해 하나라도 다르면 exit 1이다. 성공 조건을 job의 if에 붙여 실패 시 합산 자체가 skipped가 되는 구현은 금지한다. 실패·취소·누락·skip은 성공으로 합산하지 않는다. 전체 workflow 취소나 runner 장애로 합산 자체가 완료되지 않은 경우도 병합 허용 근거가 될 수 없다.</p>
+  <p>합산 job은 하나이며 이벤트에 따라 표시 이름을 선택한다. PR/merge_group에서는 <code>CI Required</code>, push에서는 <code>CI Push</code>, 수동에서는 <code>CI Manual</code>이다. push에 이름만 같은 skipped <code>CI Required</code> job을 만들지 않는다.</p>
+  <p>현재 main 보호가 없으므로 운영 적용에는 GitHub ruleset이 필요하다: PR 경유, GitHub Actions의 <code>CI Required</code> 필수, base 최신 상태 요구, 일반 우회 비허용. 장기 통합 브랜치가 추가되면 해당 대상에도 같은 병합 규칙을 적용하고 개인 작업 브랜치 push는 허용한다.</p>
+  <p>체크 이름과 GitHub Actions App 지정은 특정 workflow를 잠그는 장치가 아니다. <code>.github/</code> 전체(다른 workflow·공통 action·CODEOWNERS 자체 포함)와 검사 실행 계약을 바꾸는 파일에는 실제 관리자를 CODEOWNERS로 지정하고 보호 대상에서 해당 소유자 승인 및 오래된 승인 무효화를 요구하는 것을 권고한다. 관리자 계정/team을 임의로 만들지 않으며 설정 적용 전에 지정한다. 이는 신뢰 가능한 리뷰 경계이고, 같은 저장소의 기여자가 변경 가능한 검사 코드 전체를 암호학적으로 보장하는 장치는 아니다.</p>
+  <aside>CI 실행 대상을 모든 브랜치로 만드는 것과 모든 개인 브랜치의 직접 push를 금지하는 것은 별개다. 모든 PR은 검사하되, 병합 강제 정책은 main 및 실제 공유 통합 대상에 적용한다.</aside>
+  <p>GitHub는 skipped job을 병합 가능한 결과로 볼 수 있으므로 단순히 job을 required로 등록하는 것만으로 검증 완료를 보장하지 못한다. <a href="https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks">GitHub 필수 체크 문서</a>에 따라 합산 job의 실패 경로와 실제 병합 차단을 확인한다.</p>
+</section>
+<section id="image">
+  <h2>6. 이미지 빌드는 모든 이벤트에 포함하는 것을 권고</h2>
+  <p>이 저장소는 Dockerfile로 production dependency만 설치한 runtime을 조립한다. 일반 빌드 성공만으로 해당 설치·파일 복사 과정이 성공한다고 보장할 수 없다. 기존 <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33778505729">PR 실행</a>에서 Docker build step은 약 32초, 일반 Jest는 약 163초였다. 단일 과거 표본이므로 성능 보장은 아니지만, 현재 병렬 검사에 포함할 근거는 충분하다.</p>
+  <p id="decisions">권고안: 모든 브랜치 push·모든 PR·수동 실행에서 이미지 빌드도 필수 검사로 둔다. 이미지 검사에 main 조건이나 변경 경로 필터를 두지 않는다. 업로드·배포·서비스 기동은 포함하지 않는다.</p>
+  <p id="rejected-alternatives">대안은 이미지 전용 workflow를 따로 두거나 Docker 관련 파일이 바뀔 때만 실행하는 것이다. 비용은 줄지만 source, lockfile, runtime file layout 변경을 빠뜨리지 않도록 경로 정책을 계속 관리해야 한다. 지금은 이 복잡성을 도입하지 않는다.</p>
+  <p>이 결론이 실패한다면: 향후 cold build·다운로드 지연으로 runner 비용과 대기열이 크게 늘어날 수 있다. 누적 실행시간을 본 뒤 BuildKit cache를 먼저 검토하고, 그 후에도 문제가 있으면 별도 정책으로 재검토한다. 현재 cache 구조를 과도하게 확장하지 않는다.</p>
+</section>
+<section id="invariants">
+  <h2>7. 권한·재현성·실패 운영</h2>
+  <p>기본 권한은 <code>contents: read</code>, checkout은 <code>persist-credentials: false</code>다. PR 코드를 운영 자격증명과 함께 실행하지 않도록 GitHub-hosted runner와 <code>pull_request</code> 이벤트를 사용한다. 외부 fork PR은 GitHub의 실행 승인 정책을 그대로 따른다.</p>
+  <p>Node/pnpm은 현재 package 계약과 맞추고 lockfile 고정 설치를 유지한다. 외부 action은 검증한 SHA로 고정한다. Dockerfile의 Node runtime base는 실제 확인한 manifest digest <code>sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd</code>로 고정한다. 기존 버전 숫자를 최신 main과 대조하지 않고 복사하지 않는다.</p>
+  <p id="failure-recovery">각 검사에는 timeout을 둔다(일반 검사 10분, 테스트 15분, 이미지 15분, 합산 2분을 초기값으로 제안). 설치 실패는 해당 검사 실패, 테스트 실패는 다른 검사 계속, 네트워크 장애도 실패로 표시한다. 무제한 재시도·강제 성공·실패 테스트 생략을 넣지 않는다. 원인 수정 또는 일시 장애 확인 후 해당 run을 재실행한다.</p>
+  <p>run 이름과 Step Summary에 이벤트, 대상/base 브랜치, 실제 검사 SHA, 검사별 결과와 로그 링크를 기록한다. 브랜치명·PR 제목을 shell 코드에 직접 삽입하지 않고 환경변수로 전달해 인용 처리한다. 테스트 결과 JSON/TAP 등은 필요시 7일 보관하고 실행 실패 시에도 업로드를 시도한다. 파일이 생성되기 전 실패했다면 원래 실패를 보존하고 산출물이 없다고 명시한다. secret·환경변수 전체 dump는 남기지 않는다.</p>
+</section>
+<section id="verification-plan">
+  <h2>8. 구현 후 수용 기준과 적용 순서</h2>
+  <div class="table-wrap"><table><caption>정책이 작동했다고 판단할 실증 시나리오</caption><thead><tr><th>상황</th><th>기대 결과</th></tr></thead><tbody>
+    <tr><td>PR 없는 feature/fix/refactor 브랜치 push</td><td>전체 검사와 CI Push 실행.</td></tr>
+    <tr><td>main 및 main이 아닌 브랜치 대상 PR</td><td>모두 전체 검사와 CI Required 실행. PR 번호/base/tested SHA 일치 확인.</td></tr>
+    <tr><td>lint만 의도적으로 실패</td><td>테스트·타입·build·image는 계속 실행하고 합산은 실패. main 병합 차단 확인.</td></tr>
+    <tr><td>테스트·이미지·설정 검사 각각 실패 또는 예기치 않은 skip</td><td>각 실패가 합산을 실패시킨다. dependency skip을 성공으로 해석하지 않는다.</td></tr>
+    <tr><td>PR에 연속 push / 대상 브랜치 변경 / 과거 SHA 재실행</td><td>각 검사 SHA를 유지하며 과거 실행이 최신 SHA를 취소하지 않는다. 동일 이벤트·ref·SHA 중복만 대체한다.</td></tr>
+    <tr><td>skip 지시문 / 가짜 CI Required 추가 시도</td><td>필수 체크 누락은 보호 대상 병합 차단. 검사 계약 변경은 CODEOWNERS 승인으로 통제한다.</td></tr>
+    <tr><td>push 성공, PR 실패 또는 수동 실행만 성공</td><td>CI Required를 대체하지 못하므로 보호 대상 병합이 막힌다.</td></tr>
+    <tr><td>운영 secret·DB 서비스가 없는 runner</td><td>지원하는 모든 검사가 통과. DB 마이그레이션 실행 흔적 없음.</td></tr>
+    <tr><td>main 병합 후 push / 수동 실행 / 향후 queue</td><td>해당 상태의 전체 검사. queue 채택 전 merge_group 실제 실행을 별도 검증한다.</td></tr>
+  </tbody></table></div>
+  <ol>
+    <li>최신 main을 작업 브랜치에 반영하고 테스트 목록·명령·Dockerfile 계약을 재확인한다. 기존 앱 변경은 CI 작업과 분리한다.</li>
+    <li>workflow, 공통 setup, 검사 명령 범위, 결과 요약을 구현하고 정적 검사를 수행한다. 실패 시나리오는 검증용 checkout/ref에서만 시험하고 의도된 실패 코드를 최종 변경에 남기지 않는다.</li>
+    <li>PR #15에서 새 check 이름과 전체 성공을 확인한다. 저장소 보호 설정과 PR 병합은 실제 적용 단계로 구분한다.</li>
+    <li>main 보호에 새 CI Required와 관리자가 지정된 CODEOWNERS 승인 정책을 등록하고 실패/누락 상태의 병합 차단을 확인한다. 부트스트랩 순서를 사전에 정해 체크 이름 변경으로 인한 영구 대기를 방지한다.</li>
+    <li>PR 병합 후 main push를 확인한다. 기존 장기 작업 브랜치는 workflow 변경을 merge/rebase로 받아야 push 정책이 적용된다. 새 main에서 분기한 브랜치는 해당 설정을 상속한다.</li>
+  </ol>
+  <p>수동 실행의 Actions UI는 기본 브랜치에 workflow가 존재하는 것이 전제다. workflow 파일 하나를 PR에 올렸다고 과거 브랜치들에 소급 적용됐다고 보고하지 않는다.</p>
+</section>
+<section id="verification-evidence">
+  <h2>9. 이번 설계에서 확인한 증거와 남은 범위</h2>
+  <ul>
+    <li>기존 CI 기준 <code>a4b1028</code>와 최신 main <code>c46d9fd</code>를 대조하고, 최신 main을 feature 워크트리에 병합했다. YAML·package scripts·Jest 설정·Dockerfile·가짜 DB/HTTP 테스트 구현을 다시 확인했다.</li>
+    <li>Jest 선택 목록에서 DB 없는 E2E·로깅 integration 포함을 확인했다. 선택 목록 조회는 테스트 실행 성공 증거가 아니다.</li>
+    <li><code>pnpm test:verify-local</code> 3/3 통과. 첫 시도는 localhost listen의 sandbox EPERM으로 2/3, localhost 권한을 허용한 재실행에서 3/3 통과했다. DB/migration 실행 없음.</li>
+    <li>GitHub에서 PR #15 open, rulesets 빈 목록, main unprotected를 조회했다. 최신 main은 CI 브랜치가 포함한 main 이후 3개 커밋이 추가됐다.</li>
+    <li>새 workflow·공통 setup action·format 범위·Docker base digest 구현과 로컬 actionlint/policy 검증을 완료했다. 아직 원격 push 전이므로 GitHub에서 새 정책이 통과했다고 주장하지 않는다.</li>
+  </ul>
+</section>
+<section id="grilling-state">
+  <h2>10. 설계 결정 기록</h2>
+  <p>상태: 설계 승인됨 · 2026-09-05 16:36 KST. 사용자의 <code>개선 ㄱㄱ</code>를 현재 설계에 대한 구현 승인으로 기록하고 CI 파일 구현을 진행한다. GitHub 보호 규칙·CODEOWNERS 적용은 저장소 관리자 설정 단계로 남긴다.</p>
+  <dl>
+    <dt>이미 확정된 요구</dt><dd>모든 브랜치·PR에 기본 검사 전체, PR 대상 main 제한 폐지, DB·migration·CD 제외.</dd>
+    <dt>G1 — 이미지 검사 정책</dt><dd>모든 이벤트에 포함한다. 대안은 별도 workflow 또는 경로 한정이며, 비용 절감과 검증 누락 위험의 교환이다. 약 32초의 과거 실행과 독립 실행 원칙을 근거로 채택했다.</dd>
+    <dt>G2 — 실제 병합 강제 범위</dt><dd>main에 필수 체크와 PR 경유를 적용한다. 다른 장기 통합 브랜치는 실제 운영 대상이 생길 때 추가한다. 모든 개인 브랜치 push를 막지는 않는다.</dd>
+    <dt>판단 순서</dt><dd>동일한 검사 범위 → 독립 실행 → 결과 합산 → protected branch 등록 → 실제 실패 차단 확인.</dd>
+    <dt>미룬 범위</dt><dd>DB-backed 검사, 배포, coverage 수치 강제, 멀티 OS/Node 매트릭스, 별도 보안 스캔 정책, merge queue 활성화. 각 항목이 CI 운영 검증을 자동으로 증명하지는 않는다.</dd>
+    <dt>남은 불확실성</dt><dd>새 병렬 job 구성의 실제 비용·대기 시간, base image digest 갱신 주기, 장기 통합 브랜치 운영 대상, CODEOWNERS에 지정할 실제 관리자.</dd>
+  </dl>
+</section>
+<section id="design-control-state">
+  <h2>11. 제안된 설계의 자기점검</h2>
+  <p>기록 상태: <strong>미실시</strong>. 아래 결과는 브라우저 안에서만 보이며 구현 승인과 별개다. 전송하거나 제출 완료를 보고할 필요는 없다.</p>
+  <details><summary>질문 범위</summary>
+    <ul>
+      <li>목표·범위/결정/상태 경계: Q1 모든 PR과 검사 대상 SHA.</li>
+      <li>실패/복구/운영 결과: Q2 독립 실행과 합산.</li>
+      <li>DB 불변식/이미지 외부 영향/검증 한계: Q3.</li>
+      <li>권한·운영/병합 강제: Q4.</li>
+      <li>적용 범위/동시 실행/잔여 위험: Q5.</li>
+    </ul>
+  </details>
+  <div class="controls"><button type="button" id="prev">이전</button><span id="position">1 / 5</span><button type="button" id="next">다음</button><span id="progress">응답 0 / 5</span></div>
+  <div class="question" data-correct="b" data-explanation="PR 대상 브랜치와 무관하게 전체 검사를 수행하며 PR은 head+base의 병합 결과를 검사한다." data-next="run 요약에서 base SHA와 실제 checkout SHA를 확인한다.">
+    <fieldset><legend>Q1. feat/login → feat/account PR이 열리면?</legend>
+      <label><input type="radio" name="q1" value="a">main 대상이 아니므로 push 결과만 사용한다.</label>
+      <label><input type="radio" name="q1" value="b">PR 병합 결과에 전체 검사를 수행한다.</label>
+      <label><input type="radio" name="q1" value="c">검사 없이 자동 병합한다.</label>
+    </fieldset><button type="button" class="submit">답변 확인</button><div class="result" hidden><p class="status"></p><p class="explanation"></p><p class="next-action"></p></div>
+  </div>
+  <div class="question" data-correct="b" data-explanation="독립 검사이므로 lint 실패는 테스트·빌드를 취소하지 않는다. 합산은 모두 success가 아니므로 실패한다." data-next="실패한 lint 로그와 별도로 테스트 결과가 남는지 확인한다.">
+    <fieldset><legend>Q2. 같은 실행에서 lint만 실패하면?</legend>
+      <label><input type="radio" name="q2" value="a">테스트와 빌드를 모두 생략한다.</label>
+      <label><input type="radio" name="q2" value="b">다른 검사는 계속하고 최종 체크는 실패한다.</label>
+      <label><input type="radio" name="q2" value="c">대부분 통과했으므로 최종 성공으로 처리한다.</label>
+    </fieldset><button type="button" class="submit">답변 확인</button><div class="result" hidden><p class="status"></p><p class="explanation"></p><p class="next-action"></p></div>
+  </div>
+  <div class="question" data-correct="a" data-explanation="이미지는 production 파일과 의존성을 조립해 볼 뿐 DB 호환성이나 서비스 기동을 증명하지 않는다. CI는 DB 서비스와 migration을 실행하지 않는다." data-next="DB 없는 E2E 포함 여부와 실제 DB 검사 제외 경계를 확인한다.">
+    <fieldset><legend>Q3. 이미지 빌드와 일반 테스트가 성공하면 무엇이 확인되는가?</legend>
+      <label><input type="radio" name="q3" value="a">지원하는 테스트와 이미지 조립. 운영 DB 호환성은 아직 미검증이다.</label>
+      <label><input type="radio" name="q3" value="b">DB 스키마와 운영 배포까지 검증됐다.</label>
+      <label><input type="radio" name="q3" value="c">검증 과정에서 DB migration도 자동으로 실행된다.</label>
+    </fieldset><button type="button" class="submit">답변 확인</button><div class="result" hidden><p class="status"></p><p class="explanation"></p><p class="next-action"></p></div>
+  </div>
+  <div class="question" data-correct="c" data-explanation="push나 수동 성공이 PR 병합 결과의 CI Required를 대체해서는 안 된다. 실제 차단은 보호 규칙을 설정한 브랜치에서 강제된다." data-next="main ruleset의 CI Required와 해당 GitHub App을 확인한다.">
+    <fieldset><legend>Q4. 보호 설정된 main 대상 PR은 실패했지만 수동 CI는 성공했다면?</legend>
+      <label><input type="radio" name="q4" value="a">성공한 run 하나가 있으므로 병합 가능하다.</label>
+      <label><input type="radio" name="q4" value="b">실패한 PR 검사 job을 skip하면 병합 가능하도록 설계한다.</label>
+      <label><input type="radio" name="q4" value="c">PR의 필수 체크가 성공해야 하므로 병합을 차단한다.</label>
+    </fieldset><button type="button" class="submit">답변 확인</button><div class="result" hidden><p class="status"></p><p class="explanation"></p><p class="next-action"></p></div>
+  </div>
+  <div class="question" data-correct="b" data-explanation="기존 브랜치에 새 workflow가 있어야 push 정책이 적용된다. 서로 다른 SHA는 검사하며 같은 이벤트·ref·SHA의 중복만 대체한다." data-next="브랜치에 workflow 변경이 들어왔는지와 run별 검사 SHA를 확인한다.">
+    <fieldset><legend>Q5. workflow 배포 후 오래된 브랜치에서 연속 push하면?</legend>
+      <label><input type="radio" name="q5" value="a">모든 기존 브랜치에 자동 소급 적용되며 모든 중간 SHA 검사가 끝난다.</label>
+      <label><input type="radio" name="q5" value="b">브랜치에 설정 반영이 필요하고 서로 다른 SHA는 각각 검사한다.</label>
+      <label><input type="radio" name="q5" value="c">main CI 성공을 그대로 재사용한다.</label>
+    </fieldset><button type="button" class="submit">답변 확인</button><div class="result" hidden><p class="status"></p><p class="explanation"></p><p class="next-action"></p></div>
+  </div>
+  <output id="overall" aria-live="polite">자기점검 미실시. 구현 승인 기록은 변경되지 않는다.</output>
+  <noscript><p>JavaScript가 꺼져 있으면 모든 질문을 읽을 수 있으나 자동 채점·탐색은 제공되지 않는다.</p></noscript>
+</section>
+<section id="approval-state">
+  <h2>12. 설계 채택과 구현은 다음 단계</h2>
+  <p>상태: 설계 승인됨 · 구현 진행 중. 현재 feature 워크트리에는 최신 main 병합 후 <code>.github/workflows/ci.yml</code> 전면 재작성, 공통 setup action, <code>package.json</code>의 format 검사 범위, Docker base digest 고정이 반영됐다.</p>
+  <p>연결된 <a href="ci-all-branches-required-checks-implementation.html">구현 통제 문서</a>에 실제 diff·검증 결과·잔여 위험을 기록한다. GitHub 보호 규칙과 실제 관리자가 지정된 CODEOWNERS는 저장소 관리자와 별도 적용·확인해야 한다.</p>
+</section>
+<section id="review">
+  <h2>독립 검토 반영</h2>
+  <p>읽기 전용 설계 리뷰를 받아 합산 조건을 step 내부에 명시하고, skip 지시문 예외와 workflow 자체의 리뷰 경계를 추가했다. 고정된 검사는 명시적 job으로 단순화하고, 과거 커밋 재실행이 새 커밋 검사를 취소하지 않도록 동시 실행 그룹에 SHA를 포함했다.</p>
+  <p>초기 읽기 전용 검토에서 합산 조건, skip 예외, workflow 리뷰 경계, SHA 포함 동시 실행을 보강했다. 구현 후 actionlint·로컬 게이트·원격 CI로 새 정책을 검증한다. 자동 브라우저 렌더링은 로컬 파일 URL 정책으로 거부되어 시각 검증을 완료하지 못했으며 HTML 구조·스크립트 문법만 검사했다.</p>
+</section>
+<section id="sources">
+  <h2>근거 링크</h2>
+  <ul>
+    <li><a href="https://github.com/Team-MOGAK/mogak-core-back/pull/15">검토 대상 PR #15</a></li>
+    <li><a href="https://github.com/Team-MOGAK/mogak-core-back/blob/a4b10283488e3341d68bac196979e8776af4cbe1/.github/workflows/ci.yml">현재 workflow</a></li>
+    <li><a href="https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows">GitHub: 이벤트별 Git 상태·PR·수동 실행</a></li>
+    <li><a href="https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax">GitHub: matrix fail-fast·needs·동시 실행</a></li>
+    <li><a href="https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks">GitHub: 필수 체크·skip·merge queue</a></li>
+    <li><a href="https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs">GitHub: 커밋 메시지의 workflow skip 예외</a></li>
+    <li><a href="https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency">GitHub: 동시 실행과 취소 순서</a></li>
+    <li><a href="https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners">GitHub: 코드 소유자와 승인</a></li>
+  </ul>
+</section>
+</article></main>
+<footer>이 문서는 승인된 CI 재설계 기준안이다. 테스트 결과·설정 적용·사용자 이해 상태는 확인된 증거만 기록한다.</footer>
+<script>
+const cards = [...document.querySelectorAll('.question')];
+let current = 0;
+function render() {
+  cards.forEach((card, i) => { card.hidden = i !== current; });
+  document.querySelector('#position').textContent = (current + 1) + ' / ' + cards.length;
+  document.querySelector('#prev').disabled = current === 0;
+  document.querySelector('#next').disabled = current === cards.length - 1;
+  const answered = cards.filter(card => card.querySelector('input:checked')).length;
+  document.querySelector('#progress').textContent = '응답 ' + answered + ' / ' + cards.length;
+}
+document.querySelector('#prev').addEventListener('click', () => { current--; render(); });
+document.querySelector('#next').addEventListener('click', () => { current++; render(); });
+cards.forEach(card => {
+  card.addEventListener('change', () => { card.querySelector('.result').hidden = true; card.removeAttribute('data-result'); render(); });
+  card.querySelector('.submit').addEventListener('click', () => {
+    const choice = card.querySelector('input:checked');
+    const result = card.querySelector('.result');
+    result.hidden = false;
+    const status = !choice ? '미실시' : choice.value === card.dataset.correct ? '확립' : '보류';
+    card.dataset.result = status;
+    result.querySelector('.status').textContent = '상태: ' + status;
+    result.querySelector('.explanation').textContent = choice ? '설명: ' + card.dataset.explanation : '설명: 답변을 선택하지 않았다.';
+    result.querySelector('.next-action').textContent = choice ? '다음 행동: ' + card.dataset.next : '다음 행동: 선택한 뒤 답변 확인을 누른다.';
+    const checked = cards.filter(item => item.dataset.result === '확립').length;
+    document.querySelector('#overall').textContent = '브라우저 내 확인: ' + checked + ' / ' + cards.length + '. 구현 승인과 별개이며 자동 전송되지 않는다.';
+  });
+});
+render();
+</script>
+</body>
+</html>

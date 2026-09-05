@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>모든 브랜치·PR CI 구현 통제 기록</title>
+  <style>
+    :root{color-scheme:light;--ink:#182c35;--muted:#52636c;--line:#d7e0e1;--accent:#006b62;--bg:#f4f7f7}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,sans-serif}
+    header,nav,main,footer{max-width:1100px;margin:auto;padding:24px}header{padding-top:48px}
+    h1{font-size:clamp(26px,4vw,38px);line-height:1.25}h2{font-size:24px;margin-top:0}a{color:var(--accent)}
+    nav{display:flex;gap:16px;flex-wrap:wrap;padding-top:0}section{background:#fff;border:1px solid var(--line);border-radius:12px;padding:26px;margin-bottom:22px;scroll-margin-top:16px}
+    dt{font-weight:650}dd{margin:0 0 12px}.state{color:var(--accent);font-weight:700}.subtle{color:var(--muted)}
+    aside{border-left:4px solid #b37923;padding:12px 16px;background:#fff8eb;margin:16px 0}.table-wrap{overflow:auto}
+    table{border-collapse:collapse;width:100%;margin:16px 0}caption{text-align:left;font-weight:650;padding-bottom:8px}
+    th,td{text-align:left;vertical-align:top;border-bottom:1px solid var(--line);padding:10px}th{background:#f1f6f5}
+    code,samp{font-size:.9em;overflow-wrap:anywhere}.ok{color:#086b45;font-weight:700}.pending{color:#9a5c00;font-weight:700}
+    @media(max-width:700px){header,nav,main,footer{padding:18px}section{padding:18px}th,td{min-width:170px}}
+  </style>
+</head>
+<body>
+<header>
+  <p id="implementation-control-state" class="state">구현 통제 상태 · 구현 점검 중 — 원격 CI 검증 전</p>
+  <h1>모든 브랜치·PR CI 구현 통제 기록</h1>
+  <p>승인된 CI 재설계가 실제 workflow·설치 계약·이미지 빌드에 어떻게 반영됐는지와 남은 운영 확인을 분리해 기록한다.</p>
+  <dl>
+    <dt>기준 설계</dt><dd><a href="ci-all-branches-required-checks-design.html">모든 브랜치·PR에 같은 CI 기준</a></dd>
+    <dt>작업 브랜치</dt><dd><code>feat/cicd-github-actions-cloud-run</code> · 최신 <code>origin/main c46d9fd</code> 병합 후 구현</dd>
+    <dt>범위</dt><dd>GitHub Actions CI만 포함. Cloud Build·Cloud Run·이미지 push·DB service·Drizzle migration은 구현하지 않는다.</dd>
+    <dt>승인 기록</dt><dd>사용자 <code>개선 ㄱㄱ</code> · 2026-09-05 16:36 KST</dd>
+  </dl>
+</header>
+<nav aria-label="구현 통제 목차">
+  <a href="#baseline-reference">기준</a><a href="#current-implementation">현재 구현</a><a href="#implementation-status">상태</a>
+  <a href="#issue-register">이슈</a><a href="#verification-evidence">검증</a><a href="#residual-risks">잔여 위험</a>
+</nav>
+<main><article>
+<section id="baseline-reference">
+  <h2>1. 승인된 기준과 불변식</h2>
+  <p>설계 문서의 핵심 흐름인 <strong>모든 브랜치 push·모든 PR·수동 실행·merge_group → 동일한 독립 검사 8개 → 엄격한 합산 → PR 필수 체크</strong>를 구현 기준으로 사용한다.</p>
+  <aside>이번 구현은 DB 연결, 실제 DB 테스트, <code>pnpm db:migrate</code>, <code>pnpm verify:local</code>, Docker image push, Cloud Build/Run 호출을 실행 경로에 넣지 않는다.</aside>
+  <div class="table-wrap"><table><caption>승인 기준</caption><thead><tr><th>기준</th><th>수용 조건</th></tr></thead><tbody>
+    <tr><td>적용 범위</td><td>push는 모든 브랜치, PR은 대상 브랜치 필터 없음. draft PR을 제외하지 않는다.</td></tr>
+    <tr><td>독립성</td><td>format, lint, typecheck, test, scripts, build, workflow-lint, image가 서로 <code>needs</code> 없이 실행된다.</td></tr>
+    <tr><td>병합 판정</td><td>합산 job은 항상 실행하고 8개 결과가 모두 정확히 <code>success</code>일 때만 성공한다.</td></tr>
+    <tr><td>외부 영향</td><td>읽기 권한만 사용하고 image는 local tag로 build만 한다. push·deploy·DB mutation은 없다.</td></tr>
+  </tbody></table></div>
+</section>
+<section id="current-implementation">
+  <h2>2. 현재 구현(as-built)</h2>
+  <div class="table-wrap"><table><caption>변경 파일과 역할</caption><thead><tr><th>파일</th><th>구현 내용</th></tr></thead><tbody>
+    <tr><td><code>.github/workflows/ci.yml</code></td><td>모든 branch push, 모든 PR lifecycle, <code>merge_group/checks_requested</code>, manual trigger. 8개 독립 job과 결과 합산 job.</td></tr>
+    <tr><td><code>.github/actions/setup-node-pnpm/action.yml</code></td><td>pnpm 10.32.1, Node 24.18.0, pnpm cache, <code>pnpm install --frozen-lockfile</code> 공통화.</td></tr>
+    <tr><td><code>package.json</code></td><td><code>format:check</code>에 저장소 GitHub Actions YAML을 추가. 기존 소스·설정 범위는 유지.</td></tr>
+    <tr><td><code>Dockerfile</code></td><td>Node <code>24.18.0-alpine</code> manifest digest <code>sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd</code> 고정.</td></tr>
+  </tbody></table></div>
+  <p>PR에서 병합에 사용할 안정적인 최종 check 이름은 동적으로 <code>CI Required</code>가 되며, push와 manual run은 각각 <code>CI Push</code>, <code>CI Manual</code>로 표시된다. image job의 명령에는 <code>--target runtime</code>과 <code>--pull</code>만 있고 push·deploy 단계가 없다.</p>
+</section>
+<section id="implementation-status">
+  <h2>3. 구현 상태</h2>
+  <div class="table-wrap"><table><caption>완료·진행·보류 경계</caption><thead><tr><th>항목</th><th>상태</th><th>근거 또는 다음 확인</th></tr></thead><tbody>
+    <tr><td>최신 main 반영</td><td class="ok">완료</td><td><code>origin/main c46d9fd</code>를 feature worktree에 병합.</td></tr>
+    <tr><td>workflow 재설계</td><td class="ok">구현 완료</td><td>트리거·8개 job·엄격한 aggregate를 반영. 정적 검증과 원격 run이 필요하다.</td></tr>
+    <tr><td>DB/migration/CD 제외</td><td class="ok">구현 완료</td><td>workflow policy guard와 image 명령에 금지 경로가 없는지 확인한다.</td></tr>
+    <tr><td>로컬 게이트</td><td class="ok">완료</td><td>format, lint, typecheck, build, non-DB Jest 57 suites / 274 tests, script tests 3/3, diff 검증 통과.</td></tr>
+    <tr><td>GitHub 원격 run</td><td class="pending">대기</td><td>push 후 branch push·PR의 8개 검사와 aggregate를 확인한다.</td></tr>
+    <tr><td>ruleset/CODEOWNERS</td><td class="pending">관리자 적용</td><td>실제 관리자/team을 임의로 정하지 않고, <code>CI Required</code> 필수 등록과 <code>.github/**</code> 리뷰 경계를 별도 설정한다.</td></tr>
+  </tbody></table></div>
+</section>
+<section id="issue-register">
+  <h2>4. 이슈 레지스터</h2>
+  <div class="table-wrap"><table><caption>구현 중 확인된 이슈</caption><thead><tr><th>상태</th><th>이슈</th><th>대응</th></tr></thead><tbody>
+    <tr><td class="ok">해결</td><td>기존 workflow가 main 대상 PR만 실행하고 verify가 직렬이었다.</td><td>PR target filter를 제거하고 8개 독립 job으로 분리했다.</td></tr>
+    <tr><td class="ok">해결</td><td>aggregate가 실패한 needs 때문에 skipped로 끝날 수 있었다.</td><td><code>if: always()</code>와 step 내부 strict result 검사를 사용한다.</td></tr>
+    <tr><td class="ok">해결</td><td>runtime base image tag가 가변적이었다.</td><td>실제 Docker Hub manifest digest를 확인해 Dockerfile에 고정했다.</td></tr>
+    <tr><td class="pending">남음</td><td>GitHub 저장소 main 보호 규칙이 현재 없다.</td><td>관리자가 PR 경유와 <code>CI Required</code> required status check를 적용하고 실패 차단을 확인해야 한다.</td></tr>
+    <tr><td class="pending">남음</td><td>skip 지시문은 GitHub가 workflow 자체를 생략할 수 있다.</td><td>팀에서 skip 사용을 금지하고 보호 브랜치에 required check를 적용한다. 보호되지 않은 개인 push를 workflow 하나로 강제할 수는 없다.</td></tr>
+  </tbody></table></div>
+</section>
+<section id="verification-evidence">
+  <h2>5. 검증 증거와 갭</h2>
+  <ul>
+    <li><code>CI=true pnpm install --frozen-lockfile</code>, <code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>, <code>pnpm build</code>, <code>git diff --check</code>가 통과했다.</li>
+    <li><code>pnpm test --runInBand</code>는 최신 main 병합 후 57 suites / 274 tests 전부 통과했다.</li>
+    <li><code>pnpm test:verify-local</code>는 3/3 통과했으며 실제 DB migration은 실행하지 않았다.</li>
+    <li>actionlint v1.7.12의 공식 macOS arm64 자산을 checksum 검증 후 실행해 workflow lint가 통과했고, YAML CI policy 구조 검사도 통과했다. GitHub Linux runner의 동일 단계는 원격 run에서 확인한다.</li>
+    <li>로컬 Docker daemon은 현재 접근할 수 없어 image build 성공은 GitHub-hosted runner에서 확인한다.</li>
+  </ul>
+  <p class="subtle">이 시점에는 새 workflow를 원격에서 통과했다고 기록하지 않는다. 원격 검증 후 run URL·head SHA·각 job 결과로 이 문서를 갱신한다.</p>
+</section>
+<section id="residual-risks">
+  <h2>6. 잔여 위험·운영 인수 조건</h2>
+  <div class="table-wrap"><table><caption>구현이 해결하지 않는 범위</caption><thead><tr><th>위험</th><th>남는 이유</th><th>운영 인수 조건</th></tr></thead><tbody>
+    <tr><td>DB 호환성·migration 실패</td><td>사용자 제약에 따라 DB service와 migration을 CI에서 실행하지 않는다.</td><td>별도 승인된 DB 검증/배포 설계에서 다룬다.</td></tr>
+    <tr><td>보호 규칙 우회</td><td>저장소 파일만으로 GitHub ruleset과 관리자 리뷰 권한을 만들 수 없다.</td><td>main ruleset에 PR 경유, <code>CI Required</code>, 최신 상태 요구, 우회자 정책, CODEOWNERS 승인을 설정한다.</td></tr>
+    <tr><td>실행 비용 증가</td><td>모든 push와 PR에 독립 runner가 각각 실행되어 open PR push는 두 run이 될 수 있다.</td><td>첫 운영 기간 비용·대기시간을 관찰한 후 별도 변경 승인으로 cache/범위를 재검토한다.</td></tr>
+    <tr><td>외부 action·base 갱신</td><td>SHA 고정은 자동 업데이트를 하지 않는다.</td><td>Dependabot 또는 정기적으로 release·digest를 검토하고 checksum을 함께 갱신한다.</td></tr>
+  </tbody></table></div>
+  <p>개발자 이해 self-check는 이 문서의 구현 완료 조건이 아니다. 실제 인수는 로컬 게이트, 원격 push/PR run, 의도적 실패에서 다른 job 지속 및 aggregate 실패, 관리자 ruleset 적용 확인으로 판정한다.</p>
+</section>
+<section id="design-delta">
+  <h2>7. 설계 기준 대비 변경 기록</h2>
+  <p>승인 설계의 방향은 유지했다. 구현 세부로 actionlint를 release <code>v1.7.12</code>와 공식 SHA256로 고정했고, Dockerfile의 base image도 실제 manifest digest로 고정했다. 기존 단일 <code>verify</code>와 조건부 image job은 제거했다.</p>
+  <p>GitHub ruleset/CODEOWNERS는 계정·team을 임의로 지정하면 잘못된 보호를 만들 수 있어 저장소 파일 변경에서 제외했다. 이는 설계 이탈이 아니라 관리자 입력이 필요한 외부 설정의 보류다.</p>
+</section>
+<section id="developer-understanding">
+  <h2>8. 개발자 운영 이해 확인</h2>
+  <p>상태: <strong>미실시</strong>. 아래는 구현 승인과 별개인 참고 질문이다. 답변 제출 없이도 구현은 진행할 수 있으며, 운영 인수 전에 팀이 확인한다.</p>
+  <details><summary>확인할 질문</summary>
+    <ol>
+      <li>PR 대상 branch가 main이 아니어도 <code>CI Required</code>가 실행되는가?</li>
+      <li>lint가 실패해도 test·build·image가 실행되고 aggregate가 실패하는가?</li>
+      <li>image build 성공이 DB migration·Cloud Run 배포 성공을 의미하지 않는 이유는 무엇인가?</li>
+      <li>required check 등록만으로 보호되지 않은 branch push의 <code>[skip ci]</code>를 막을 수 없는 이유는 무엇인가?</li>
+    </ol>
+  </details>
+</section>
+<section id="sources">
+  <h2>근거 링크</h2>
+  <ul>
+    <li><a href="ci-all-branches-required-checks-design.html">승인된 CI 설계 기준안</a></li>
+    <li><a href="https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows">GitHub Actions 이벤트 트리거</a></li>
+    <li><a href="https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/troubleshooting-required-status-checks">GitHub 필수 상태 체크</a></li>
+    <li><a href="https://docs.github.com/en/actions/how-tos/manage-workflow-runs/skip-workflow-runs">GitHub workflow skip 지시문</a></li>
+    <li><a href="https://github.com/rhysd/actionlint/releases/tag/v1.7.12">actionlint v1.7.12 release</a></li>
+  </ul>
+</section>
+</article></main>
+<footer>이 문서는 구현 상태를 증거와 운영 보류 항목으로 분리해 기록한다. 완료·통과는 확인된 결과만 표시한다.</footer>
+</body>
+</html>
