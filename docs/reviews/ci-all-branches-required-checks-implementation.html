@@ -20,14 +20,14 @@
 </head>
 <body>
 <header>
-  <p id="implementation-control-state" class="state">구현 통제 상태 · 운영 제어 보류 — PR 중심 trigger 변경·원격 CI 통과, 관리자 게이트 미적용</p>
+  <p id="implementation-control-state" class="state">구현 통제 상태 · 운영 제어 보류 — PR 중심 CI·main ruleset 적용, base 변경 재검증 구현 전</p>
   <h1>모든 브랜치·PR CI 구현 통제 기록</h1>
   <p>승인된 CI 재설계가 실제 workflow·설치 계약·이미지 빌드에 어떻게 반영됐는지와 남은 운영 확인을 분리해 기록한다.</p>
   <dl>
     <dt>기준 설계</dt><dd><a href="ci-all-branches-required-checks-design.html">모든 브랜치·PR에 같은 CI 기준</a></dd>
     <dt>작업 브랜치</dt><dd><code>feat/cicd-github-actions-cloud-run</code> · 최신 <code>origin/main c46d9fd</code> 병합 후 구현</dd>
     <dt>범위</dt><dd>GitHub Actions CI만 포함. Cloud Build·Cloud Run·이미지 push·DB service·Drizzle migration은 구현하지 않는다.</dd>
-    <dt>승인 기록</dt><dd>기존 승인: 사용자 <code>개선 ㄱㄱ</code> · 2026-09-05 16:36 KST. trigger 재설계 승인: 사용자 <code>개선 ㄱ</code> · 2026-09-05 KST.</dd>
+    <dt>승인 기록</dt><dd>기존 승인: 사용자 <code>개선 ㄱㄱ</code> · 2026-09-05 16:36 KST. trigger 재설계 승인: 사용자 <code>개선 ㄱ</code> · 2026-09-05 KST. 1인 개발의 승인 0·CODEOWNERS 미적용 위험은 사용자 결정으로 수용.</dd>
   </dl>
 </header>
 <nav aria-label="구현 통제 목차">
@@ -40,7 +40,7 @@
   <p>재승인된 설계의 핵심 흐름인 <strong>모든 대상 브랜치 PR·수동 실행·merge_group → 동일한 독립 검사 8개 → 엄격한 합산 → PR 필수 체크</strong>를 구현 기준으로 사용한다. PR 없는 개인 브랜치 push에는 자동 전체 CI를 실행하지 않는다.</p>
   <aside>이번 구현은 DB 연결, 실제 DB 테스트, <code>pnpm db:migrate</code>, <code>pnpm verify:local</code>, Docker image push, Cloud Build/Run 호출을 실행 경로에 넣지 않는다.</aside>
   <div class="table-wrap"><table><caption>승인 기준</caption><thead><tr><th>기준</th><th>수용 조건</th></tr></thead><tbody>
-    <tr><td>적용 범위</td><td>자동 전체 CI는 PR 대상 브랜치 필터 없음. PR 이벤트는 <code>opened</code>, <code>synchronize</code>, <code>reopened</code>, <code>ready_for_review</code>를 사용하고 draft PR을 제외하지 않는다. <code>push</code> 자동 trigger는 없다.</td></tr>
+    <tr><td>적용 범위</td><td>현재 구현의 자동 전체 CI는 PR 대상 브랜치 필터 없음. PR 이벤트는 <code>opened</code>, <code>synchronize</code>, <code>reopened</code>, <code>ready_for_review</code>를 사용하고 draft PR을 제외하지 않는다. <code>push</code> 자동 trigger는 없다. <code>edited</code> base 재검증은 설계 delta로 별도 구현 대기 중이다.</td></tr>
     <tr><td>독립성</td><td>format, lint, typecheck, test, scripts, build, workflow-lint, image가 서로 <code>needs</code> 없이 실행된다.</td></tr>
     <tr><td>병합 판정</td><td>합산 job은 항상 실행하고 8개 결과가 모두 정확히 <code>success</code>일 때만 성공한다.</td></tr>
     <tr><td>외부 영향</td><td>읽기 권한만 사용하고 image는 local tag로 build만 한다. push·deploy·DB mutation은 없다.</td></tr>
@@ -65,7 +65,8 @@
     <tr><td>DB/migration/CD 제외</td><td class="ok">구현 완료</td><td>workflow policy guard와 image 명령에 금지 경로가 없는지 확인한다.</td></tr>
     <tr><td>로컬 게이트</td><td class="ok">완료</td><td>format, lint, typecheck, build, non-DB Jest 57 suites / 274 tests, script tests 3/3, diff 검증 통과.</td></tr>
     <tr><td>GitHub 원격 run</td><td class="ok">완료</td><td><a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33959552735">PR run 33959552735</a>에서 <code>pull_request</code> workflow 1개만 생성됐고, 8개 job·<code>CI Required</code>·이미지 빌드가 모두 성공했다. 새 SHA에 push run은 생성되지 않았다.</td></tr>
-    <tr><td>ruleset/CODEOWNERS</td><td class="pending">관리자 적용</td><td>실제 관리자/team을 임의로 정하지 않고, <code>CI Required</code> 필수 등록과 <code>.github/**</code> 리뷰 경계를 별도 설정한다.</td></tr>
+    <tr><td>ruleset/CODEOWNERS</td><td class="pending">ruleset 적용 완료 · CODEOWNERS 미적용 수용</td><td>현재 <code>main_ci_rules</code>가 main에 PR 경유·strict <code>CI Required</code>·bypass 없음으로 활성화됐다. 1인 개발 전제로 승인 0과 workflow 자기변경 위험은 수용한다.</td></tr>
+    <tr><td>PR base 변경 재검증</td><td class="pending">설계 재승인 대기</td><td><code>pull_request.edited</code>를 추가해 base 변경에도 8개 전체 검사를 실행하는 설계 delta를 반영한 뒤 구현·원격 검증한다.</td></tr>
   </tbody></table></div>
 </section>
 <section id="issue-register">
@@ -75,7 +76,8 @@
     <tr><td class="ok">해결</td><td>aggregate가 실패한 needs 때문에 skipped로 끝날 수 있었다.</td><td><code>if: always()</code>와 step 내부 strict result 검사를 사용한다.</td></tr>
     <tr><td class="ok">해결</td><td>runtime base image tag가 가변적이었다.</td><td>실제 Docker Hub manifest digest를 확인해 Dockerfile에 고정했다.</td></tr>
     <tr><td class="ok">해결</td><td>같은 feature 커밋의 push와 PR에서 전체 CI가 중복 실행됐다.</td><td>PR을 단일 자동 merge-validation 경계로 변경하고 <code>push</code> trigger 및 <code>CI Push</code> 표시를 제거했다. PR run 33959552735에서 동일 SHA의 workflow 1개와 전체 job 성공을 확인했다.</td></tr>
-    <tr><td class="pending">남음</td><td>GitHub 저장소 main 보호 규칙이 현재 없다.</td><td>관리자가 PR 경유와 <code>CI Required</code> required status check를 적용하고 실패 차단을 확인해야 한다.</td></tr>
+    <tr><td class="ok">해결</td><td>main 대상 ruleset이 없었다.</td><td><code>main_ci_rules</code>가 active이며 PR 경유, strict <code>CI Required</code>, bypass 없음으로 적용됐다.</td></tr>
+    <tr><td class="pending">수용</td><td>1인 개발이라 workflow 변경에 별도 CODEOWNERS·승인 경계가 없다.</td><td>사용자 결정으로 수용한다. 팀/권한 모델이 바뀌면 CODEOWNERS와 최소 승인 정책을 재검토한다.</td></tr>
     <tr><td class="pending">수용</td><td>PR이 없는 개인 브랜치 push에는 자동 CI가 없다.</td><td>PR을 만들면 이후 <code>synchronize</code>에서 전체 검증한다. PR 전 즉시 검증이 필요하면 <code>workflow_dispatch</code>를 사용한다.</td></tr>
     <tr><td class="pending">남음</td><td>skip 지시문은 GitHub가 workflow 자체를 생략할 수 있다.</td><td>팀에서 skip 사용을 금지하고 보호 브랜치에 required check를 적용한다. 보호되지 않은 개인 push를 workflow 하나로 강제할 수는 없다.</td></tr>
   </tbody></table></div>
@@ -89,18 +91,18 @@
     <li>actionlint v1.7.12의 공식 macOS arm64 자산을 checksum 검증 후 모든 workflow YAML에 실행해 통과했고, YAML CI policy와 composite action 계약 검사도 통과했다. GitHub Linux runner에서도 전체 workflow lint와 policy 검사가 성공했다.</li>
     <li>로컬 Docker daemon은 현재 접근할 수 없어 image build 성공은 GitHub-hosted runner에서 확인한다.</li>
   </ul>
-  <p class="subtle">최종 두 원격 run은 head SHA <code>bc2df2ac221d429e5887cf27cc77852a78479594</code>에서 Format, Lint, Typecheck, Test, Script tests, Application build, Workflow lint, Runtime image build, CI Required가 모두 pass다.</p>
+  <p class="subtle">최신 원격 PR run은 head SHA <code>d3121056523e2498e475092c3626c8c8025927d9</code>에서 Format, Lint, Typecheck, Test, Script tests, Application build, Workflow lint, Runtime image build, CI Required가 모두 pass다.</p>
 </section>
 <section id="residual-risks">
   <h2>6. 잔여 위험·운영 인수 조건</h2>
   <div class="table-wrap"><table><caption>구현이 해결하지 않는 범위</caption><thead><tr><th>위험</th><th>남는 이유</th><th>운영 인수 조건</th></tr></thead><tbody>
     <tr><td>DB 호환성·migration 실패</td><td>사용자 제약에 따라 DB service와 migration을 CI에서 실행하지 않는다.</td><td>별도 승인된 DB 검증/배포 설계에서 다룬다.</td></tr>
-    <tr><td>보호 규칙 우회</td><td>저장소 파일만으로 GitHub ruleset과 관리자 리뷰 권한을 만들 수 없다.</td><td>main ruleset에 PR 경유, <code>CI Required</code>, 최신 상태 요구, 우회자 정책, CODEOWNERS 승인을 설정한다.</td></tr>
+    <tr><td>workflow 정의 자기변경</td><td>main ruleset은 active지만 1인 개발 정책상 승인 0·CODEOWNERS 미적용이다.</td><td>현재는 사용자 결정으로 수용한다. 팀 협업 전환 시 CODEOWNERS와 최소 승인 정책을 추가한다.</td></tr>
     <tr><td>PR 전 즉시 피드백 부재</td><td>중복 제거를 위해 PR 없는 브랜치 push를 자동 검사하지 않는다.</td><td>PR을 병합 경계로 사용하고 필요 시 manual run을 실행한다. 모든 raw branch push 자동 검사는 채택하지 않는다.</td></tr>
     <tr><td>fork·merge ref 경계</td><td>PR 이벤트를 기준으로 검사하므로 push-only의 branch check 재사용을 선택하지 않는다.</td><td>read-only 권한과 외부 fork 승인 정책을 유지하고, merge queue 도입 시 <code>merge_group</code>을 실제 검증한다.</td></tr>
     <tr><td>외부 action·base 갱신</td><td>SHA 고정은 자동 업데이트를 하지 않는다.</td><td>Dependabot 또는 정기적으로 release·digest를 검토하고 checksum을 함께 갱신한다.</td></tr>
   </tbody></table></div>
-  <p>개발자 이해 self-check는 이 문서의 구현 완료 조건이 아니다. 실제 인수는 로컬 게이트, 원격 PR run에서 단일 workflow 확인, 의도적 실패에서 다른 job 지속 및 aggregate 실패, 관리자 ruleset 적용 확인으로 판정한다.</p>
+  <p>개발자 이해 self-check는 이 문서의 구현 완료 조건이 아니다. 실제 인수는 로컬 게이트, 원격 PR run에서 단일 workflow 확인, 의도적 실패에서 다른 job 지속 및 aggregate 실패, base 변경 재검증과 ruleset 적용 확인으로 판정한다.</p>
 </section>
 <section id="design-delta">
   <h2>7. 설계 기준 대비 변경 기록</h2>
@@ -113,25 +115,26 @@
   <dl>
     <dt>리뷰 유형</dt><dd>자기 변경 리뷰 · 작성자 Hyunstone · 리뷰어 Codex</dd>
     <dt>대상</dt><dd>PR #15 · 초기 리뷰 <code>origin/main...04afc80</code>, 보강 리뷰 <code>bc2df2a</code>, trigger 재설계 · CI workflow, composite action, package script, Dockerfile, 운영 설정 경계</dd>
-    <dt>리뷰 상태</dt><dd class="pending">보강 완료 · blocker 1건 잔존</dd>
+    <dt>리뷰 상태</dt><dd class="pending">base 변경 재검증 구현 전 · workflow 승인 경계 위험은 사용자 수용</dd>
   </dl>
   <div class="table-wrap"><table><caption>발견 사항</caption><thead><tr><th>ID / 심각도</th><th>상태·근거</th><th>영향과 최소 대응</th></tr></thead><tbody>
-    <tr><td><strong>R-001 · Blocker</strong></td><td class="pending">open<br><code>.github/workflows/ci.yml:213-215</code><br>원격 rulesets <samp>0</samp>, main protection <samp>404 Branch not protected</samp>, CODEOWNERS <samp>404</samp>.</td><td><code>CI Required</code>라는 job을 만들었지만 GitHub가 그 체크를 required로 강제하지 않고, workflow 자체를 실제 관리자 리뷰 경계로 잠그지도 않았다. CI는 현재 운영 병합 게이트가 아니다. 관리자가 main ruleset에 PR 경유·<code>CI Required</code>·최신 상태 요구를 등록하고, 실제 team/account를 지정한 CODEOWNERS로 <code>.github/**</code>와 검사 계약을 보호해야 한다.</td></tr>
+    <tr><td><strong>R-001 · Blocker</strong></td><td class="ok">해결 · 현재 ruleset 확인<br><a href="https://github.com/Team-MOGAK/mogak-core-back/rules/22328510">main_ci_rules</a><br><code>CI Required</code>·strict·bypass 없음.</td><td>초기에는 required check와 PR 경유가 강제되지 않았지만, 현재 main 대상 active ruleset에 반영됐다. legacy branch protection API의 404와 ruleset 미적용을 혼동하지 않는다.</td></tr>
     <tr><td><strong>R-002 · P2</strong></td><td class="ok">해결 · 로컬·원격 검증 완료<br><code>package.json:21-22</code><br><code>format</code>과 <code>format:check</code>가 동일한 YAML glob을 사용한다.</td><td>수정 명령과 검사 범위를 일치시켰다. 로컬 <code>pnpm format:check</code>와 최종 원격 Format job이 통과했다.</td></tr>
     <tr><td><strong>R-003 · P2</strong></td><td class="ok">해결 · 로컬·원격 검증 완료<br><code>.github/workflows/ci.yml:161-197</code><br>모든 workflow YAML을 수집해 lint하고 composite action metadata를 policy guard에서 검증한다.</td><td>새 <code>.yml/.yaml</code> workflow가 lint 경계 밖으로 빠지지 않도록 했고, <code>action.yml</code>은 YAML parse와 composite 필수 필드를 별도로 검사한다. 로컬·최종 원격 Workflow lint가 통과했다.</td></tr>
     <tr><td><strong>R-004 · P2</strong></td><td class="ok">해결 · 로컬·원격 검증 완료<br><code>.github/workflows/ci.yml:190</code><br>policy guard가 <code>workflow_dispatch: {}</code>를 assert한다.</td><td>승인된 수동 실행 trigger가 삭제되면 policy job이 실패하도록 보강했다. 로컬 policy 검사와 최종 원격 Workflow lint가 통과했다.</td></tr>
     <tr><td><strong>R-005 · P1</strong></td><td class="ok">해결 · 로컬·원격 검증 완료<br><code>.github/workflows/ci.yml</code>의 <code>push</code>/<code>pull_request</code> 동시 trigger</td><td>동일 커밋의 전체 CI 중복을 제거하기 위해 PR을 단일 자동 merge-validation 경계로 변경했다. PR run 33959552735에서 workflow 1개, 8개 job, <code>CI Required</code> 1개가 모두 성공했다.</td></tr>
+    <tr><td><strong>R-006 · Blocker</strong></td><td class="pending">사용자 수용 · 1인 개발 정책<br>ruleset 승인 0·CODEOWNERS 없음</td><td>PR 작성자가 workflow와 policy guard를 함께 변경할 수 있다. 별도 reviewer를 둘 수 없는 현재 범위에서는 수용하지만, 팀 협업·외부 기여를 받기 시작하면 CODEOWNERS와 최소 승인 정책을 추가해야 한다.</td></tr>
   </tbody></table></div>
   <h3>검토된 실행 경로</h3>
-  <p>PR/merge_group/manual 이벤트 → 8개 독립 job → <code>if: always()</code> aggregate → 결과가 모두 <code>success</code>인지 검사하는 step의 흐름을 유지했다. DB service·migration·CD 호출은 실행되지 않았고, runtime image도 push 없이 build만 수행된다. 새 PR run 33959552735에서 동일 SHA에 push workflow가 추가되지 않는 것을 확인했다.</p>
+  <p>현재 구현은 PR/merge_group/manual 이벤트 → 8개 독립 job → <code>if: always()</code> aggregate → 결과가 모두 <code>success</code>인지 검사하는 step의 흐름이다. DB service·migration·CD 호출은 실행되지 않았고, runtime image도 push 없이 build만 수행된다. 새 PR run 33959790898에서 동일 SHA에 push workflow가 추가되지 않는 것을 확인했다. base 변경 재검증은 다음 구현 단계다.</p>
   <h3>검증 증거와 공백</h3>
   <ul>
-    <li>기존 정상 경로인 <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953947957">push run 33953947957</a>와 <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33954163267">PR run 33954163267</a>는 8개 job 및 aggregate 성공했다. trigger 변경 후에도 <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33959552735">PR run 33959552735</a> 1개만 생성되어 8개 job과 <code>CI Required</code>가 모두 성공했다.</li>
+    <li>기존 정상 경로인 <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953947957">push run 33953947957</a>와 <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33954163267">PR run 33954163267</a>는 8개 job 및 aggregate 성공했다. trigger 변경 후에는 <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33959790898">PR run 33959790898</a> 1개만 생성되어 8개 job과 <code>CI Required</code>가 모두 성공했다.</li>
     <li>trigger 변경 후 로컬 format, lint, typecheck, build, 57 suites / 274 tests, script tests 3/3, actionlint, YAML policy 검증 성공.</li>
     <li>실패 job 지속·aggregate 실패 차단은 의도적 실패 run으로 검증하지 않았다. 현재 성공 run은 정상 경로 증거다.</li>
-    <li>merge queue의 실제 <code>merge_group</code> 실행과 GitHub ruleset에 의한 실제 병합 차단은 설정이 없어 미검증이다.</li>
+    <li>merge queue의 실제 <code>merge_group</code> 실행, base retarget 재실행, 실패 경로는 미검증이다. ruleset 존재·required check 등록은 현재 API로 확인했다.</li>
   </ul>
-  <aside><strong>리뷰 판단: blocker 있음.</strong> R-002~R-004는 구현 보강과 로컬·원격 검증을 완료했다. R-001이 해결되기 전에는 production merge gate로 인수하지 않는다.</aside>
+  <aside><strong>리뷰 판단: blocker 있음.</strong> R-001은 ruleset 적용으로 해결됐고 R-006은 1인 개발 정책으로 수용됐다. `edited` base 변경 재검증이 구현·검증되기 전에는 production merge gate로 최종 인수하지 않는다.</aside>
 </section>
 <section id="developer-understanding">
   <h2>9. 개발자 운영 이해 확인</h2>

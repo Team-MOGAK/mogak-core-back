@@ -27,7 +27,7 @@
 </head>
 <body>
 <header>
-  <p class="state">설계 기준안 · Standard · 설계 재승인됨 — PR 중심 CI로 중복 실행 제거</p>
+  <p class="state">설계 기준안 · Standard · 재승인 필요 — PR base 변경 재검증 추가</p>
   <h1>PR 중심 CI와 병합 필수 체크</h1>
   <p>검사 종류는 브랜치 이름에 따라 줄이지 않는다. 실행 계기, 검사 결과, 병합 허용 조건을 각각 정의한다.</p>
   <dl>
@@ -71,7 +71,7 @@
     <tr><td>수동 실행</td><td>선택한 ref</td><td>전체 검사</td><td><code>CI Manual</code></td></tr>
     <tr><td>merge_group / checks_requested</td><td>병합 대기열의 test merge commit</td><td>전체 검사</td><td><code>CI Required</code></td></tr>
   </tbody></table></div>
-  <p>자동 trigger는 <code>pull_request</code>에 <code>opened, synchronize, reopened, ready_for_review</code>만 둔다. 제목·본문만 수정한 <code>edited</code> 이벤트는 코드가 바뀌지 않으므로 전체 CI를 재실행하지 않는다. <code>push</code>는 자동 trigger에서 제거하고, 태그 push도 별도 검사하지 않는다.</p>
+  <p>자동 trigger는 <code>pull_request</code>에 <code>opened, synchronize, reopened, ready_for_review, edited</code>를 둔다. <code>edited</code>에는 제목·본문 변경뿐 아니라 PR 대상 base branch 변경도 포함될 수 있으므로, 새 merge 결과를 놓치지 않기 위해 8개 전체 CI를 재실행한다. 그 대신 제목·본문만 수정해도 전체 CI가 다시 도는 비용을 수용한다. <code>push</code>는 자동 trigger에서 제거하고, 태그 push도 별도 검사하지 않는다.</p>
   <p>PR이 열린 브랜치에 커밋을 push해도 PR의 <code>synchronize</code> 실행만 발생하도록 한다. 따라서 같은 SHA에 push용 전체 CI와 PR용 전체 CI를 각각 만들지 않는다. 실행별로 event, head SHA, base SHA, 실제 checkout SHA를 요약에 남긴다.</p>
   <p>동시 실행 그룹은 고정된 CI 식별자 + event + PR 번호 또는 ref + 검사 SHA로 구분한다. 서로 다른 SHA는 끝까지 검사하고, 같은 이벤트·ref·SHA의 중복 실행만 대체한다. 과거 SHA의 재실행이 새 SHA 검사를 취소하지 않도록 한다. GitHub의 실행 순서는 커밋 시간순으로 보장되지 않으므로 단순 ref 단위 취소를 “최신 커밋 보장”이라고 부르지 않는다.</p>
   <p>플랫폼 예외: 커밋 메시지의 <code>[skip ci]</code> 등 GitHub skip 지시문은 workflow 자체를 시작하지 않게 한다. 팀 운영에서는 사용하지 않는 정책을 명시하고, 보호된 PR은 CI Required가 없으면 병합하지 못하도록 한다. 이 workflow 하나로 보호되지 않은 개인 브랜치의 skip 지시문까지 강제로 무력화할 수 있다고 보장하지 않는다.</p>
@@ -158,12 +158,14 @@
 </section>
 <section id="grilling-state">
   <h2>10. 설계 결정 기록</h2>
-  <p>상태: 설계 재승인됨 · 2026-09-05 KST. 사용자의 <code>개선 ㄱ</code>를 기존 push+PR 중복 실행 설계에서 PR 중심 설계로 전환하는 구현 승인으로 기록한다. GitHub 보호 규칙·CODEOWNERS 적용은 저장소 관리자 설정 단계로 남긴다.</p>
+  <p>상태: <strong>재승인 필요</strong> · 2026-09-05 KST. 사용자의 <code>1번은 개선 ㄱ</code>을 PR base 변경 재검증을 추가하는 설계 delta 승인 요청으로 기록한다. 1인 개발 결정에 따라 GitHub 보호 규칙의 승인 수 0과 CODEOWNERS 미적용 위험은 수용 범위로 남긴다.</p>
   <dl>
     <dt>이미 확정된 요구</dt><dd>모든 PR 대상에 기본 검사 전체, PR 대상 main 제한 폐지, DB·migration·CD 제외. PR 없는 개인 브랜치 push에는 자동 전체 CI를 실행하지 않는다.</dd>
     <dt>G1 — 이미지 검사 정책</dt><dd>모든 이벤트에 포함한다. 대안은 별도 workflow 또는 경로 한정이며, 비용 절감과 검증 누락 위험의 교환이다. 약 32초의 과거 실행과 독립 실행 원칙을 근거로 채택했다.</dd>
     <dt>G2 — 실제 병합 강제 범위</dt><dd>main에 필수 체크와 PR 경유를 적용한다. 다른 장기 통합 브랜치는 실제 운영 대상이 생길 때 추가한다. 모든 개인 브랜치 push를 막지는 않는다.</dd>
     <dt>G3 — 중복 실행 경계</dt><dd>PR을 병합 검증의 기준 이벤트로 삼고 <code>push</code> 자동 trigger를 제거한다. PR 없는 브랜치의 즉시 피드백은 자동 전체 CI가 아니라 필요 시 <code>workflow_dispatch</code>로 수행한다. PR·fork·merge ref 의미를 유지하는 대신 모든 raw branch push의 자동 검사 이점은 포기한다.</dd>
+    <dt>G4 — PR 대상 변경 재검증</dt><dd>PR head SHA가 같아도 base branch가 바뀌면 비교·merge 결과가 달라질 수 있으므로 <code>edited</code>에서 전체 8개 검사를 재실행한다. 제목·본문·기타 메타데이터 수정까지 재실행되는 비용은 stale required check를 막는 대가로 수용한다.</dd>
+    <dt>G5 — 1인 개발의 workflow 승인 경계</dt><dd>현재는 1인 개발이며 별도 reviewer·CODEOWNERS를 둘 수 없다는 사용자 결정을 반영해 승인 수 0과 code owner review 비활성 상태를 유지한다. PR 경유와 <code>CI Required</code> 강제는 유지하되, workflow 정의를 작성자가 변경할 수 있는 위험은 명시적으로 수용한다.</dd>
     <dt>기각한 대안</dt><dd>동일한 전체 CI를 push·PR 모두에 유지하는 안은 같은 SHA에 2세트를 실행하므로 기각했다. concurrency만 합치는 안은 required check가 취소되거나 pending이 될 수 있어 기각했다.</dd>
     <dt>판단 순서</dt><dd>동일한 검사 범위 → 독립 실행 → 결과 합산 → protected branch 등록 → 실제 실패 차단 확인.</dd>
     <dt>미룬 범위</dt><dd>DB-backed 검사, 배포, coverage 수치 강제, 멀티 OS/Node 매트릭스, 별도 보안 스캔 정책, merge queue 활성화. 각 항목이 CI 운영 검증을 자동으로 증명하지는 않는다.</dd>
@@ -180,9 +182,10 @@
       <li>DB 불변식/이미지 외부 영향/검증 한계: Q3.</li>
       <li>권한·운영/병합 강제: Q4.</li>
       <li>PR 없는 브랜치 push의 경계/수동 실행/잔여 위험: Q5.</li>
+      <li>PR base 변경과 stale merge 결과 방지: Q6.</li>
     </ul>
   </details>
-  <div class="controls"><button type="button" id="prev">이전</button><span id="position">1 / 5</span><button type="button" id="next">다음</button><span id="progress">응답 0 / 5</span></div>
+  <div class="controls"><button type="button" id="prev">이전</button><span id="position">1 / 6</span><button type="button" id="next">다음</button><span id="progress">응답 0 / 6</span></div>
   <div class="question" data-correct="b" data-explanation="PR 대상 브랜치와 무관하게 전체 검사를 수행하며 PR은 head+base의 병합 결과를 검사한다." data-next="run 요약에서 base SHA와 실제 checkout SHA를 확인한다.">
     <fieldset><legend>Q1. feat/login → feat/account PR이 열리면?</legend>
       <label><input type="radio" name="q1" value="a">main 대상이 아니므로 push 결과만 사용한다.</label>
@@ -218,12 +221,19 @@
       <label><input type="radio" name="q5" value="c">main의 이전 CI 성공을 자동으로 재사용한다.</label>
     </fieldset><button type="button" class="submit">답변 확인</button><div class="result" hidden><p class="status"></p><p class="explanation"></p><p class="next-action"></p></div>
   </div>
+  <div class="question" data-correct="a" data-explanation="PR의 base branch가 바뀌면 같은 head SHA라도 새로운 merge 결과가 된다. edited에서도 전체 CI를 다시 실행해야 이전 CI 성공을 잘못 재사용하지 않는다." data-next="edited 재실행이 제목·본문 수정에도 발생하는 비용을 수용했는지 확인한다.">
+    <fieldset><legend>Q6. 동일한 head SHA의 PR base를 다른 branch로 바꾸면?</legend>
+      <label><input type="radio" name="q6" value="a">edited 이벤트에서 전체 CI를 다시 실행한다.</label>
+      <label><input type="radio" name="q6" value="b">기존 CI Required 성공을 그대로 재사용한다.</label>
+      <label><input type="radio" name="q6" value="c">PR을 닫고 다시 열 때까지 검사하지 않는다.</label>
+    </fieldset><button type="button" class="submit">답변 확인</button><div class="result" hidden><p class="status"></p><p class="explanation"></p><p class="next-action"></p></div>
+  </div>
   <output id="overall" aria-live="polite">자기점검 미실시. 구현 승인 기록은 변경되지 않는다.</output>
   <noscript><p>JavaScript가 꺼져 있으면 모든 질문을 읽을 수 있으나 자동 채점·탐색은 제공되지 않는다.</p></noscript>
 </section>
 <section id="approval-state">
   <h2>12. 설계 채택과 구현 결과</h2>
-  <p>상태: 설계 재승인됨 · PR 중심 trigger 변경 구현 중. 현재 feature 브랜치에는 <code>.github/workflows/ci.yml</code>의 push 자동 trigger 제거와 PR 이벤트 범위 축소가 반영되고 있으며, 전체 검증 결과는 연결된 구현 통제 문서에 갱신한다.</p>
+  <p>상태: <strong>재승인 필요</strong> · PR base 변경 재검증 delta. 현재 feature 브랜치의 기존 구현은 PR 중심 trigger를 사용하지만, <code>edited</code>에서도 전체 검사를 실행하도록 설계 기준을 갱신했다. 이 delta는 별도 승인 후 workflow와 policy assertion에 반영한다.</p>
   <p>연결된 <a href="ci-all-branches-required-checks-implementation.html">구현 통제 문서</a>에 실제 diff·검증 결과·잔여 위험을 기록했다. GitHub 보호 규칙과 실제 관리자가 지정된 CODEOWNERS는 저장소 관리자와 별도 적용·확인해야 한다.</p>
 </section>
 <section id="review">
