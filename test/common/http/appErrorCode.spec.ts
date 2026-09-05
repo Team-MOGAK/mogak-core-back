@@ -18,6 +18,14 @@ describe('애플리케이션 오류 코드', () => {
     });
   });
 
+  it('PENDING access token 갱신 요구 오류 계약을 제공한다', () => {
+    expect(AppErrorCode.TOKEN_REFRESH_REQUIRED).toMatchObject({
+      httpStatus: HttpStatus.FORBIDDEN,
+      code: 'T006',
+      message: '최신 권한 토큰으로 갱신이 필요합니다',
+    });
+  });
+
   it('가상 실행에 필요한 공개 모각과 조각 오류 계약을 유지한다', () => {
     const codes = AppErrorCode as Record<string, unknown>;
 

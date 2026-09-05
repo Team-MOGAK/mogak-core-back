@@ -10,7 +10,6 @@ export const AUTH_PERSISTENCE = Symbol('AUTH_PERSISTENCE');
 
 export interface AuthPersistencePort {
   findUserById(userId: number): Promise<AuthUser | null>;
-  findUserByEmail(email: string): Promise<AuthUser | null>;
   findUserBySocialIdentity(
     provider: VerifiedSocialIdentity['provider'],
     providerUserId: string,

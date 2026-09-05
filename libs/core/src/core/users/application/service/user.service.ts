@@ -9,7 +9,10 @@ import {
   canCompleteRegistration,
   normalizeNickname,
 } from '../../domain/policy/userRegistration.policy';
-import { DuplicateNicknameException } from '../../domain/exception/userPersistence.exception';
+import {
+  CurrentSessionNotActiveException,
+  DuplicateNicknameException,
+} from '../../domain/exception/userPersistence.exception';
 import type { MetadataRepositoryPort } from '../port/metadata.repository.port';
 import type { UserRepositoryPort } from '../port/user.repository.port';
 import type { JoinUserCommand } from '../type/user.command';
@@ -35,13 +38,25 @@ export class UserService {
   async join(current: AuthenticatedPrincipal, command: JoinUserCommand): Promise<JoinUserResult> {
     const user = await this.users.findById(current.userId);
     if (user === null) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+    if (user.role === 'USER') {
+      if (current.role !== 'PENDING') {
+        throw new DomainException(DomainErrorCode.USER_ALREADY_EXISTS);
+      }
+      try {
+        return await this.reissueRegisteredSession(current, user);
+      } catch (error: unknown) {
+        if (error instanceof CurrentSessionNotActiveException) {
+          throw new DomainException(DomainErrorCode.LOGOUT_TOKEN);
+        }
+        throw error;
+      }
+    }
     if (!canCompleteRegistration(current.role, user.role)) {
       throw new DomainException(DomainErrorCode.USER_ALREADY_EXISTS);
     }
     const nickname = requiredNickname(command.nickname);
     const jobName = requiredTrimmed(command.job);
     const addressName = requiredTrimmed(command.address);
-    await this.verifyNickname(nickname);
     const [job, address] = await Promise.all([
       this.metadata.findJobByName(jobName),
       this.metadata.findAddressByName(addressName),
@@ -82,11 +97,47 @@ export class UserService {
         },
       };
     } catch (error: unknown) {
+      if (error instanceof CurrentSessionNotActiveException) {
+        throw new DomainException(DomainErrorCode.LOGOUT_TOKEN);
+      }
       if (error instanceof DuplicateNicknameException) {
         throw new DomainException(DomainErrorCode.INVALID_NICKNAME);
       }
       throw error;
     }
+  }
+
+  private async reissueRegisteredSession(
+    current: AuthenticatedPrincipal,
+    user: Readonly<{ id: number; email: string | null; nickname: string | null }>,
+  ): Promise<JoinUserResult> {
+    if (user.nickname === null) {
+      throw new DomainException(DomainErrorCode.USER_ALREADY_EXISTS);
+    }
+    const sessionId = generateId();
+    const issuedTokens = await this.sessionTokenIssuer.issue({
+      userId: user.id,
+      role: 'USER',
+      sessionId,
+      ...(user.email === null ? {} : { email: user.email }),
+    });
+    await this.users.replaceSession({
+      userId: user.id,
+      currentSessionId: current.sessionId,
+      replacementSession: {
+        id: sessionId,
+        refreshTokenHash: issuedTokens.refreshTokenHash,
+        expiresAt: issuedTokens.refreshTokenExpiresAt,
+      },
+    });
+    return {
+      userId: user.id,
+      nickname: user.nickname,
+      tokens: {
+        accessToken: issuedTokens.accessToken,
+        refreshToken: issuedTokens.refreshToken,
+      },
+    };
   }
 
   async profile(userId: number): Promise<UserProfileResult> {

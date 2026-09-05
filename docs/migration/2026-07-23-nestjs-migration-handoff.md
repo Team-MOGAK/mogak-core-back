@@ -1,13 +1,19 @@
 # MOGAK NestJS 마이그레이션 설계 및 인수인계
 
 작성일: 2026-07-23
-상태: 구현 진행 중
+상태: 부분 대체됨 (2026-08-30)
 
 ## 1. 문서 목적
 
 이 문서는 기존 Spring 서비스를 NestJS로 재구축하기 위해 확인한 실제 코드와 GitHub 이슈, 그리고 설계 논의에서 승인된 결정을 정리한다.
 
 이 문서가 구현의 기준이다. 기존 Spring 코드는 기능 의도와 현재 API를 확인하는 참고 자료로 사용하되, 중복 데이터, 선형적으로 증가하는 배치 데이터, 저장 카운터, 불필요한 락, 사용하지 않는 엔티티까지 그대로 복제하지 않는다.
+
+> **현재 인증·계정 식별 계약:** 이 문서의 users email UNIQUE 및 같은 이메일의 다른 provider를
+> 연결하는 설명은 대체되었다. 현재 배포 기준은
+> [provider별 독립 소셜 계정 설계](../reviews/provider-isolated-social-accounts-design.html)와
+> [구현 제어 기록](../reviews/provider-isolated-social-accounts-implementation.html)이다.
+> `users.email`은 계정 식별자가 아니며 `(provider, providerUserId)`가 exact identity다.
 
 승인된 설계에 따라 구현을 진행한다. 각 수직 슬라이스는 별도 구현 계획과 검증을 거친다.
 
@@ -264,7 +270,10 @@ users
 
 `nickname`은 팔로우 API에서 사용자를 식별하므로 값이 존재할 때 UNIQUE다. 가입 전 null은 허용하며 hard delete 후 닉네임은 즉시 재사용할 수 있다. 초기에는 현재 API처럼 대소문자를 구분한다.
 
-`email`도 nullable UNIQUE다. 이는 이메일로 계정을 자동 연결하려는 용도가 아니라, 서로 다른 공급자의 새 계정이 같은 이메일을 주장할 때 기존 계정 연결 필요 오류로 막기 위한 현재 계약의 정합성 제약이다. PostgreSQL의 UNIQUE는 여러 `NULL`을 허용하므로 이메일 없는 Kakao 계정은 계속 지원한다.
+`email`은 nullable 보조 정보이며 UNIQUE 제약을 두지 않는다. 같은 이메일을 반환하더라도
+provider와 providerUserId가 다르면 별도 users·social_accounts·세션을 생성한다. 계정 조회·세션
+발급·동시성 복구는 반드시 userId 또는 exact social identity를 사용한다. 이 변경은
+`drizzle/0006_allow_duplicate_email_users.sql`을 배포 전에 적용해야 한다.
 
 #### `jobs`, `addresses`
 
@@ -771,7 +780,7 @@ Google ID token은 `https://accounts.google.com`과 `accounts.google.com` issuer
 
 - DB는 `users 1:N social_accounts`를 지원한다.
 - 같은 이메일이라는 이유로 다른 공급자를 자동 연결하지 않는다.
-- 다른 공급자의 이메일이 기존 사용자와 충돌하면 원래 공급자로 로그인하도록 안내한다.
+- 같은 이메일의 다른 provider는 기존 사용자와 충돌시키지 않고 별도 계정으로 생성한다.
 - 명시적 계정 연결 API는 필요할 수 있지만 초기 구현 범위에서는 제외한다.
 
 ## 16. 제약과 인덱스 정책
@@ -781,7 +790,6 @@ Google ID token은 `https://accounts.google.com`과 `accounts.google.com` issuer
 정합성에 필요한 다음 UNIQUE만 둔다.
 
 - `users.nickname`
-- `users.email`
 - `consent_items.code`
 - `user_consents(user_id, consent_item_id)`
 - `social_accounts(provider, provider_user_id)`

@@ -26,7 +26,6 @@ import type {
 } from '@core/users/domain/policy/userRegistration.policy';
 import {
   AuthPersistenceException,
-  DuplicateEmailException,
   DuplicateSocialAccountException,
 } from '@core/auth/domain/exception/authPersistence.exception';
 import {
@@ -42,11 +41,6 @@ export class AuthRepository implements AuthPersistencePort {
 
   async findUserById(userId: number): Promise<AuthUser | null> {
     const user = await this.db.query.users.findFirst({ where: eq(users.id, userId) });
-    return user === undefined ? null : asAuthUser(user);
-  }
-
-  async findUserByEmail(email: string): Promise<AuthUser | null> {
-    const user = await this.db.query.users.findFirst({ where: eq(users.email, email) });
     return user === undefined ? null : asAuthUser(user);
   }
 
@@ -129,9 +123,6 @@ export class AuthRepository implements AuthPersistencePort {
     } catch (error: unknown) {
       if (error instanceof AuthPersistenceException) {
         throw error;
-      }
-      if (isUniqueConstraint(error, 'users_email_unique')) {
-        throw new DuplicateEmailException();
       }
       if (
         isUniqueConstraint(

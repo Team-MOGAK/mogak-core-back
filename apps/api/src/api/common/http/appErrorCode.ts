@@ -209,6 +209,11 @@ export const AppErrorCode = {
     code: 'T004',
     message: '권한이 부여되지 않았습니다',
   },
+  TOKEN_REFRESH_REQUIRED: {
+    httpStatus: HttpStatus.FORBIDDEN,
+    code: 'T006',
+    message: '최신 권한 토큰으로 갱신이 필요합니다',
+  },
   LOGOUT_TOKEN: {
     httpStatus: HttpStatus.FORBIDDEN,
     code: 'T005',

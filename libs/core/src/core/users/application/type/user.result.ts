@@ -17,5 +17,6 @@ export type UserProfileResult = Readonly<{
 export type RegistrationCandidate = Readonly<{
   id: number;
   email: string | null;
+  nickname: string | null;
   role: RegistrationRole;
 }>;

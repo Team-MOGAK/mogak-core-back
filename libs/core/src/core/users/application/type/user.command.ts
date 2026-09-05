@@ -22,6 +22,16 @@ export type CompleteRegistrationCommand = Readonly<{
   now: Date;
 }>;
 
+export type ReplaceSessionCommand = Readonly<{
+  userId: number;
+  currentSessionId: string;
+  replacementSession: Readonly<{
+    id: string;
+    refreshTokenHash: string;
+    expiresAt: Date;
+  }>;
+}>;
+
 export type UpdateNicknameCommand = Readonly<{ userId: number; nickname: string; now: Date }>;
 export type UpdateJobCommand = Readonly<{ userId: number; jobId: number; now: Date }>;
 export type UpdateProfileImageCommand = Readonly<{
