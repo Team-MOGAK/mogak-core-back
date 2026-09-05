@@ -72,7 +72,7 @@
     <tr><td>merge_group / checks_requested</td><td>병합 대기열의 test merge commit</td><td>전체 검사</td><td><code>CI Required</code></td></tr>
   </tbody></table></div>
   <p>자동 trigger는 <code>pull_request</code>에 <code>opened, synchronize, reopened, ready_for_review, edited</code>를 둔다. <code>edited</code>에는 제목·본문 변경뿐 아니라 PR 대상 base branch 변경도 포함될 수 있으므로, 새 merge 결과를 놓치지 않기 위해 8개 전체 CI를 재실행한다. 그 대신 제목·본문만 수정해도 전체 CI가 다시 도는 비용을 수용한다. <code>push</code>는 자동 trigger에서 제거하고, 태그 push도 별도 검사하지 않는다.</p>
-  <p>PR이 열린 브랜치에 커밋을 push해도 PR의 <code>synchronize</code> 실행만 발생하도록 한다. 따라서 같은 SHA에 push용 전체 CI와 PR용 전체 CI를 각각 만들지 않는다. 실행별로 event, head SHA, base SHA, 실제 checkout SHA를 요약에 남긴다.</p>
+  <p>PR이 열린 브랜치에 커밋을 push해도 PR의 <code>synchronize</code> 실행만 발생하도록 한다. 따라서 같은 SHA에 push용 전체 CI와 PR용 전체 CI를 각각 만들지 않는다. 필요할 때 GitHub run 정보와 각 job 로그에서 event, head SHA, base SHA, 실제 checkout SHA를 확인한다.</p>
   <p>동시 실행 그룹은 고정된 CI 식별자 + event + PR 번호 또는 ref + 검사 SHA로 구분한다. 서로 다른 SHA는 끝까지 검사하고, 같은 이벤트·ref·SHA의 중복 실행만 대체한다. 과거 SHA의 재실행이 새 SHA 검사를 취소하지 않도록 한다. GitHub의 실행 순서는 커밋 시간순으로 보장되지 않으므로 단순 ref 단위 취소를 “최신 커밋 보장”이라고 부르지 않는다.</p>
   <p>플랫폼 예외: 커밋 메시지의 <code>[skip ci]</code> 등 GitHub skip 지시문은 workflow 자체를 시작하지 않게 한다. 팀 운영에서는 사용하지 않는 정책을 명시하고, 보호된 PR은 CI Required가 없으면 병합하지 못하도록 한다. 이 workflow 하나로 보호되지 않은 개인 브랜치의 skip 지시문까지 강제로 무력화할 수 있다고 보장하지 않는다.</p>
   <p>PR 충돌이나 GitHub의 외부 기여자 실행 승인 대기는 통과가 아니다. base 갱신으로 기존 검증이 낡았으면 branch update 또는 merge queue 검증이 필요하다. <code>merge_group</code> 이벤트 지원은 준비하되 merge queue 자체는 이번에 활성화하지 않는다.</p>
@@ -122,7 +122,7 @@
   <p>기본 권한은 <code>contents: read</code>, checkout은 <code>persist-credentials: false</code>다. PR 코드를 운영 자격증명과 함께 실행하지 않도록 GitHub-hosted runner와 <code>pull_request</code> 이벤트를 사용한다. 외부 fork PR은 GitHub의 실행 승인 정책을 그대로 따른다.</p>
   <p>Node/pnpm은 현재 package 계약과 맞추고 lockfile 고정 설치를 유지한다. 외부 action은 검증한 SHA로 고정한다. Dockerfile의 Node runtime base는 실제 확인한 manifest digest <code>sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd</code>로 고정한다. 기존 버전 숫자를 최신 main과 대조하지 않고 복사하지 않는다.</p>
   <p id="failure-recovery">각 검사에는 timeout을 둔다(일반 검사 10분, 테스트 15분, 이미지 15분, 합산 2분을 초기값으로 제안). 설치 실패는 해당 검사 실패, 테스트 실패는 다른 검사 계속, 네트워크 장애도 실패로 표시한다. 무제한 재시도·강제 성공·실패 테스트 생략을 넣지 않는다. 원인 수정 또는 일시 장애 확인 후 해당 run을 재실행한다.</p>
-  <p>run 이름과 Step Summary에 이벤트, 대상/base 브랜치, 실제 검사 SHA, 검사별 결과와 로그 링크를 기록한다. 브랜치명·PR 제목을 shell 코드에 직접 삽입하지 않고 환경변수로 전달해 인용 처리한다. 테스트 결과 JSON/TAP 등은 필요시 7일 보관하고 실행 실패 시에도 업로드를 시도한다. 파일이 생성되기 전 실패했다면 원래 실패를 보존하고 산출물이 없다고 명시한다. secret·환경변수 전체 dump는 남기지 않는다.</p>
+  <p>GitHub run 화면의 job 결과와 로그를 운영 확인 기준으로 사용한다. 별도 Step Summary 생성은 이번 범위에 넣지 않는다. 브랜치명·PR 제목을 shell 코드에 직접 삽입하지 않고 환경변수로 전달해 인용 처리한다. 테스트 결과 JSON/TAP 등은 필요시 7일 보관하고 실행 실패 시에도 업로드를 시도한다. 파일이 생성되기 전 실패했다면 원래 실패를 보존하고 산출물이 없다고 명시한다. secret·환경변수 전체 dump는 남기지 않는다.</p>
 </section>
 <section id="verification-plan">
   <h2>8. 구현 후 수용 기준과 적용 순서</h2>
@@ -139,7 +139,7 @@
   </tbody></table></div>
   <ol>
     <li>최신 main을 작업 브랜치에 반영하고 테스트 목록·명령·Dockerfile 계약을 재확인한다. 기존 앱 변경은 CI 작업과 분리한다.</li>
-    <li>workflow, 공통 setup, 검사 명령 범위, 결과 요약을 구현하고 정적 검사를 수행한다. 실패 시나리오는 검증용 checkout/ref에서만 시험하고 의도된 실패 코드를 최종 변경에 남기지 않는다.</li>
+    <li>workflow, 공통 setup, 검사 명령 범위, job/aggregate 결과를 구현하고 정적 검사를 수행한다. 실패 시나리오는 검증용 checkout/ref에서만 시험하고 의도된 실패 코드를 최종 변경에 남기지 않는다.</li>
     <li>PR #15에서 새 check 이름과 전체 성공을 확인한다. 저장소 보호 설정과 PR 병합은 실제 적용 단계로 구분한다.</li>
     <li>main 보호에 새 CI Required와 관리자가 지정된 CODEOWNERS 승인 정책을 등록하고 실패/누락 상태의 병합 차단을 확인한다. 부트스트랩 순서를 사전에 정해 체크 이름 변경으로 인한 영구 대기를 방지한다.</li>
     <li>PR 병합 후에는 별도 자동 CI를 실행하지 않는다. 사후 검증이 필요할 때만 <code>workflow_dispatch</code>로 main을 검사한다. PR이 없는 장기 작업 브랜치도 필요하면 수동 실행으로 확인한다.</li>
