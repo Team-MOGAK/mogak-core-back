@@ -20,7 +20,7 @@
 </head>
 <body>
 <header>
-  <p id="implementation-control-state" class="state">구현 통제 상태 · 구현 점검 중 — 리뷰 보강 적용, 관리자 게이트 보류</p>
+  <p id="implementation-control-state" class="state">구현 통제 상태 · 운영 제어 보류 — 코드 보강·원격 CI 통과, 관리자 게이트 미적용</p>
   <h1>모든 브랜치·PR CI 구현 통제 기록</h1>
   <p>승인된 CI 재설계가 실제 workflow·설치 계약·이미지 빌드에 어떻게 반영됐는지와 남은 운영 확인을 분리해 기록한다.</p>
   <dl>
@@ -60,7 +60,7 @@
   <h2>3. 구현 상태</h2>
   <div class="table-wrap"><table><caption>완료·진행·보류 경계</caption><thead><tr><th>항목</th><th>상태</th><th>근거 또는 다음 확인</th></tr></thead><tbody>
     <tr><td>최신 main 반영</td><td class="ok">완료</td><td><code>origin/main c46d9fd</code>를 feature worktree에 병합.</td></tr>
-    <tr><td>workflow 재설계·리뷰 보강</td><td class="ok">구현 완료</td><td>트리거·8개 job·엄격한 aggregate와 전체 workflow lint·composite action 계약·manual trigger 회귀 검사를 반영했다. 원격 run으로 최종 확인한다.</td></tr>
+    <tr><td>workflow 재설계·리뷰 보강</td><td class="ok">구현 완료</td><td>트리거·8개 job·엄격한 aggregate와 전체 workflow lint·composite action 계약·manual trigger 회귀 검사를 반영했다. <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33956188668">push 33956188668</a>와 <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33956190526">PR 33956190526</a>에서 최종 확인했다.</td></tr>
     <tr><td>DB/migration/CD 제외</td><td class="ok">구현 완료</td><td>workflow policy guard와 image 명령에 금지 경로가 없는지 확인한다.</td></tr>
     <tr><td>로컬 게이트</td><td class="ok">완료</td><td>format, lint, typecheck, build, non-DB Jest 57 suites / 274 tests, script tests 3/3, diff 검증 통과.</td></tr>
     <tr><td>GitHub 원격 run</td><td class="ok">완료</td><td><a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953615476">push 33953615476</a>와 <a href="https://github.com/Team-MOGAK/mogak-core-back/actions/runs/33953706658">PR 33953706658</a>에서 8개 job과 각 aggregate가 모두 성공했다.</td></tr>
@@ -82,11 +82,11 @@
   <ul>
     <li><code>CI=true pnpm install --frozen-lockfile</code>, <code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>, <code>pnpm build</code>, <code>git diff --check</code>가 통과했다.</li>
     <li><code>pnpm test --runInBand</code>는 최신 main 병합 후 57 suites / 274 tests 전부 통과했다.</li>
-    <li><code>pnpm test:verify-local</code>는 3/3 통과했으며 실제 DB migration은 실행하지 않았다.</li>
-    <li>actionlint v1.7.12의 공식 macOS arm64 자산을 checksum 검증 후 실행해 workflow lint가 통과했고, YAML CI policy 구조 검사도 통과했다. GitHub Linux runner의 동일 단계도 두 원격 run에서 성공했다.</li>
+    <li><code>pnpm test:verify-local</code>는 sandbox의 첫 실행에서 fake localhost listen이 <samp>EPERM</samp>으로 차단됐지만, 권한 경로 재실행에서 3/3 통과했으며 실제 DB migration은 실행하지 않았다.</li>
+    <li>actionlint v1.7.12의 공식 macOS arm64 자산을 checksum 검증 후 모든 workflow YAML에 실행해 통과했고, YAML CI policy와 composite action 계약 검사도 통과했다. GitHub Linux runner에서도 전체 workflow lint와 policy 검사가 성공했다.</li>
     <li>로컬 Docker daemon은 현재 접근할 수 없어 image build 성공은 GitHub-hosted runner에서 확인한다.</li>
   </ul>
-  <p class="subtle">두 원격 run 모두 head SHA <code>bdc8f66000cebb2c36a14e93afef2cf72f5aafab</code>에서 각 job과 aggregate가 성공했다. PR의 현재 check 목록에서도 Format, Lint, Typecheck, Test, Script tests, Application build, Workflow lint, Runtime image build, CI Required가 pass다.</p>
+  <p class="subtle">최종 두 원격 run은 head SHA <code>bc2df2ac221d429e5887cf27cc77852a78479594</code>에서 Format, Lint, Typecheck, Test, Script tests, Application build, Workflow lint, Runtime image build, CI Required가 모두 pass다.</p>
 </section>
 <section id="residual-risks">
   <h2>6. 잔여 위험·운영 인수 조건</h2>
@@ -107,14 +107,14 @@
   <h2>8. 구현 리뷰</h2>
   <dl>
     <dt>리뷰 유형</dt><dd>자기 변경 리뷰 · 작성자 Hyunstone · 리뷰어 Codex</dd>
-    <dt>대상</dt><dd>PR #15 · <code>origin/main...04afc80</code> · CI workflow, composite action, package script, Dockerfile, 운영 설정 경계</dd>
-    <dt>리뷰 상태</dt><dd class="pending">보강 적용 · blocker 1건 잔존, R-002~R-004 해결 대기 중인 원격 재검증</dd>
+    <dt>대상</dt><dd>PR #15 · 초기 리뷰 <code>origin/main...04afc80</code>, 보강 리뷰 <code>bc2df2a</code> · CI workflow, composite action, package script, Dockerfile, 운영 설정 경계</dd>
+    <dt>리뷰 상태</dt><dd class="pending">보강 완료 · blocker 1건 잔존</dd>
   </dl>
   <div class="table-wrap"><table><caption>발견 사항</caption><thead><tr><th>ID / 심각도</th><th>상태·근거</th><th>영향과 최소 대응</th></tr></thead><tbody>
     <tr><td><strong>R-001 · Blocker</strong></td><td class="pending">open<br><code>.github/workflows/ci.yml:213-215</code><br>원격 rulesets <samp>0</samp>, main protection <samp>404 Branch not protected</samp>, CODEOWNERS <samp>404</samp>.</td><td><code>CI Required</code>라는 job을 만들었지만 GitHub가 그 체크를 required로 강제하지 않고, workflow 자체를 실제 관리자 리뷰 경계로 잠그지도 않았다. CI는 현재 운영 병합 게이트가 아니다. 관리자가 main ruleset에 PR 경유·<code>CI Required</code>·최신 상태 요구를 등록하고, 실제 team/account를 지정한 CODEOWNERS로 <code>.github/**</code>와 검사 계약을 보호해야 한다.</td></tr>
-    <tr><td><strong>R-002 · P2</strong></td><td class="ok">해결 · 원격 재검증 중<br><code>package.json:21-22</code><br><code>format</code>과 <code>format:check</code>가 동일한 YAML glob을 사용한다.</td><td>수정 명령과 검사 범위를 일치시켰다. 로컬 <code>pnpm format:check</code>가 통과했고 원격 CI에서 재확인한다.</td></tr>
-    <tr><td><strong>R-003 · P2</strong></td><td class="ok">해결 · 원격 재검증 중<br><code>.github/workflows/ci.yml:161-181</code><br>모든 workflow YAML을 수집해 lint하고 composite action metadata를 policy guard에서 검증한다.</td><td>새 <code>.yml/.yaml</code> workflow가 lint 경계 밖으로 빠지지 않도록 했고, <code>action.yml</code>은 YAML parse와 composite 필수 필드를 별도로 검사한다. 로컬 actionlint가 통과했고 원격 CI에서 재확인한다.</td></tr>
-    <tr><td><strong>R-004 · P2</strong></td><td class="ok">해결 · 원격 재검증 중<br><code>.github/workflows/ci.yml:184</code><br>policy guard가 <code>workflow_dispatch: {}</code>를 assert한다.</td><td>승인된 수동 실행 trigger가 삭제되면 policy job이 실패하도록 보강했다. 로컬 CI policy 검사가 통과했고 원격 CI에서 재확인한다.</td></tr>
+    <tr><td><strong>R-002 · P2</strong></td><td class="ok">해결 · 로컬·원격 검증 완료<br><code>package.json:21-22</code><br><code>format</code>과 <code>format:check</code>가 동일한 YAML glob을 사용한다.</td><td>수정 명령과 검사 범위를 일치시켰다. 로컬 <code>pnpm format:check</code>와 최종 원격 Format job이 통과했다.</td></tr>
+    <tr><td><strong>R-003 · P2</strong></td><td class="ok">해결 · 로컬·원격 검증 완료<br><code>.github/workflows/ci.yml:161-197</code><br>모든 workflow YAML을 수집해 lint하고 composite action metadata를 policy guard에서 검증한다.</td><td>새 <code>.yml/.yaml</code> workflow가 lint 경계 밖으로 빠지지 않도록 했고, <code>action.yml</code>은 YAML parse와 composite 필수 필드를 별도로 검사한다. 로컬·최종 원격 Workflow lint가 통과했다.</td></tr>
+    <tr><td><strong>R-004 · P2</strong></td><td class="ok">해결 · 로컬·원격 검증 완료<br><code>.github/workflows/ci.yml:190</code><br>policy guard가 <code>workflow_dispatch: {}</code>를 assert한다.</td><td>승인된 수동 실행 trigger가 삭제되면 policy job이 실패하도록 보강했다. 로컬 policy 검사와 최종 원격 Workflow lint가 통과했다.</td></tr>
   </tbody></table></div>
   <h3>검토된 실행 경로</h3>
   <p>push/PR 이벤트 → 8개 독립 job → <code>if: always()</code> aggregate → 결과가 모두 <code>success</code>인지 검사하는 step의 흐름은 의도대로 동작했다. DB service·migration·CD 호출은 실행되지 않았고, runtime image도 push 없이 build만 수행됐다.</p>
@@ -125,7 +125,7 @@
     <li>실패 job 지속·aggregate 실패 차단은 의도적 실패 run으로 검증하지 않았다. 현재 성공 run은 정상 경로 증거다.</li>
     <li>merge queue의 실제 <code>merge_group</code> 실행과 GitHub ruleset에 의한 실제 병합 차단은 설정이 없어 미검증이다.</li>
   </ul>
-  <aside><strong>리뷰 판단: blocker 있음.</strong> R-002~R-004는 구현 보강과 로컬 검증을 완료했지만 원격 재검증이 남아 있다. R-001이 해결되기 전에는 production merge gate로 인수하지 않는다.</aside>
+  <aside><strong>리뷰 판단: blocker 있음.</strong> R-002~R-004는 구현 보강과 로컬·원격 검증을 완료했다. R-001이 해결되기 전에는 production merge gate로 인수하지 않는다.</aside>
 </section>
 <section id="developer-understanding">
   <h2>9. 개발자 운영 이해 확인</h2>
