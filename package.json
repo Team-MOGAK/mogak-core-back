@@ -27,7 +27,8 @@
     "verify:local": "node scripts/verify-local.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:migrate:legacy-compat": "node scripts/migrateLegacySchemaCompatibility.mjs"
+    "db:migrate:legacy-compat": "node scripts/migrateLegacySchemaCompatibility.mjs",
+    "auth:sessions:cleanup": "node scripts/cleanupExpiredSessions.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

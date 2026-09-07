@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, lte } from 'drizzle-orm';
 
 import {
   authSessions,
@@ -139,7 +139,14 @@ export class AuthRepository implements AuthPersistencePort {
 
   async createSession(userId: number, session: SessionDraft): Promise<void> {
     try {
-      await this.db.insert(authSessions).values({ ...session, userId });
+      await this.db.transaction(async (tx) => {
+        const now = new Date();
+        await tx
+          .delete(authSessions)
+          .where(and(eq(authSessions.userId, userId), lte(authSessions.expiresAt, now)));
+
+        await tx.insert(authSessions).values({ ...session, userId });
+      });
     } catch (error: unknown) {
       if (error instanceof AuthPersistenceException) {
         throw error;
@@ -266,13 +273,22 @@ function asUserRole(value: string | null): UserRole | null {
 }
 
 function isUniqueConstraint(error: unknown, ...constraints: readonly string[]): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === '23505' &&
-    'constraint' in error &&
-    typeof error.constraint === 'string' &&
-    constraints.includes(error.constraint)
-  );
+  const seen = new WeakSet<object>();
+  let current: unknown = error;
+  while (isRecord(current) && !seen.has(current)) {
+    seen.add(current);
+    if (
+      current.code === '23505' &&
+      typeof current.constraint === 'string' &&
+      constraints.includes(current.constraint)
+    ) {
+      return true;
+    }
+    current = current.cause;
+  }
+  return false;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
