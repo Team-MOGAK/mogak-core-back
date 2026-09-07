@@ -262,9 +262,10 @@ export class JogaksService implements OwnedOccurrencePort {
     );
     const today = this.today();
     const occurrences: OccurrenceResult[] = [];
+    const dates = datesInclusive(startDate, endDate);
 
     for (const schedule of schedules) {
-      for (const scheduledDate of datesInclusive(startDate, endDate)) {
+      for (const scheduledDate of dates) {
         if (!occursOn(schedule.schedule, scheduledDate)) continue;
         const execution =
           executionByNaturalKey.get(executionKey(schedule.jogakId, scheduledDate)) ?? null;

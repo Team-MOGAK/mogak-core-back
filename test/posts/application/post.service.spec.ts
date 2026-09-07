@@ -448,4 +448,19 @@ describe('게시글 서비스', () => {
       offset: 0,
     });
   });
+
+  it('페이지 크기와 offset overflow를 소유권·게시글 조회 전에 거부한다', async () => {
+    const posts = repository();
+    const ownedMogaks = mogaks();
+    const service = new PostService(posts, jogaks(), storage(), ownedMogaks);
+
+    await expect(service.listMogakPosts(7, 3, 0, 101)).rejects.toEqual(
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
+    );
+    await expect(service.listMogakPosts(7, 3, Number.MAX_SAFE_INTEGER, 2)).rejects.toEqual(
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
+    );
+    expect(ownedMogaks.resolveOwnedMogak).not.toHaveBeenCalled();
+    expect(posts.listOwnedMogakPosts).not.toHaveBeenCalled();
+  });
 });

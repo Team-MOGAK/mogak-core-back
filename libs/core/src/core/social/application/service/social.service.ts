@@ -1,4 +1,5 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
+import { pageOffset } from '@core/common/validation/pagination';
 import type { StoragePort } from '@core/storage/application/storage.port';
 import { isSelfFollow } from '../../domain/policy/follow.policy';
 import type { SocialRepositoryPort } from '../port/social.repository.port';
@@ -53,8 +54,9 @@ export class SocialService {
   }
 
   async listPacemakerPosts(userId: number, cursor: number, size: number) {
+    const offset = safePageOffset(cursor, size);
     return this.toFeed(
-      await this.repository.listPacemakerPosts({ userId, limit: size, offset: cursor * size }),
+      await this.repository.listPacemakerPosts({ userId, limit: size, offset }),
       false,
     );
   }
@@ -66,6 +68,7 @@ export class SocialService {
     sort: string,
     address?: string,
   ) {
+    const offset = safePageOffset(page, size);
     if (sort !== 'createdAt' && sort !== 'likeCnt') {
       throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
     }
@@ -77,7 +80,7 @@ export class SocialService {
       address: selectedAddress,
       sort,
       limit: size + 1,
-      offset: page * size,
+      offset,
     });
     const content = await this.toFeed(rows.slice(0, size), true);
     return {
@@ -110,7 +113,9 @@ export class SocialService {
   private async toFeed(posts: readonly FeedPostResult[], summary: boolean) {
     const [images, comments] = await Promise.all([
       this.repository.listImages(posts.map((post) => post.id)),
-      this.repository.listComments(posts.map((post) => post.id)),
+      summary
+        ? Promise.resolve<FeedCommentResult[]>([])
+        : this.repository.listComments(posts.map((post) => post.id)),
     ]);
     return Promise.all(
       posts.map(async (post) => {
@@ -166,5 +171,13 @@ export class SocialService {
     return storageKey === null || this.storage === undefined
       ? null
       : this.storage.resolvePublicUrl(storageKey);
+  }
+}
+
+function safePageOffset(page: number, size: number): number {
+  try {
+    return pageOffset(page, size);
+  } catch {
+    throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
   }
 }
