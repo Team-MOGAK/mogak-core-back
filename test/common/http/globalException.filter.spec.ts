@@ -2,6 +2,9 @@ import { HttpStatus, ServiceUnavailableException } from '@nestjs/common';
 import { jest } from '@jest/globals';
 import { ThrottlerException } from '@nestjs/throttler';
 import type { PinoLogger } from 'nestjs-pino';
+import { DrizzleQueryError } from 'drizzle-orm';
+import pino from 'pino';
+import { Writable } from 'node:stream';
 
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { GlobalExceptionFilter } from '@api/common/http/globalException.filter';
@@ -431,6 +434,36 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
 });
 
 describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
+  it.each([
+    ['timeout', new Error('Query read timeout')],
+    ['connection reset', Object.assign(new Error('Connection terminated'), { code: 'ECONNRESET' })],
+    ['SQLSTATE', Object.assign(new Error('constraint violation'), { code: '23505' })],
+  ])('%s의 실제 Drizzle 오류는 SQL 원문 없이 최종 로그에 기록한다', (_label, cause) => {
+    let output = '';
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        output += chunk.toString();
+        callback();
+      },
+    });
+    const log = pino({}, stream);
+    const queryError = new DrizzleQueryError(
+      'SELECT $1 /* PRIVATE_SQL */',
+      ['PRIVATE_BODY'],
+      cause,
+    );
+    const wrapped = new Error('PRIVATE_WRAPPER', { cause: queryError });
+    const response = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    new GlobalExceptionFilter(log as unknown as PinoLogger).catch(wrapped, {
+      switchToHttp: () => ({ getResponse: () => response }),
+    } as never);
+    expect(output).not.toContain('PRIVATE_');
+    const record = JSON.parse(output) as { err: { message: string; stack?: string } };
+    expect(record.err.message).toBe('Database operation failed');
+    // Pino's error serializer may add an empty stack field to the safe snapshot.
+    expect(record.err.stack ?? '').toBe('');
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
     resetLogger();
@@ -484,12 +517,14 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
         event: 'unhandled_exception',
         err: expect.objectContaining({
           name: exception.name,
-          message: exception.message,
+          message: 'Database operation failed',
           database: { code: '23503', constraint: 'mogak_modarat_id_fkey', table: 'mogak' },
         }),
       },
       'Unhandled exception',
     );
+    const logged = error.mock.calls[0]?.[0] as { err?: { stack?: string } };
+    expect(logged.err?.stack).toBeUndefined();
   });
 });
 
