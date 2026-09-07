@@ -19,17 +19,28 @@ const migrationSql = await readFile(
   'utf8',
 );
 
+if (process.argv.slice(2).some((argument) => argument !== '--')) {
+  throw new Error('지원하지 않는 옵션입니다. 사용법: pnpm db:migrate:legacy-compat');
+}
 const pool = new pg.Pool({ connectionString: connectionStringFromEnvironment() });
-const client = await pool.connect();
 try {
-  await client.query('BEGIN');
-  await client.query(migrationSql);
-  await client.query('COMMIT');
-  console.log('Legacy schema compatibility migration completed.');
-} catch (error) {
-  await client.query('ROLLBACK');
-  throw error;
+  const client = await pool.connect();
+  try {
+    client.on('notice', (notice) => {
+      if (notice.message.startsWith('Legacy schedule conflict ')) {
+        console.error(notice.message);
+      }
+    });
+    await client.query('BEGIN');
+    await client.query(migrationSql);
+    await client.query('COMMIT');
+    console.log('Legacy schema compatibility migration completed.');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 } finally {
-  client.release();
   await pool.end();
 }
