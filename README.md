@@ -71,7 +71,7 @@ cp .env.example .env
 `.env`에서 아래 값을 개발 환경에 맞게 바꿉니다.
 
 - `MOGAK_DB_PASSWORD`와 `DATABASE_URL`의 비밀번호는 동일해야 합니다.
-- `JWT_SECRET`은 32자 이상이어야 합니다.
+- `JWT_SECRET`은 UTF-8 기준 32바이트 이상이어야 합니다.
 - `APPLE_CLIENT_IDS`, `GOOGLE_CLIENT_IDS`는 기동 시 필수입니다. 실제 소셜 로그인에는 각 앱의 client ID가 필요합니다.
 
 ### 2. PostgreSQL 실행과 migration 적용
@@ -88,7 +88,12 @@ pnpm start:dev
 ```bash
 curl http://localhost:8080/health
 # {"status":"ok"}
+
+curl http://localhost:8080/health/ready
+# {"status":"ok"}
 ```
+
+`/health`는 프로세스 생존 확인용이고, `/health/ready`는 PostgreSQL 연결까지 확인하는 배포 readiness probe용이다.
 
 ## 검증
 
