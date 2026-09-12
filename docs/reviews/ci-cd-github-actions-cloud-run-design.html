@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GitHub Actions CI와 Cloud Build·Cloud Run CD 설계</title>
+    <style>
+      :root { color-scheme: light; --ink: #18212f; --muted: #526174; --line: #d7dee8; --soft: #f5f7fa; --accent: #0f766e; --warn: #9a3412; --good: #166534; }
+      * { box-sizing: border-box; }
+      body { max-width: 1100px; margin: 0 auto; padding: 1.5rem; color: var(--ink); background: #fff; font: 16px/1.6 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      header, section, aside, figure { margin: 1.25rem 0; padding: 1.1rem; border: 1px solid var(--line); border-radius: 10px; }
+      header { background: linear-gradient(135deg, #f0fdfa, #f8fafc); }
+      nav { position: sticky; top: 0; z-index: 1; margin: 1rem 0; padding: .75rem; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.96); }
+      nav a { display: inline-block; margin: .2rem .8rem .2rem 0; color: #075985; }
+      h1, h2, h3 { line-height: 1.25; }
+      h1 { margin-top: .3rem; }
+      h2 { margin-top: 0; }
+      code, samp, kbd { padding: .1rem .3rem; border-radius: 4px; background: #eef2f7; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+      pre { overflow-x: auto; padding: .9rem; border-radius: 8px; background: #111827; color: #e5e7eb; }
+      pre code { padding: 0; background: transparent; color: inherit; }
+      table { width: 100%; border-collapse: collapse; margin: .6rem 0 0; }
+      caption { padding: .5rem 0; text-align: left; font-weight: 700; }
+      th, td { padding: .65rem; border: 1px solid var(--line); vertical-align: top; text-align: left; }
+      th { background: var(--soft); }
+      dl { display: grid; grid-template-columns: minmax(9rem, 18rem) 1fr; gap: .45rem .9rem; }
+      dt { font-weight: 700; }
+      dd { margin: 0; }
+      ol, ul { padding-left: 1.4rem; }
+      .state { font-weight: 800; color: var(--warn); }
+      .good { color: var(--good); font-weight: 700; }
+      .risk { border-left: 5px solid var(--warn); background: #fff7ed; }
+      .note { border-left: 5px solid #0369a1; background: #f0f9ff; }
+      .flow { display: grid; gap: .55rem; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: stretch; }
+      .flow div { min-height: 5rem; padding: .7rem; border: 1px solid #99f6e4; border-radius: 8px; background: #f0fdfa; }
+      .flow strong { display: block; margin-bottom: .2rem; }
+      .question-card { margin-top: 1rem; padding: 1rem; border: 1px solid #bae6fd; border-radius: 8px; background: #f8fcff; }
+      .question-card h3 { margin-top: 0; }
+      .question-card label { display: block; margin: .55rem 0; }
+      .quiz-nav { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-top: .8rem; }
+      button { padding: .5rem .8rem; border: 1px solid #64748b; border-radius: 6px; background: #fff; color: var(--ink); cursor: pointer; }
+      button:hover, button:focus-visible { border-color: var(--accent); outline: 2px solid #99f6e4; }
+      output.result { display: none; margin-top: .8rem; padding: .8rem; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; }
+      output.result.show { display: block; }
+      output.result [data-role="status"] { display: block; font-weight: 800; }
+      .js .question-card { display: none; }
+      .js .question-card.active { display: block; }
+      .js .noscript-only { display: none; }
+      .small { color: var(--muted); font-size: .92em; }
+      .nowrap { white-space: nowrap; }
+      @media (max-width: 800px) { .flow { grid-template-columns: 1fr; } dl { display: block; } dt { margin-top: .7rem; } dd { margin-left: 0; } th, td { font-size: .92em; } }
+    </style>
+    <script>document.documentElement.classList.add('js');</script>
+  </head>
+  <body>
+    <header>
+      <p>문서 단계: 설계 · 강도: High-risk · 상태: <span class="state">설계 승인 대기</span></p>
+      <p>생성·갱신: <time datetime="2026-08-24">2026-08-24</time> · 추적 참조: 현재 대화</p>
+      <h1>GitHub Actions CI와 Cloud Build·Cloud Run CD 설계</h1>
+      <dl>
+        <dt>목적 (purpose)</dt>
+        <dd>저장소의 소스 변경을 검증하고, 승인된 커밋을 Cloud Build로 빌드·마이그레이션·Cloud Run에 안전하게 배포하는 CI/CD 운영 흐름을 정의한다.</dd>
+        <dt>사용자 (audience)</dt>
+        <dd>MOGAK 백엔드 개발자, GitHub 저장소 관리자, GCP 배포·운영 담당자.</dd>
+        <dt>문제 (problem)</dt>
+        <dd>현재 <code>cloudbuild.yaml</code>은 Docker 이미지 빌드·등록까지만 정의하며, GitHub Actions 검증, Cloud Run 배포, DB migration 순서, secret 권한, 실패 복구 경계가 저장소의 흐름으로 고정되어 있지 않다.</dd>
+        <dt>핵심 흐름 (core-flow)</dt>
+        <dd>Pull Request → GitHub Actions CI → 보호된 <code>main</code> 병합 → Cloud Build trigger → 이미지 빌드·Artifact Registry push → migration Cloud Run Job → 트래픽 없는 Cloud Run revision smoke test → 트래픽 전환 → 필요 시 이전 revision 복구.</dd>
+        <dt>연결 구현 통제 기록</dt>
+        <dd><a href="ci-cd-github-actions-cloud-run-implementation.html">승인 후 생성할 구현 통제 문서</a> · 현재는 아직 생성하지 않는다.</dd>
+      </dl>
+    </header>
+
+    <nav aria-label="문서 탐색">
+      <a href="#goal">목표·범위</a>
+      <a href="#evidence">현재 근거</a>
+      <a href="#model">시스템 모델</a>
+      <a href="#decisions">결정</a>
+      <a href="#recovery">실패·복구</a>
+      <a href="#verification">검증</a>
+      <a href="#design-control-state">자기점검</a>
+    </nav>
+
+    <main>
+      <article>
+        <section id="goal">
+          <h2>1. 목표와 범위</h2>
+          <p>첫 단계의 목표는 애플리케이션 코드와 배포 제어를 분리하는 것이다. GitHub Actions는 변경의 품질 게이트를 담당하고, GCP 내부의 Cloud Build가 실제 이미지·migration·Cloud Run 배포를 담당한다.</p>
+          <h3>포함</h3>
+          <ul>
+            <li>PR과 <code>main</code> push에서 Node 24.18·pnpm 10.32.1 기반 CI 실행.</li>
+            <li><code>pnpm verify:local</code>과 runtime/migrator Docker build로 테스트·컨테이너 산출물 검증.</li>
+            <li>보호된 <code>main</code> 병합을 기점으로 Cloud Build가 immutable commit artifact를 만들고 Cloud Run에 배포.</li>
+            <li>운영 PostgreSQL migration을 앱 인스턴스가 아니라 단일 task Cloud Run Job에서 실행.</li>
+            <li>Secret Manager, 최소 권한 service account, no-traffic revision smoke test, Cloud Run traffic rollback.</li>
+          </ul>
+          <h3>비포함</h3>
+          <ul>
+            <li>이번 단계에서 별도 staging·production 프로젝트를 새로 만드는 것.</li>
+            <li>Cloud SQL인지 외부 managed PostgreSQL인지 확정되지 않은 네트워크 인프라 자체의 생성.</li>
+            <li>Terraform 전체 도입, Binary Authorization·자동 취약점 차단, canary 비율 자동 조정.</li>
+            <li>DB migration의 자동 down/복구. 앱 revision rollback과 DB schema rollback은 다른 작업으로 남긴다.</li>
+          </ul>
+        </section>
+
+        <section id="evidence">
+          <h2>2. 현재 저장소 근거와 가정</h2>
+          <table>
+            <caption>설계에 반영한 저장소 관찰</caption>
+            <thead><tr><th scope="col">관찰</th><th scope="col">설계 영향</th></tr></thead>
+            <tbody>
+              <tr><td><code>package.json</code>은 Node <code>&gt;=24.18.0 &lt;25</code>, pnpm <code>&gt;=10.32.1 &lt;11</code>을 요구한다.</td><td>CI toolchain을 Node 24.18.0과 pnpm 10.32.1로 고정한다.</td></tr>
+              <tr><td><code>pnpm verify:local</code>은 PostgreSQL Compose, format/lint/typecheck/build, 일반·E2E·integration test, 실제 API scenario까지 순서대로 실행한다.</td><td>CI의 단일 품질 게이트로 재사용하고, 별도로 Docker image build를 추가한다.</td></tr>
+              <tr><td><code>Dockerfile</code>의 runtime stage는 <code>dist</code>와 production dependencies만 복사한다.</td><td>runtime image에서 <code>pnpm db:migrate</code>를 실행하지 않는다. migration 전용 target/image가 필요하다.</td></tr>
+              <tr><td>현재 <code>cloudbuild.yaml</code>은 <code>gcr.io/workvoys/github.com/team-mogak/mogak-core-back:$COMMIT_SHA</code>를 build·push하고 <code>CLOUD_LOGGING_ONLY</code>만 설정한다.</td><td>현재 이미지 경로는 기준선으로 기록하되, 새 설계에서는 Artifact Registry <code>pkg.dev</code> 경로로 전환한다.</td></tr>
+              <tr><td><code>.github/workflows</code>는 발견되지 않았다.</td><td>CI workflow를 새로 추가한다. GHA에는 GCP 장기 service-account key를 주지 않는다.</td></tr>
+              <tr><td>기존 문서에는 Cloud Run 서비스·trigger가 존재한다고 기록되어 있지만, 저장소 설정에는 실제 서비스명·리전이 없다.</td><td>서비스명·리전·운영 DB 연결 방식은 구현 직전 GCP에서 읽기 확인하고 placeholder를 채운다.</td></tr>
+            </tbody>
+          </table>
+          <aside class="note">
+            <h3>가정</h3>
+            <p>현재 GCP project는 기존 YAML에 나타난 <code>workvoys</code>이며, 운영 PostgreSQL은 이미 접근 가능한 endpoint를 가진다고 가정한다. Cloud SQL이면 Cloud Run service/job에 Cloud SQL connection을 추가하고, 외부 managed PostgreSQL이면 해당 VPC egress·allowlist만 바꾼다. CI/CD의 핵심 순서와 권한 분리는 유지된다.</p>
+          </aside>
+        </section>
+
+        <section id="model">
+          <h2>3. 시스템 모델</h2>
+          <figure>
+            <figcaption>선택한 CI/CD 경계: GitHub는 검증, GCP는 배포</figcaption>
+            <svg viewBox="0 0 1000 180" role="img" aria-labelledby="flow-title flow-desc">
+              <title id="flow-title">GitHub Actions CI와 Cloud Build Cloud Run CD의 순서</title>
+              <desc id="flow-desc">Pull Request가 GitHub Actions 검증을 통과한 뒤 보호된 main에 병합되고, Cloud Build가 immutable image를 만들며 migration Cloud Run Job, no-traffic revision smoke test, traffic 전환을 순서대로 수행한다.</desc>
+              <g font-family="system-ui, sans-serif" font-size="16" text-anchor="middle">
+                <rect x="10" y="45" width="150" height="70" rx="10" fill="#e0f2fe" stroke="#0284c7" />
+                <text x="85" y="75">Pull Request</text><text x="85" y="98">GitHub</text>
+                <path d="M160 80 H205" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)" />
+                <rect x="205" y="45" width="150" height="70" rx="10" fill="#e0f2fe" stroke="#0284c7" />
+                <text x="280" y="75">GHA CI</text><text x="280" y="98">verify:local</text>
+                <path d="M355 80 H400" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)" />
+                <rect x="400" y="45" width="150" height="70" rx="10" fill="#f0fdfa" stroke="#0f766e" />
+                <text x="475" y="75">Cloud Build</text><text x="475" y="98">build + push</text>
+                <path d="M550 80 H595" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)" />
+                <rect x="595" y="45" width="150" height="70" rx="10" fill="#fef3c7" stroke="#b45309" />
+                <text x="670" y="75">Run Job</text><text x="670" y="98">migration</text>
+                <path d="M745 80 H790" stroke="#64748b" stroke-width="3" marker-end="url(#arrow)" />
+                <rect x="790" y="45" width="195" height="70" rx="10" fill="#f0fdfa" stroke="#0f766e" />
+                <text x="887" y="75">Cloud Run</text><text x="887" y="98">smoke → traffic</text>
+              </g>
+              <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#64748b" /></marker></defs>
+            </svg>
+            <ol>
+              <li>PR에서 GHA가 <code>pnpm verify:local</code>과 Docker build를 통과시킨다.</li>
+              <li>required status check가 있는 보호된 <code>main</code>에만 병합한다.</li>
+              <li>Cloud Build GitHub trigger가 같은 commit을 받아 app/migrator image를 build·push한다.</li>
+              <li>migration Job을 한 task로 실행하고 완료될 때까지 기다린다.</li>
+              <li>Cloud Run에 새 immutable revision을 traffic 없이 배포하고 <code>GET /health</code>를 확인한 뒤 traffic을 전환한다.</li>
+            </ol>
+          </figure>
+        </section>
+
+        <section id="decisions">
+          <h2>4. 선택한 결정</h2>
+          <table>
+            <caption>CI/CD 계약</caption>
+            <thead><tr><th scope="col">영역</th><th scope="col">결정</th><th scope="col">이유·경계</th></tr></thead>
+            <tbody>
+              <tr><td>CI 실행 위치</td><td>GitHub Actions가 PR과 <code>main</code> push에서 실행한다.</td><td>개발자가 PR에서 즉시 결과를 보고, <code>main</code> 병합 후에도 merge 결과를 재검증한다. CI job은 <code>contents: read</code>만 가진다.</td></tr>
+              <tr><td>CD trigger</td><td>Cloud Build GitHub trigger가 보호된 <code>main</code> push를 받아 <code>cloudbuild.yaml</code>을 실행한다.</td><td>GHA가 GCP를 직접 배포하지 않아 인증 경계를 단순하게 유지한다. Cloud Build trigger 자체는 GHA 결과를 기다리지 않으므로 GitHub branch protection이 필수다.</td></tr>
+              <tr><td>이미지 저장소</td><td><code>asia-northeast3-docker.pkg.dev/workvoys/mogak/mogak-core-back</code>를 기본 후보로 사용한다.</td><td>리전과 repository 존재 여부는 구현 전 확인한다. 기존 <code>gcr.io</code> path는 호환 기준선으로만 남기며 새 push는 Artifact Registry를 사용한다.</td></tr>
+              <tr><td>artifact identity</td><td>app와 migrator 모두 <code>$COMMIT_SHA</code> tag로 push하고, 배포 입력은 가능하면 확인된 digest로 고정한다.</td><td><code>latest</code>, branch tag, timestamp tag는 배포·rollback 대상을 모호하게 만들므로 사용하지 않는다.</td></tr>
+              <tr><td>migration</td><td>Dockerfile에 migration 전용 target을 추가하고 Cloud Run Job에서 <code>pnpm db:migrate</code>를 한 task·단일 실행으로 수행한다.</td><td>현재 runtime image에는 migration source와 <code>drizzle-kit</code>가 없고, 앱 인스턴스별 startup migration은 경쟁 실행과 부분 배포를 만든다.</td></tr>
+              <tr><td>배포 순서</td><td>image push → migration Job 성공 → Cloud Run <code>--no-traffic</code> revision → revision health smoke → 100% traffic 전환.</td><td>migration 실패 시 앱 revision을 만들지 않으며, revision 실패 시 기존 traffic을 유지한다.</td></tr>
+              <tr><td>secret</td><td><code>DATABASE_URL</code>, <code>JWT_SECRET</code>, OAuth client IDs는 Secret Manager를 Cloud Run service/job의 환경변수 secret reference로 연결한다. <code>PORT</code>, <code>NODE_ENV</code>, CORS 허용 origin은 비밀이 아닌 런타임 설정으로 분리한다.</td><td>GitHub secret이나 Cloud Build substitution에 실제 값을 넣지 않는다. Secret Accessor는 runtime/job service account에만 부여한다.</td></tr>
+              <tr><td>IAM</td><td>Cloud Build용 deployer SA, API runtime SA, migration job SA를 분리한다.</td><td>deployer는 Artifact Registry write·Cloud Run 배포·runtime SA 사용·job invoke에만 접근하고, runtime/job SA가 secret·DB에 접근한다.</td></tr>
+              <tr><td>배포 승인</td><td>bootstrap 기간에는 Cloud Build production trigger에 approval을 걸고, 첫 smoke·rollback 확인 후 자동화 여부를 별도로 결정한다.</td><td>현재 staging·production 리소스와 서비스명이 저장소에 없으므로 단일 환경을 바로 무인 production으로 가정하지 않는다.</td></tr>
+              <tr><td>rollback</td><td>애플리케이션은 이전 Cloud Run revision으로 traffic을 되돌린다. DB는 자동 rollback하지 않고 expand/contract migration과 수동 recovery 절차를 따른다.</td><td>Cloud Run revision rollback은 schema rollback을 되돌리지 않는다.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="contracts">
+          <h2>5. 구현 시 변경 경계</h2>
+          <table>
+            <caption>승인 후 예상되는 파일·GCP 변경</caption>
+            <thead><tr><th scope="col">대상</th><th scope="col">예상 변경</th><th scope="col">금지 범위</th></tr></thead>
+            <tbody>
+              <tr><td><code>.github/workflows/ci.yml</code></td><td>Node/pnpm 고정, install, <code>pnpm verify:local</code>, runtime/migrator Docker build, PR/main trigger, 최소 permissions, PR concurrency.</td><td>GHA에서 Cloud Run deploy나 운영 DB migration을 직접 실행하지 않는다.</td></tr>
+              <tr><td><code>Dockerfile</code></td><td>기존 runtime target을 유지하고 migration 전용 target을 추가한다.</td><td>운영 runtime image에 dev dependency·migration source를 무조건 포함하지 않는다.</td></tr>
+              <tr><td><code>cloudbuild.yaml</code></td><td>Artifact Registry build/push, Cloud Run Job deploy/execute/wait, no-traffic service deploy, smoke, traffic 전환을 직렬화한다.</td><td>secret 원문을 YAML·substitution·로그에 기록하지 않는다.</td></tr>
+              <tr><td>GCP 사전 리소스</td><td>Artifact Registry repository, Cloud Build trigger, service accounts/IAM, Secret Manager secrets, Cloud Run service/job, DB network path.</td><td>설계 승인 전 실제 운영 리소스를 생성하거나 traffic·schema를 바꾸지 않는다.</td></tr>
+              <tr><td>GitHub 보호 규칙</td><td><code>main</code> direct push 제한, CI required check, PR approval 정책을 설정한다.</td><td>Cloud Build trigger만으로 CI 통과를 보장한다고 간주하지 않는다.</td></tr>
+            </tbody>
+          </table>
+          <pre><code>예상 이미지 식별자
+APP_IMAGE=asia-northeast3-docker.pkg.dev/workvoys/mogak/mogak-core-back:$COMMIT_SHA
+MIGRATOR_IMAGE=asia-northeast3-docker.pkg.dev/workvoys/mogak/mogak-core-back-migrator:$COMMIT_SHA
+
+운영 흐름
+pnpm verify:local
+→ docker build --target runtime .
+→ docker build --target migrator .
+→ gcloud run jobs execute &lt;migration-job&gt; --wait --region=&lt;region&gt;
+→ gcloud run deploy &lt;service&gt; --image &lt;digest&gt; --no-traffic
+→ GET /health
+→ gcloud run services update-traffic &lt;service&gt; --to-revisions &lt;revision&gt;=100</code></pre>
+        </section>
+
+        <section id="invariants">
+          <h2>6. 불변식</h2>
+          <ol>
+            <li>CI가 실패한 commit은 보호된 <code>main</code>에 병합될 수 없고, 따라서 정상 경로의 CD 대상이 되지 않는다.</li>
+            <li>Cloud Run이 serving하는 image는 branch나 <code>latest</code>가 아니라 commit SHA와 확인된 digest로 추적된다.</li>
+            <li>migration Job이 성공하기 전에는 새 앱 revision에 traffic을 주지 않는다.</li>
+            <li>새 revision의 smoke가 실패하면 기존 revision이 traffic을 계속 가진다. traffic을 되돌려도 이미 적용된 DB migration은 되돌아가지 않는다.</li>
+            <li>운영 secret의 원문은 GitHub, Cloud Build substitution, build log, Docker layer에 남지 않는다.</li>
+            <li>migration은 이전 revision과 호환되는 expand/contract 방식이어야 한다. 컬럼 삭제·이름 변경처럼 구 revision을 즉시 깨뜨리는 migration은 별도 승인 없이는 배포하지 않는다.</li>
+            <li>migration Job은 task 1개, parallelism 1, 자동 retry 0을 기본으로 하며 실패 후 원인 확인 없이 재실행하지 않는다.</li>
+          </ol>
+        </section>
+
+        <section id="recovery">
+          <h2>7. 실패와 복구</h2>
+          <table>
+            <caption>실패 지점별 관찰과 다음 행동</caption>
+            <thead><tr><th scope="col">실패 지점</th><th scope="col">보장되는 상태</th><th scope="col">운영 행동</th></tr></thead>
+            <tbody>
+              <tr><td>GHA format/lint/type/test/build 실패</td><td>PR merge 차단. Cloud Run 영향 없음.</td><td>GHA 로그에서 실패 command를 수정하고 같은 PR을 재검증한다.</td></tr>
+              <tr><td>Cloud Build Docker build/push 실패</td><td>새 revision·traffic 없음. 일부 이미지가 남을 수 있으나 serving되지 않음.</td><td>Cloud Build log와 commit SHA를 확인한 뒤 재실행한다.</td></tr>
+              <tr><td>migration Job 실패</td><td>새 앱 revision traffic 없음. DB가 일부 변경됐을 가능성은 자동으로 숨기지 않음.</td><td>Job execution log와 Drizzle migration 기록을 확인한다. 필요하면 DB backup/recovery 절차를 수동 수행하고, 원인 확인 전 재실행하지 않는다.</td></tr>
+              <tr><td>새 revision startup 또는 <code>GET /health</code> 실패</td><td><code>--no-traffic</code>이면 이전 revision이 계속 serving.</td><td>secret, PORT, DB 연결, image 로그를 확인하고 새 revision만 수정·재배포한다.</td></tr>
+              <tr><td>traffic 전환 후 5xx·계약 오류</td><td>Cloud Run revision은 immutable이며 이전 revision으로 traffic을 되돌릴 수 있음.</td><td><code>gcloud run services update-traffic &lt;service&gt; --to-revisions &lt;previous-revision&gt;=100</code>으로 앱만 rollback하고 schema 영향은 별도로 판정한다.</td></tr>
+              <tr><td>두 CD build가 겹침</td><td>Cloud Build의 build quota가 deployment serialization을 보장하지 않음.</td><td>bootstrap에서는 approval로 최신 commit만 승인한다. 자동 무인 배포 전에는 main merge serialization 또는 별도 deployment lock/concurrency 설계를 추가 승인한다.</td></tr>
+            </tbody>
+          </table>
+          <aside class="risk">
+            <h3>가장 큰 반증</h3>
+            <p>“앱은 정상인데 migration이 실패했거나, 앱 rollback 뒤에도 DB schema가 새 버전인 상태”가 이 설계를 깨뜨리는 가장 현실적인 경로다. 그래서 migration을 Cloud Run Job으로 분리하는 것만으로 충분하지 않고, 모든 production migration에 expand/contract·backup·호환성 검토를 요구한다.</p>
+          </aside>
+        </section>
+
+        <section id="alternatives">
+          <h2>8. 거부한 대안</h2>
+          <table>
+            <caption>대안과 선택하지 않은 이유</caption>
+            <thead><tr><th scope="col">대안</th><th scope="col">거부 이유</th></tr></thead>
+            <tbody>
+              <tr><td>GHA에서 Docker push와 Cloud Run deploy까지 모두 수행</td><td>CI와 CD credential boundary가 합쳐지고, GHA가 운영 GCP 권한을 직접 가져야 한다. WIF로 개선할 수 있지만 이번 요청의 Cloud Build CD 경계와 맞지 않는다.</td></tr>
+              <tr><td>Cloud Build는 image만 만들고 앱 startup에서 migration</td><td>Cloud Run scale-out 인스턴스가 동시에 migration할 수 있고, revision health와 schema 변경이 한 lifecycle에 섞인다.</td></tr>
+              <tr><td>현재 <code>gcr.io</code>와 mutable <code>latest</code>를 계속 사용</td><td>Artifact Registry가 새 이미지 저장소 기준이며, tag만으로는 정확한 배포·rollback 대상을 보장하기 어렵다.</td></tr>
+              <tr><td>migration 실패 시 자동 down migration</td><td>데이터 손실과 비가역 DDL 위험이 있어 자동 복구로 일반화할 수 없다.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="verification">
+          <h2>9. 구현 후 검증 계획</h2>
+          <ol>
+            <li>GitHub Actions: PR에서 <code>pnpm verify:local</code>이 성공하고, runtime/migrator Docker build가 성공하는지 확인한다.</li>
+            <li>Cloud Build: 동일 commit에서 두 image가 같은 SHA로 push되고, log가 <code>CLOUD_LOGGING_ONLY</code>로 남으며 secret 원문이 없는지 확인한다.</li>
+            <li>Migration: staging 또는 복제 가능한 테스트 DB에서 Job이 한 번 성공하고, 재실행 시 Drizzle migration 기록에 맞게 안전하게 no-op 또는 명확한 실패를 내는지 확인한다.</li>
+            <li>Cloud Run: 새 revision이 traffic 없이 생성되고, revision tag 또는 검증 endpoint의 <code>GET /health</code>가 <code>{"status":"ok"}</code>를 반환하는지 확인한다.</li>
+            <li>Traffic: 성공 시 새 revision 100%, 실패 시 이전 revision 100%인지 확인한다.</li>
+            <li>Rollback drill: 앱 revision rollback command와 DB schema 잔여 상태를 실제로 기록한다.</li>
+            <li>IAM: GHA token에 GCP 장기 key가 없고, deployer/runtime/migrator 각 SA가 필요한 resource만 접근하는지 확인한다.</li>
+          </ol>
+          <table>
+            <caption>승인 기준</caption>
+            <thead><tr><th scope="col">기준</th><th scope="col">통과 조건</th></tr></thead>
+            <tbody>
+              <tr><td>품질</td><td><code>pnpm verify:local</code>와 두 Docker target build가 성공한다.</td></tr>
+              <tr><td>재현성</td><td>같은 commit SHA가 같은 artifact 식별자와 연결되고 lockfile이 변경되지 않은 채 재현된다.</td></tr>
+              <tr><td>안전한 배포</td><td>migration 성공 → no-traffic revision smoke → traffic 전환 순서가 Cloud Build log에 확인된다.</td></tr>
+              <tr><td>복구</td><td>이전 revision rollback command, 실패 시 traffic 보존, DB migration의 비자동 rollback 한계가 운영 문서에 기록된다.</td></tr>
+              <tr><td>비밀·권한</td><td>secret 원문이 코드·workflow·build log에 없고, SA 권한이 설계 표와 일치한다.</td></tr>
+            </tbody>
+          </table>
+          <p class="small">공식 참고: <a href="https://docs.cloud.google.com/build/docs/automating-builds/create-manage-triggers">Cloud Build GitHub trigger</a>, <a href="https://docs.cloud.google.com/run/docs/deploying">Cloud Run image deployment/revision</a>, <a href="https://docs.cloud.google.com/run/docs/execute/jobs">Cloud Run Job execute/wait</a>, <a href="https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-deployment-pipelines">GitHub OIDC Workload Identity Federation</a>, <a href="https://docs.cloud.google.com/artifact-registry/docs/transition/transition-from-gcr">Artifact Registry transition</a>.</p>
+        </section>
+
+        <section id="decision-review">
+          <h2>10. 결정 품질 압력 검사</h2>
+          <dl>
+            <dt>결정</dt><dd>GHA는 검증만, Cloud Build는 GCP 내부 build·migration·Cloud Run rollout을 맡긴다.</dd>
+            <dt>권고</dt><dd>현재 저장소의 <code>pnpm verify:local</code>을 CI gate로 재사용하고, runtime과 migrator를 분리해 commit SHA/digest로 배포한다.</dd>
+            <dt>최소안</dt><dd>한 Cloud Run 서비스와 한 Cloud Build trigger로 시작하되, bootstrap approval·no-traffic smoke·수동 rollback을 유지한다.</dd>
+            <dt>미룰 것</dt><dd>staging/prod promotion, 자동 canary, deployment lock, image attestation은 실제 service/region/DB 운영 정보를 확인한 다음 별도 결정한다.</dd>
+            <dt>가정·확신도</dt><dd><code>workvoys</code> project와 기존 PostgreSQL endpoint는 확인된 저장소 근거가 있으나, 실제 Cloud Run service명·region·DB provider는 미확인이다. CI/CD 순서에 대한 확신도는 높고, 네트워크 세부에 대한 확신도는 중간이다.</dd>
+            <dt>확인 또는 다음 행동</dt><dd>아래 자기점검으로 흐름을 확인한 뒤, 설계 승인 여부를 별도로 결정한다. 승인 전에는 workflow, Dockerfile, cloudbuild.yaml, GCP resource를 수정하지 않는다.</dd>
+          </dl>
+        </section>
+
+        <section id="design-control-state">
+          <h2>11. 설계 통제 상태</h2>
+          <p><strong>상태: 확인 중</strong> · 강도: High-risk · 승인: <strong>승인 대기 전</strong></p>
+          <p>브라우저에서 제출한 결과는 Codex로 자동 전달되지 않는다. 이 점검은 설계 승인이 아니라, 배포 순서·실패 경계·운영 권한을 예측할 수 있는지 확인하는 정보용 통제다.</p>
+          <table>
+            <caption>자기점검 coverage ledger</caption>
+            <thead><tr><th scope="col">축</th><th scope="col">질문 ID</th><th scope="col">질문이 필요한 이유</th></tr></thead>
+            <tbody>
+              <tr><td>목표·범위</td><td>Q1</td><td>CI 성공과 실제 CD 시작 조건을 혼동하면 보호된 main이 무력화된다.</td></tr>
+              <tr><td>material decision·artifact</td><td>Q2</td><td>mutable tag를 쓰면 배포·rollback 대상을 재현할 수 없다.</td></tr>
+              <tr><td>invariant·boundary</td><td>Q3, Q6</td><td>migration과 revision traffic의 순서를 예측해야 한다.</td></tr>
+              <tr><td>failure·recovery</td><td>Q4</td><td>앱 rollback과 DB rollback의 비대칭을 반드시 구분해야 한다.</td></tr>
+              <tr><td>authority·external effect</td><td>Q5, Q7</td><td>secret 접근 주체와 GitHub/GCP 경계를 확인해야 한다.</td></tr>
+              <tr><td>observability·operation</td><td>Q6</td><td>smoke 대상과 traffic 전환 전 검증을 운영자가 설명할 수 있어야 한다.</td></tr>
+              <tr><td>verification·residual risk</td><td>Q8</td><td>현재 저장소의 실제 검증 명령과 Docker 산출물 검증을 연결해야 한다.</td></tr>
+            </tbody>
+          </table>
+
+          <p id="quiz-progress" aria-live="polite">질문 1 / 8 · 답변 0 / 8</p>
+          <p class="noscript-only">JavaScript가 꺼져 있어 모든 질문을 표시합니다. 각 질문의 선택지를 읽고, 답 형식에 맞춰 대화에서 번호와 답을 알려 주세요.</p>
+
+          <section class="question-card active" data-answer="b" data-id="Q1">
+            <h3>Q1. CI 성공 후 바로 Cloud Run에 배포되는가?</h3>
+            <fieldset><legend>PR의 GHA CI가 성공했을 때 정상 경로의 다음 단계는 무엇인가?</legend>
+              <label><input type="radio" name="Q1" value="a" /> A. GHA가 곧바로 Cloud Run traffic을 바꾼다.</label>
+              <label><input type="radio" name="Q1" value="b" /> B. 보호된 <code>main</code>에 병합된 뒤 Cloud Build trigger가 CD를 시작한다.</label>
+              <label><input type="radio" name="Q1" value="c" /> C. Cloud Run이 GitHub branch를 감시해 스스로 배포한다.</label>
+            </fieldset>
+            <p class="small">답 형식: <code>Q1: A/B/C — 한 줄 이유</code></p>
+            <output class="result" aria-live="polite"><span data-role="status"></span><p data-role="explanation"></p><p data-role="next"></p></output>
+          </section>
+
+          <section class="question-card" data-answer="b" data-id="Q2">
+            <h3>Q2. 배포 artifact는 무엇으로 고정하는가?</h3>
+            <fieldset><legend>Cloud Run이 serving할 image를 재현 가능하게 가리키는 선택은 무엇인가?</legend>
+              <label><input type="radio" name="Q2" value="a" /> A. 언제나 최신 이미지를 가리키는 <code>latest</code> tag.</label>
+              <label><input type="radio" name="Q2" value="b" /> B. <code>$COMMIT_SHA</code> tag로 push하고 확인된 digest를 배포 입력으로 사용한다.</label>
+              <label><input type="radio" name="Q2" value="c" /> C. 사람이 배포 시각을 보고 고른 timestamp tag.</label>
+            </fieldset>
+            <p class="small">답 형식: <code>Q2: A/B/C — 한 줄 이유</code></p>
+            <output class="result" aria-live="polite"><span data-role="status"></span><p data-role="explanation"></p><p data-role="next"></p></output>
+          </section>
+
+          <section class="question-card" data-answer="c" data-id="Q3">
+            <h3>Q3. migration이 실패하면?</h3>
+            <fieldset><legend>Cloud Run Job의 migration이 실패한 상태에서 CD가 지켜야 할 동작은 무엇인가?</legend>
+              <label><input type="radio" name="Q3" value="a" /> A. 앱 revision을 먼저 traffic에 올리고 migration은 다음 배포에서 재시도한다.</label>
+              <label><input type="radio" name="Q3" value="b" /> B. 각 Cloud Run 앱 인스턴스가 startup 때 migration을 실행한다.</label>
+              <label><input type="radio" name="Q3" value="c" /> C. 새 앱 traffic 전환을 중단하고 Job log·DB migration 기록을 확인한다.</label>
+            </fieldset>
+            <p class="small">답 형식: <code>Q3: A/B/C — 실패 후 상태</code></p>
+            <output class="result" aria-live="polite"><span data-role="status"></span><p data-role="explanation"></p><p data-role="next"></p></output>
+          </section>
+
+          <section class="question-card" data-answer="b" data-id="Q4">
+            <h3>Q4. 앱 rollback과 DB rollback은 같은가?</h3>
+            <fieldset><legend>migration 성공 후 새 앱 revision에 문제가 생겼을 때 맞는 예측은 무엇인가?</legend>
+              <label><input type="radio" name="Q4" value="a" /> A. Cloud Run traffic rollback이 DB schema도 자동으로 이전 상태로 되돌린다.</label>
+              <label><input type="radio" name="Q4" value="b" /> B. 앱 traffic은 이전 revision으로 되돌릴 수 있지만 schema는 남으므로 backward-compatible migration이 필요하다.</label>
+              <label><input type="radio" name="Q4" value="c" /> C. 새 revision을 삭제하면 migration도 함께 취소된다.</label>
+            </fieldset>
+            <p class="small">답 형식: <code>Q4: A/B/C — rollback 범위</code></p>
+            <output class="result" aria-live="polite"><span data-role="status"></span><p data-role="explanation"></p><p data-role="next"></p></output>
+          </section>
+
+          <section class="question-card" data-answer="b" data-id="Q5">
+            <h3>Q5. secret과 GCP 권한은 어디에 두는가?</h3>
+            <fieldset><legend>운영 secret과 인증 경계를 가장 정확히 설명한 선택은 무엇인가?</legend>
+              <label><input type="radio" name="Q5" value="a" /> A. GitHub Actions secret을 Cloud Build substitution으로 평문 전달한다.</label>
+              <label><input type="radio" name="Q5" value="b" /> B. Secret Manager reference를 Cloud Run service/job에 연결하고, GHA에는 GCP 장기 key를 주지 않는다.</label>
+              <label><input type="radio" name="Q5" value="c" /> C. Dockerfile의 <code>ENV</code>에 운영 secret을 넣어 image와 함께 배포한다.</label>
+            </fieldset>
+            <p class="small">답 형식: <code>Q5: A/B/C — 접근 주체</code></p>
+            <output class="result" aria-live="polite"><span data-role="status"></span><p data-role="explanation"></p><p data-role="next"></p></output>
+          </section>
+
+          <section class="question-card" data-answer="a" data-id="Q6">
+            <h3>Q6. 왜 no-traffic revision을 먼저 만드는가?</h3>
+            <fieldset><legend>traffic 전환 전에 새 revision을 격리해 smoke test하는 핵심 이유는 무엇인가?</legend>
+              <label><input type="radio" name="Q6" value="a" /> A. 새 revision의 startup·<code>GET /health</code>를 확인한 뒤 기존 traffic을 안전하게 유지하거나 전환하기 위해서다.</label>
+              <label><input type="radio" name="Q6" value="b" /> B. no-traffic이면 DB migration이 자동으로 취소되기 때문이다.</label>
+              <label><input type="radio" name="Q6" value="c" /> C. Cloud Run은 traffic 없는 revision을 실행할 수 없기 때문이다.</label>
+            </fieldset>
+            <p class="small">답 형식: <code>Q6: A/B/C — smoke 대상</code></p>
+            <output class="result" aria-live="polite"><span data-role="status"></span><p data-role="explanation"></p><p data-role="next"></p></output>
+          </section>
+
+          <section class="question-card" data-answer="b" data-id="Q7">
+            <h3>Q7. 왜 main branch protection이 필요한가?</h3>
+            <fieldset><legend>Cloud Build GitHub trigger만으로는 보장되지 않는 것은 무엇인가?</legend>
+              <label><input type="radio" name="Q7" value="a" /> A. Cloud Build가 자동으로 GitHub Actions의 성공 상태를 기다린다는 보장.</label>
+              <label><input type="radio" name="Q7" value="b" /> B. 보호되지 않은 direct push가 CI 실패 상태에서도 CD trigger를 시작하지 않는다는 보장.</label>
+              <label><input type="radio" name="Q7" value="c" /> C. Cloud Build가 Dockerfile을 읽을 수 있다는 보장.</label>
+            </fieldset>
+            <p class="small">답 형식: <code>Q7: A/B/C — 필요한 GitHub 규칙</code></p>
+            <output class="result" aria-live="polite"><span data-role="status"></span><p data-role="explanation"></p><p data-role="next"></p></output>
+          </section>
+
+          <section class="question-card" data-answer="b" data-id="Q8">
+            <h3>Q8. 현재 저장소에서 CI의 대표 gate는 무엇인가?</h3>
+            <fieldset><legend>저장소의 실제 검증 흐름을 가장 잘 재사용하는 선택은 무엇인가?</legend>
+              <label><input type="radio" name="Q8" value="a" /> A. <code>pnpm build</code>만 실행하고 운영에서 처음 테스트한다.</label>
+              <label><input type="radio" name="Q8" value="b" /> B. <code>pnpm verify:local</code> 후 runtime/migrator Docker build를 실행한다.</label>
+              <label><input type="radio" name="Q8" value="c" /> C. Cloud Run 배포 후 사람이 <code>/health</code>만 한 번 호출한다.</label>
+            </fieldset>
+            <p class="small">답 형식: <code>Q8: A/B/C — 포함되는 검증</code></p>
+            <output class="result" aria-live="polite"><span data-role="status"></span><p data-role="explanation"></p><p data-role="next"></p></output>
+          </section>
+
+          <div class="quiz-nav" aria-label="자기점검 탐색">
+            <button type="button" id="previous">이전</button>
+            <button type="button" id="next">다음</button>
+            <button type="button" id="submit-current">현재 답 확인</button>
+            <output id="overall-result" aria-live="polite">제출 전</output>
+          </div>
+        </section>
+
+        <section id="approval-state">
+          <h2>12. 별도 설계 승인</h2>
+          <p>현재 상태는 <strong>설계 승인 대기</strong>다. 자기점검 답변은 설계 이해 확인이며 승인 자체가 아니다.</p>
+          <p>설계가 확정되면 대화에서 별도로 <strong>“이 설계로 구현을 시작할까?”</strong>에 답한다. 승인 전에는 구현 파일과 GCP 운영 리소스를 변경하지 않는다.</p>
+        </section>
+      </article>
+    </main>
+
+    <script>
+      const cards = [...document.querySelectorAll('.question-card')];
+      const previous = document.getElementById('previous');
+      const next = document.getElementById('next');
+      const submit = document.getElementById('submit-current');
+      const progress = document.getElementById('quiz-progress');
+      const overall = document.getElementById('overall-result');
+      let current = 0;
+      const answers = new Map();
+      const feedback = {
+        Q1: ['확립', 'CI가 성공해도 실제 CD는 보호된 main 병합 후 Cloud Build trigger가 시작한다.', '다음 행동: main branch protection과 required check를 확인한다.'],
+        Q2: ['확립', 'commit SHA와 digest를 사용해야 같은 source가 어떤 image로 serving됐는지 재현할 수 있다.', '다음 행동: latest를 배포 입력으로 사용하지 않는다.'],
+        Q3: ['확립', 'migration 실패 뒤에는 새 앱 traffic을 열지 않고 Job execution과 DB 기록을 먼저 진단한다.', '다음 행동: 원인 확인 전 migration을 자동 재실행하지 않는다.'],
+        Q4: ['확립', 'Cloud Run traffic만 되돌릴 수 있고 이미 적용된 schema는 남을 수 있으므로 backward compatibility가 필요하다.', '다음 행동: expand/contract와 수동 DB recovery 절차를 준비한다.'],
+        Q5: ['확립', 'secret은 Secret Manager reference로 runtime/job에 주입하고 GHA에는 장기 GCP key를 주지 않는다.', '다음 행동: deployer/runtime/migrator service account를 분리한다.'],
+        Q6: ['확립', 'no-traffic revision에서 startup과 /health를 확인하면 기존 traffic을 유지한 채 새 revision을 검증할 수 있다.', '다음 행동: smoke 성공 뒤에만 traffic을 전환한다.'],
+        Q7: ['확립', 'Cloud Build trigger는 GHA 성공을 자체적으로 보장하지 않으므로 direct push를 막는 branch protection이 필요하다.', '다음 행동: CI status를 main required check로 등록한다.'],
+        Q8: ['확립', 'verify:local은 저장소가 이미 정의한 정적 검사·빌드·DB test·API scenario를 재사용하고 Docker target을 추가한다.', '다음 행동: GHA runner에서 Docker Compose와 두 target build를 검증한다.']
+      };
+
+      function update() {
+        cards.forEach((card, index) => card.classList.toggle('active', index === current));
+        const answered = answers.size;
+        progress.textContent = `질문 ${current + 1} / ${cards.length} · 답변 ${answered} / ${cards.length}`;
+        previous.disabled = current === 0;
+        next.disabled = current === cards.length - 1;
+        submit.textContent = answers.has(cards[current].dataset.id) ? '현재 답 다시 확인' : '현재 답 확인';
+      }
+
+      function submitCurrent() {
+        const card = cards[current];
+        const id = card.dataset.id;
+        const selected = card.querySelector(`input[name="${id}"]:checked`);
+        const result = card.querySelector('.result');
+        const status = result.querySelector('[data-role="status"]');
+        const explanation = result.querySelector('[data-role="explanation"]');
+        const nextAction = result.querySelector('[data-role="next"]');
+        result.classList.add('show');
+        if (!selected) {
+          status.textContent = '미실시';
+          status.className = '';
+          explanation.textContent = '선택된 답이 없어 설계 이해를 확인하지 못했다.';
+          nextAction.textContent = '다음 행동: 선택지를 하나 고른 뒤 다시 제출한다.';
+          overall.textContent = `현재 ${id}: 미실시`;
+          return;
+        }
+        answers.set(id, selected.value);
+        const correct = selected.value === card.dataset.answer;
+        const [goodStatus, goodExplanation, goodNext] = feedback[id];
+        status.textContent = correct ? goodStatus : '보류';
+        status.className = correct ? 'good' : '';
+        explanation.textContent = correct ? goodExplanation : '선택한 답은 이 설계의 핵심 경계를 충분히 설명하지 못한다. 문서의 결정·실패 복구 표를 다시 확인한다.';
+        nextAction.textContent = correct ? goodNext : '다음 행동: 해당 질문의 설계 근거를 다시 읽고, 필요하면 대화에서 질문 ID와 함께 gap을 알려준다.';
+        overall.textContent = `${answers.size} / ${cards.length}개 질문 제출됨`;
+        update();
+      }
+
+      previous.addEventListener('click', () => { if (current > 0) { current -= 1; update(); } });
+      next.addEventListener('click', () => { if (current < cards.length - 1) { current += 1; update(); } });
+      submit.addEventListener('click', submitCurrent);
+      update();
+    </script>
+  </body>
+</html>

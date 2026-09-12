@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>유효하지 않은 요청 입력 관측성 설계</title>
+    <style>
+      body { max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #18212f; font: 16px/1.55 system-ui, sans-serif; }
+      header, section, aside { margin: 1.25rem 0; padding: 1rem; border: 1px solid #d8dee8; border-radius: 8px; }
+      nav a { margin-right: 1rem; } code { background: #f1f3f6; padding: .1rem .25rem; }
+      aside { border-color: #c48c20; background: #fff9ed; } output, .result { display: block; margin-top: .75rem; padding: .75rem; background: #f1f8f4; }
+      .hidden { display: none; } button { padding: .45rem .7rem; } dt { font-weight: 700; } dd { margin: 0 0 .7rem; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p><strong>단계:</strong> 설계 승인됨 · <strong>강도:</strong> 고위험</p>
+      <h1>유효하지 않은 요청 입력 관측성 설계</h1>
+      <dl>
+        <dt>목적</dt><dd>도메인 예외를 운영 로그만으로 재현·진단할 수 있게 한다.</dd>
+        <dt>사용자</dt><dd>서버 장애와 API 입력 오류를 조사하는 백엔드 운영자·개발자.</dd>
+        <dt>문제</dt><dd>현재 <code>GlobalExceptionFilter</code> 로그에는 오류 코드만 있어 어떤 요청값이 거절됐는지 알 수 없다. 서비스 도메인 요청값은 운영 진단을 위해 원문 기록이 필요하다.</dd>
+        <dt>핵심 흐름</dt><dd>요청 수신 → <code>DomainException</code> → 전역 필터가 params/query/body를 재귀적으로 정제해 warn 로그에 기록 → 민감 필드 값 제거 → 기존 오류 응답 반환.</dd>
+      </dl>
+      <time datetime="2026-08-17">생성·갱신: 2026-08-17</time>
+    </header>
+    <nav aria-label="문서 탐색"><a href="#change-model">변경 모델</a><a href="#risk">핵심 위험</a><a href="#verification">검증</a><a href="#control">설계 이해 점검</a><a href="#approval">승인</a></nav>
+    <main><article>
+      <section id="change-model">
+        <h2>변경 모델</h2>
+        <ol>
+          <li>모든 <code>DomainException</code> 로그에 HTTP method, 정적 route, params/query/body를 추가한다. 매핑 결과 코드가 <code>Z005</code>인지 여부는 기록 조건이 아니다.</li>
+          <li>body·query·params 객체와 배열을 재귀적으로 정제한다. 제외 키는 대소문자·camel/snake/kebab 표기를 정규화해 검사하고 로그 객체에서 키와 값 전체를 제거한다.</li>
+          <li>인증값인 <code>authorization</code>, <code>token</code>, <code>password</code>, <code>secret</code>, <code>cookie</code>를 포함하는 키와 파일·multipart 원문은 로그에 남기지 않는다. 그 외 서비스 도메인 값은 원문을 남긴다.</li>
+          <li>민감하지 않은 값은 기록하되 payload 깊이·배열 길이·문자열 길이를 제한한다. 초과 부분은 <code>[TRUNCATED]</code>다.</li>
+          <li>기존 HTTP 응답 envelope와 상태 코드는 바꾸지 않는다. <code>HttpException</code>, 처리되지 않은 예외, rate-limit 로그에는 요청 원문을 추가하지 않는다.</li>
+        </ol>
+      </section>
+      <section>
+        <h2>값 분류 기준</h2>
+        <table><caption>도메인 예외 로그의 원시값 기록 정책</caption><thead><tr><th>분류</th><th>예시</th><th>로그 처리</th></tr></thead><tbody>
+          <tr><td>기본 기록</td><td>path ID, page, limit, date, sort, category, 동의 boolean 및 새 비민감 필드</td><td>정제 후 원문 기록</td></tr>
+          <tr><td>제외할 인증값</td><td>access/refresh/id token, authorization, password, secret, cookie</td><td>키와 값을 로그 객체에서 제거</td></tr>
+          <tr><td>크기 제한</td><td>과도하게 긴 문자열·배열·중첩 객체</td><td>초과 부분을 <code>[TRUNCATED]</code>로 대체</td></tr>
+        </tbody></table>
+        <p>새 필드는 기본 기록 대상이지만, 키가 민감 키 규칙과 일치하면 기본적으로 제거된다.</p>
+      </section>
+      <aside id="risk"><h2>핵심 불변조건</h2><p>서비스 범위에서 보호해야 할 인증값은 키 이름도 값도 로그에 남지 않는다. 그 외 도메인 요청값은 운영 진단을 위해 원문을 남긴다. 정제 로직 자체가 다시 예외를 내지 않는다.</p></aside>
+      <section>
+        <h2>범위 밖</h2><p>클라이언트 오류 응답에 입력값·스키마 상세를 추가하지 않으며, 성공 요청과 Z005 이외의 오류에 새 payload 로그를 추가하지 않는다.</p>
+      </section>
+      <section id="verification">
+        <h2>검증 계획</h2>
+        <p>전역 필터 단위 테스트에서 Z005와 일반 도메인 오류 모두 body/query/params 원문이 남는지, 중첩 access token·authorization의 키와 값이 모두 없는지, 크기 제한이 <code>[TRUNCATED]</code>가 되는지, 기존 HTTP 응답 계약이 유지되는지를 고정한다.</p>
+      </section>
+      <section id="control">
+        <h2>설계 이해 점검</h2>
+        <p>질문 1/1 · 범위: 관측성·개인정보 경계·실패 안전성 · 응답: 선택 후 제출</p>
+        <fieldset><legend><code>USER_NOT_FOUND</code>로 매핑되는 DomainException이 발생하면 요청 원문 로그는 어떻게 처리해야 할까요?</legend>
+          <label><input type="radio" name="q1" value="a"> Z005가 아니므로 요청값을 전혀 남기지 않는다.</label><br>
+          <label><input type="radio" name="q1" value="b"> 민감 키와 multipart body를 제외하고 params/query/body 원문을 남긴다.</label><br>
+          <label><input type="radio" name="q1" value="c"> 인증값까지 포함해 요청 전체를 원문으로 남긴다.</label><br>
+          <button type="button" id="submit">제출</button>
+        </fieldset>
+        <div class="result hidden" id="result"><strong id="result-status"></strong><p id="result-explanation"></p><p id="result-next"></p></div>
+        <output aria-live="polite" id="progress">미실시</output>
+      </section>
+      <section id="approval">
+        <h2>승인 상태</h2><p><strong>재승인 필요.</strong> 기존 승인은 <code>Z005</code>에 한정됐다. 2026-08-17 사용자 피드백에 따라 모든 <code>DomainException</code>으로 로그 범위를 넓혔으므로, 이 변경 범위에 대한 별도 승인이 필요하다. 서비스 도메인 요청값은 원문 기록하고, 인증값과 multipart 원문은 키와 값 모두 로그에서 제거한다.</p>
+      </section>
+    </article></main>
+    <script>
+      document.getElementById('submit').addEventListener('click', () => {
+        const choice = document.querySelector('input[name="q1"]:checked'); const result = document.getElementById('result');
+        result.classList.remove('hidden');
+        const correct = choice?.value === 'b';
+        document.getElementById('result-status').textContent = correct ? '확립' : '보류';
+        document.getElementById('result-explanation').textContent = correct ? '매핑된 오류 코드와 무관하게 모든 DomainException에서 도메인 입력은 보존하고, 토큰 같은 인증 필드는 키와 값 모두 로그에서 제거합니다.' : '요청 원문 기록 범위는 모든 DomainException이며, 인증 필드는 원문이나 마스킹 표시를 남기지 않아야 합니다.';
+        document.getElementById('result-next').textContent = correct ? '다음: 설계 승인 여부를 별도로 결정합니다.' : '다음: 마스킹 경계를 다시 확인합니다.';
+        document.getElementById('progress').textContent = correct ? '제출됨 · 확립' : '제출됨 · 보류';
+      });
+    </script>
+  </body>
+</html>

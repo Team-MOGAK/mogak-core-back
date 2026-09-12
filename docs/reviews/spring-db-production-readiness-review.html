@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spring 운영 DB 사용 조건의 배포 준비 리뷰</title>
+  <style>
+    :root { color-scheme: light; --ink:#172337; --muted:#506176; --line:#d8e1ec; --red:#9b242d; }
+    * { box-sizing:border-box; } body { margin:0; font:16px/1.7 system-ui,sans-serif; color:var(--ink); background:#f5f7fb; }
+    header,nav,main,footer { max-width:1120px; margin:auto; padding:24px; } header { padding-top:42px; }
+    h1 { line-height:1.25; font-size:32px; } h2 { font-size:23px; } h3 { font-size:19px; }
+    nav { display:flex; flex-wrap:wrap; gap:18px; padding-top:0; } a { color:#1854a2; overflow-wrap:anywhere; }
+    section { background:white; border:1px solid var(--line); border-radius:12px; padding:24px; margin-bottom:20px; }
+    .verdict { background:#fff0f0; border-left:5px solid var(--red); padding:18px; } .muted { color:var(--muted); }
+    .finding { border-top:1px solid var(--line); padding:16px 0; } .finding:first-of-type { border-top:0; }
+    dl { display:grid; grid-template-columns:130px 1fr; gap:8px 18px; } dt { font-weight:700; } dd { margin:0; }
+    table { width:100%; border-collapse:collapse; } caption { text-align:left; font-weight:bold; margin-bottom:8px; }
+    th,td { padding:12px; border:1px solid var(--line); text-align:left; vertical-align:top; } th { background:#f0f4fa; }
+    code,samp { font-size:.9em; overflow-wrap:anywhere; } pre { overflow:auto; white-space:pre-wrap; background:#f0f4fa; padding:14px; }
+    aside { border-left:4px solid #b7791f; background:#fff8e8; padding:16px; margin-top:16px; }
+    .table-wrap { overflow:auto; } @media(max-width:650px) { header,nav,main,footer {padding:16px;} section{padding:16px;} dl{grid-template-columns:1fr;gap:3px;} dd{margin-bottom:12px;} h1{font-size:26px;} }
+  </style>
+</head>
+<body>
+<header>
+  <p class="muted">코드·설정·실행 근거 기반 / 작성자 불명 / 리뷰어 Codex 및 읽기 전용 보안 리뷰어</p>
+  <h1>Spring 운영 DB 사용 조건의 배포 준비 리뷰</h1>
+  <p class="verdict"><strong>리뷰 판단: blocker 있음. 현재 상태의 운영 배포는 보류 권고.</strong><br>빌드 성공과 별개로 반복 요일 오이관, DB 연결 단절 시 프로세스 종료, 요청당 처리량 제한 부재, 최초 동시 로그인 실패를 확인했다.</p>
+  <dl>
+    <dt>목적</dt><dd>기존 Spring 운영 DB에 현재 NestJS 서버를 연결할 때의 배포 위험과 필요한 검증을 판별한다.</dd>
+    <dt>사용자</dt><dd>MOGAK 백엔드 개발자 및 운영 배포 담당자</dd>
+    <dt>문제</dt><dd>컴파일·단위 테스트만으로 드러나지 않는 데이터 전환 오류, 가용성 장애, 보안·자원 사용 위험</dd>
+    <dt>핵심 흐름</dt><dd>배포 대상 확정 → 고정 의존성 검증 → 임시 PostgreSQL 재현 → 보안 경계 점검 → 차단 항목과 미검증 운영 조건 분리</dd>
+    <dt>대상</dt><dd><code>mogak-core-back / main / 848f639159dfac8cde621a7cea64d795754918ff</code> 현재 코드 전체. 특정 PR diff 리뷰가 아니다.</dd>
+    <dt>생성·갱신</dt><dd><time datetime="2026-09-07">2026-09-07 KST</time></dd>
+    <dt>상태</dt><dd>변경 요청 · 구현 수정 없음 · 실제 배포/운영 SQL 실행 없음</dd>
+    <dt>배포 조건</dt><dd>사용자 확인: <strong>기존 Spring 운영 DB 사용</strong>. 실제 운영 카탈로그·데이터·적용 이력은 조회하지 않았다.</dd>
+  </dl>
+</header>
+<nav aria-label="리뷰 탐색"><a href="#scope">범위</a><a href="#findings">우선 발견 사항</a><a href="#verification">검증</a><a href="#risks">잔여 위험</a><a href="#decision">배포 전 조건</a></nav>
+<main><article>
+<section id="scope">
+  <h2>리뷰 범위와 실제 구현 흐름</h2>
+  <p>API·core·infrastructure의 인증/세션, 사용자·게시글 권한, 일정 조회, 레거시 호환 SQL, 오류 로깅, PostgreSQL 생명주기, CI와 Docker 패키징을 검토했다. 기존 문서의 과거 통과 기록은 이번 검증의 대체 근거로 사용하지 않았다.</p>
+  <figure><figcaption>상태·실패 경계</figcaption><pre>소셜 토큰 검증 → social_account 조회/생성 → auth_sessions 생성 → JWT 발급
+API 요청 → IP 제한 → JWT/활성 세션 확인 → 가입 상태 → Zod 검증 → 서비스 → DB
+기존 Spring 일정 → 레거시 호환 SQL → jogak_schedules / jogak_schedule_weekdays
+DB 예외 → 전역 필터 → 500 및 로그
+유휴 DB 연결의 error 이벤트 → 처리기 없음 → Node 프로세스 종료</pre><p>HTTP 예외 필터는 요청 밖에서 발생하는 Pool 이벤트를 처리하지 않는다. 날짜별 일정은 DB 행 전체를 미리 만드는 대신 요청 시 메모리에서 펼친다.</p></figure>
+  <p><strong>주요 불변식:</strong> 전환 전후 반복 요일 집합 유지, 일시적 DB 장애에서 API 프로세스 생존, 요청당 처리량 제한, 동일 소셜 식별자의 동시 로그인 수렴, 실패 로그에서 개인정보 제외.</p>
+</section>
+<section id="findings">
+  <h2>우선 발견 사항</h2>
+  <div class="finding" id="R1">
+    <h3>R1 · P1 · open · Blocker — 레거시 반복 요일이 한 요일로 바뀜</h3>
+    <p><a href="../../scripts/migrations/2026-08-17-v2-application-delete-post-retention.sql">레거시 호환 SQL:69–70</a>은 반복 요일 원본 대신 <code>effective_from</code>의 요일 하나를 넣는다. 복수 요일 또는 시작일과 다른 요일로 반복하던 일정이 바뀐다.</p>
+    <dl><dt>조건·영향</dt><dd>대상 요일 행이 아직 없고 주간 반복이 존재할 때. 예: 원본 월·수 → 이관 후 월요일만 조회되고 수요일 실행/회고 대상이 사라진다. 원본 데이터 삭제를 재현한 것은 아니며, 새 서버가 사용하는 일정의 의미가 손실된다.</dd><dt>실행 근거</dt><dd>임시 PG17 테이블에서 현재 SQL 마지막 두 문장을 그대로 실행: <samp>original {MONDAY,WEDNESDAY} / migrated {MONDAY}</samp>. 트랜잭션은 롤백했다.</dd><dt>수정 방향</dt><dd>실제 Spring 요일 관계에서 전체 집합을 복사하고 전후 집합을 비교한다. 이미 채워진 잘못된 행은 <code>NOT EXISTS</code> 때문에 재실행으로 복구되지 않으므로 별도 충돌 탐지·복구가 필요하다.</dd><dt>미확인</dt><dd>운영에 이미 SQL을 적용했는지, 잘못 이관된 행이 몇 개인지는 미확인. <a href="jogak-weekday-backfill-integrity-design.html">별도 요일 무결성 설계</a>는 기존 문서로 연결하며 이번에 수정하지 않았다.</dd></dl>
+  </div>
+  <div class="finding" id="R2">
+    <h3>R2 · P1 · open · Blocker — 유휴 DB 연결 단절이 API 전체를 종료함</h3>
+    <p><a href="../../libs/modules/src/infrastructure/database/database.provider.ts">database.provider.ts:14–28</a>은 <code>Pool</code>을 생성하지만 <code>error</code> 이벤트 처리기를 등록하지 않는다.</p>
+    <dl><dt>조건·영향</dt><dd>성공한 DB 요청 이후 유휴 연결이 서버 재시작·장애 조치 등으로 끊기면 요청 밖에서 error 이벤트가 발생한다. 프로세스가 종료돼 같은 인스턴스의 다른 요청도 중단될 수 있다.</dd><dt>실행 근거</dt><dd>현재 <code>dist/main.js</code> 실행 → 메타데이터 200 → 리뷰 전용 application_name의 idle backend만 종료 → <samp>Unhandled 'error' event / exitCode 1</samp>.</dd><dt>수정 방향</dt><dd>Pool 생성 경로를 통합해 오류 처리·안전한 로그를 등록하고 복구 테스트를 둔다. 연결/쿼리 대기 상한도 운영 예산에 맞춰 설정한다.</dd></dl>
+    <p class="muted">이 동작은 <a href="https://node-postgres.com/apis/pool">node-postgres Pool 공식 문서</a>의 error 이벤트 설명과 일치한다.</p>
+  </div>
+  <div class="finding" id="R3">
+    <h3>R3 · P1 · open · Blocker — 날짜 범위·페이지 크기가 요청당 자원 소비를 제한하지 못함</h3>
+    <p><a href="../../libs/core/src/core/mogaks/domain/policy/jogakSchedule.policy.ts">jogakSchedule.policy.ts:116–130</a>은 날짜 형식·순서만 검사한다. <a href="../../libs/core/src/core/mogaks/application/service/jogaks.service.ts">jogaks.service.ts:266–287</a>는 일정마다 전체 요청 날짜를 동기적으로 다시 펼친다.</p>
+    <dl><dt>조건·영향</dt><dd>등록 사용자가 긴 기간을 요청하고 해당 기간에 일정이 하나 이상 있을 때. 이벤트 루프 지연·메모리 증가가 발생하며 다수 일정/요청에서 다른 사용자 요청에도 영향을 준다. IP당 요청 횟수 제한으로 한 요청의 비용을 제한할 수 없다.</dd><dt>실행 근거</dt><dd>실제 요청 스키마와 도메인 검사가 <code>0001-01-01 … 9999-12-31</code>을 허용한다(3,652,059일). 안전한 축소 재현에서 1,000년/365,243일 배열 생성만 약 219ms의 동기 작업이었다. 전체 최대 요청이나 운영 부하 테스트는 실행하지 않았다.</dd><dt>같은 보호 공백</dt><dd><a href="../../apps/api/src/api/social/presentation/type/social.request.ts">social.request.ts:6–20</a>과 <a href="../../apps/api/src/api/posts/presentation/type/post.request.ts">post.request.ts:31–33</a>에는 <code>size</code> 상한이 없다. <code>size=1000000000</code> 검증 통과를 확인했다. 피드 조회는 게시글·이미지·댓글을 메모리로 구성하며 요약 응답도 전체 댓글을 조회한다.</dd><dt>수정 방향</dt><dd>서버 측 최대 조회 일수·페이지 크기·offset을 제한하고, 날짜를 한 번 계산하거나 일정 유효 구간과 교차시킨다. 댓글 페이지화 및 요약 경로의 불필요한 댓글 조회 제거도 필요하다.</dd></dl>
+  </div>
+  <div class="finding" id="R4">
+    <h3>R4 · P2 · open · Blocker — 최초 동시 로그인 충돌 복구가 실패함</h3>
+    <p><a href="../../libs/modules/src/infrastructure/auth/repository/auth.repository.ts">auth.repository.ts:127–136, 268–277</a>은 PostgreSQL 오류를 최상위에서만 확인한다. 현재 Drizzle은 실제 <code>23505</code>와 제약 이름을 <code>DrizzleQueryError.cause</code>에 넣는다.</p>
+    <dl><dt>조건·영향</dt><dd>계정이 아직 없는 동일 소셜 식별자로 로그인 두 요청이 겹친다. 한 요청은 성공하고 다른 요청은 중복 사용자 재조회 경로에 진입하지 못해 서버 오류가 된다. DB UNIQUE는 중복 계정 생성을 막으므로 데이터 중복으로 과장하지 않는다.</dd><dt>실행 근거</dt><dd>현재 선언 스키마를 갖춘 임시 PG17에서 기존 <code>auth-concurrency.integration.spec.ts</code>의 “같은 social identity의 동시 로그인은 한 사용자와 두 세션으로 수렴한다” 실패. 내부 원인: <samp>duplicate key … uq_social_account_provider_user</samp>.</dd><dt>수정 방향</dt><dd>실제 오류 cause를 안전하게 추적해 <code>DuplicateSocialAccountException</code>으로 변환하고 기존 계정 재조회로 수렴시킨다. 기존 DB 통합 테스트를 배포 검증에 포함한다.</dd></dl>
+  </div>
+  <div class="finding" id="R5">
+    <h3>R5 · P2 · open · 보안 위험 — DB 오류 로그에 원문 파라미터가 포함됨</h3>
+    <p><a href="../../apps/api/src/api/common/http/globalException.filter.ts">globalException.filter.ts:137–143</a>은 Error의 message와 stack을 그대로 보존한다. Drizzle 실패 메시지에는 SQL과 파라미터 문자열이 포함된다. 요청 body의 토큰 마스킹은 이 문자열까지 가리지 못한다.</p>
+    <dl><dt>조건·영향</dt><dd>요청 데이터를 사용한 DB 쿼리가 실패하고 Drizzle 오류가 필터에 도달할 때, 회고 본문·댓글 등 원문이 중앙 로그에 들어갈 수 있다. 토큰 원문 유출이나 외부 공개를 확인한 것은 아니다.</dd><dt>실행 근거</dt><dd>리뷰 DB의 읽기 전용 실패 쿼리에 합성 표식을 넣고 실제 필터로 처리한 결과 <samp>raw SQL parameter retained in exception log: true</samp>.</dd><dt>수정 방향</dt><dd>DB 오류는 SQLSTATE·제약·테이블·안전한 작업 식별자 중심으로 기록하고 SQL 파라미터가 들어간 message/stack을 별도로 정제한다.</dd></dl>
+  </div>
+</section>
+<section id="verification">
+  <h2>검증 증거와 공백</h2>
+  <div class="table-wrap"><table><caption>2026-09-07 재실행 결과</caption><thead><tr><th scope="col">게이트</th><th scope="col">결과</th><th scope="col">범위·한계</th></tr></thead><tbody>
+    <tr><th scope="row">고정 의존성 설치</th><td>통과</td><td><code>CI=true pnpm install --frozen-lockfile</code>. 최초 실패는 로컬 nestjs-pino 등 의존성 불일치였다. 설치 후 package.json/lockfile 변경 없음. Node 24.18.0 / pnpm 10.32.1.</td></tr>
+    <tr><th scope="row">포맷·린트·타입·빌드</th><td>통과</td><td><code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>, <code>pnpm build</code></td></tr>
+    <tr><th scope="row">비DB 테스트</th><td>통과</td><td><code>pnpm test --runInBand</code>: 57 suites / 274 tests. 이 설정에 HTTP e2e도 포함돼 별칭 test:e2e를 중복 실행하지 않았다.</td></tr>
+    <tr><th scope="row">검증 스크립트 테스트</th><td>통과</td><td><code>pnpm test:verify-local</code>: 3 tests. 실제 verify:local 전체 사용자 시나리오와는 다르다.</td></tr>
+    <tr><th scope="row">Docker 운영 이미지</th><td>통과</td><td><code>docker build --target runtime --tag mogak-core-back:review-848f639 .</code>. 로컬 arm64 빌드이며 Cloud Run 대상 아키텍처·실제 배포는 미검증.</td></tr>
+    <tr><th scope="row">DB 통합 테스트</th><td>실패</td><td><code>pnpm test:integration --runInBand</code>: 5 suites 중 4 통과, 24 tests 중 23 통과. R4 실패. DB는 현재 schema를 export하여 별도 구성했으며 운영 Spring DB 복제본이 아니다.</td></tr>
+    <tr><th scope="row">레거시 요일 백필</th><td>실패</td><td>현재 SQL 마지막 두 문장의 합성 표본 재현. 월·수 → 월. 전체 레거시 SQL을 운영 스키마 복제본에 적용한 검증은 아님.</td></tr>
+    <tr><th scope="row">DB 연결 장애</th><td>실패</td><td>실제 빌드 앱에서 자기 idle DB 연결 단절 후 exit 1.</td></tr>
+    <tr><th scope="row">신규 DB 마이그레이션</th><td>실패 / 현재 배포 경로와 별도</td><td>빈 PG17에 <code>pnpm db:migrate</code>: <code>0004</code>에서 <samp>relation "follow" does not exist</samp>. 앞선 migration은 follows 등 다른 이름을 생성한다. 신규 설치·복구 경로 결함이며 기존 운영 DB에서도 같은 실패라고 단정하지 않는다.</td></tr>
+    <tr><th scope="row">운영 의존성 감사</th><td>경고 있음</td><td><code>pnpm audit --prod --json</code>: moderate 2, high/critical 0. 탐지 결과는 아래의 실제 도달 가능성 분석과 함께 해석한다.</td></tr>
+  </tbody></table></div>
+  <p>모든 DB 변경·장애 재현은 별도 <code>mogak_review_test</code> 컨테이너에서 수행했다. 기존 사용자 DB/볼륨에는 접근하지 않았고, 운영 배포·SQL·푸시·소스 수정은 하지 않았다.</p>
+</section>
+<section id="risks">
+  <h2>잔여 위험과 확인이 필요한 조건</h2>
+  <dl>
+    <dt>R6 · open<br>헬스·준비 상태</dt><dd><a href="../../apps/api/src/api/health/health.controller.ts">health.controller.ts:7–9</a>는 상수 200이다. 스키마가 없는 DB에서도 health 200/metadata 500을 재현했다. 단순 생존 확인 용도로는 타당하나 배포 성공·DB 준비 판정 근거로는 부족하다. 별도 readiness 또는 실제 DB 경유 smoke 검증이 필요하며, 현재 운영 probe 설정은 미확인이다.</dd>
+    <dt>R7 · open<br>JWT 오설정</dt><dd><a href="../../libs/modules/src/infrastructure/auth/service/token.service.ts">token.service.ts:31–35</a>에 secret 최소 강도 검증이 없다. 합성 1글자 키로 발급·검증 성공을 재현했다. 약한 운영 키라면 자기 활성 session ID로 PENDING→USER 역할 위조가 가능하다. 실제 운영 키가 약하거나 유출됐다는 증거는 없다. 강한 랜덤 키·시작 시 최소 길이 검증을 확인할 것.</dd>
+    <dt>R8 · open<br>세션 누적</dt><dd>로그인마다 새 auth_sessions 행이 생성되며 저장소에는 만료 행 정리나 사용자별 상한이 없다. 로그아웃/탈퇴는 삭제하지만 자연 만료는 삭제하지 않는다. 외부 정리 작업이 없으면 장기 DB 증가 위험. 외부 배치 존재는 미확인이다.</dd>
+    <dt>R9 · open<br>의존성 경고</dt><dd><code>qs 6.15.3</code>에 <a href="https://github.com/ljharb/qs/security/advisories/GHSA-x5fp-wj9c-mxmx">배열 제한 우회</a>와 <a href="https://github.com/ljharb/qs/security/advisories/GHSA-4mjr-xmp4-gh2g">isBuffer 서비스 거부</a> 권고가 있다. 두 건 모두 6.16.0에 수정됐다. pnpm은 moderate 2건으로 집계하나 첫 권고의 작성자 표시는 Low다. 현재 Express query parser는 simple이고 앱에 comma:true 또는 qs.stringify 경로가 없어 악용 가능성을 확정하지 않았다. 의존성 갱신 대상으로 관리한다.</dd>
+    <dt>이미지 기능</dt><dd><a href="../../libs/modules/src/feature-modules/storage.module.ts">StorageModule</a>이 DisabledStorageAdapter만 연결한다. 업로드 요청은 STORAGE_DISABLED, URL 해석은 null이다. 기존 Spring의 프로필/게시글 이미지가 새 서버에서 보여야 한다면 기능 배포 조건을 충족하지 못한다. 이미지 제외 출시 여부는 미확인이다.</dd>
+    <dt>프록시·분산 제한</dt><dd>trust proxy=1, 인스턴스별 메모리 throttling이다. 실제 Cloud Run ingress hop, LB 추가 여부, 인스턴스 수, 외부 WAF/전역 제한은 미확인이다.</dd>
+    <dt>DB 자원·보안</dt><dd>코드에 연결/쿼리 timeout 설정이 없다. DB/연결 문자열의 외부 설정으로 보완됐는지, Cloud Run 최대 인스턴스 × pool 크기, TLS/접근 제한/DB 계정 권한은 미확인이다.</dd>
+    <dt>기존 운영 전환</dt><dd>현재 운영 스키마의 auth_sessions, social_account, role 값, 제약 이름, 중복·고아 데이터, 원본 요일, 스키마 변경 이력, 백업 복원 가능성은 미확인. README의 신규 DB 안내와 실제 기존 DB 전환 절차가 다르므로 복제본에서 승인된 전환 절차를 먼저 검증해야 한다.</dd>
+  </dl>
+  <aside>권한 검토에서 주요 사용자·게시글·댓글 수정/삭제의 추가 소유권 우회는 발견하지 못했다. JWT 검증 뒤 활성 세션의 사용자 ID를 확인하고, 탈퇴는 트랜잭션으로 관련 행을 정리한다. 이 확인은 모든 공격 경로가 안전하다는 보증이 아니다.</aside>
+</section>
+<section id="decision">
+  <h2>리뷰 판단과 배포 전 조건</h2>
+  <p><strong>blocker 있음.</strong> 현재는 기존 Spring DB 대상 운영 배포를 보류하는 것이 타당하다. 코드·이미지 빌드는 가능하지만 데이터 전환과 가용성에 재현된 문제가 남아 있다.</p>
+  <ol>
+    <li>레거시 반복 요일 집합을 보존하도록 전환·복구를 검증하고, 실제 적용 이력과 대상 행을 대조한다.</li>
+    <li>Pool error 처리 및 장애 복구, 날짜·페이지 상한, 로그인 UNIQUE 예외 처리를 수정한 뒤 위 재현을 다시 통과시킨다.</li>
+    <li>SQL 원문 로그를 정제하고 운영 JWT·세션 정리·이미지 출시 범위를 확인한다.</li>
+    <li>운영 DB 복제본에서 전체 레거시 전환과 로그인·조회·작성·삭제·탈퇴 smoke 테스트를 수행한다.</li>
+    <li>배포할 정확한 revision에 대해 DB 포함 게이트를 실행하고, 백업 복원/롤백·readiness·자원 제한·권한 설정을 확인한다.</li>
+  </ol>
+  <p class="muted">이 문서는 읽기 전용 리뷰 결과와 보류 권고이며, 구현 또는 배포 승인 요청이 아니다. 기존 설계 산출물과 사용자 변경은 보존했다.</p>
+</section>
+</article></main>
+<footer>로컬 리뷰 기록 · 실제 운영 상태 확인 전까지 운영 안전성 판정은 미완료</footer>
+</body>
+</html>

@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>현재 코드 상태 리뷰</title>
+    <style>
+      body { max-width: 960px; margin: 2rem auto; padding: 0 1rem; font: 16px/1.6 system-ui, sans-serif; color: #172033; }
+      header, section, aside { margin: 1rem 0; padding: 1rem; border: 1px solid #d7dee9; border-radius: 8px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { padding: .6rem; border: 1px solid #d7dee9; text-align: left; vertical-align: top; }
+      code { background: #f1f5f9; padding: .1rem .25rem; }
+      .open { color: #9a3412; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>현재 코드 상태 리뷰</h1>
+      <dl>
+        <dt>리뷰 유형</dt><dd>작성자 불명 코드베이스 현황 리뷰</dd>
+        <dt>저장소·브랜치</dt><dd>mogak-core-back · main</dd>
+        <dt>기준</dt><dd>HEAD <code>9db92fe</code> 및 작업 트리 (2026-08-20 KST)</dd>
+        <dt>범위</dt><dd>빌드·정적 검사, 인증 설정, 전역 rate limit, 게시글·프로필 이미지, DB migration·health/readiness, CI·작업 트리 구성</dd>
+        <dt>상태</dt><dd class="open">변경 요청</dd>
+      </dl>
+    </header>
+    <nav aria-label="리뷰 탐색"><a href="#flow">흐름</a> · <a href="#findings">발견 사항</a> · <a href="#verification">검증</a> · <a href="#judgment">판단</a></nav>
+    <main>
+      <article>
+        <section id="intent">
+          <h2>리뷰 범위와 의도</h2>
+          <p>README가 약속한 NestJS API의 로컬 검증 가능성, JWT 기반 인증, 게시글 이미지 처리, 전역 요청 제한이 현재 코드와 작업 트리에서 성립하는지 확인했다. 제품 정책의 미확정 사항은 결함으로 단정하지 않았다.</p>
+        </section>
+        <section id="flow">
+          <h2>실제 구현 흐름과 경계</h2>
+          <figure>
+            <figcaption>게시글 이미지 생성 흐름</figcaption>
+            <pre><code>multipart 파일 → uploadPostImages() → createPost(contents만 전달) → post_img에는 storageKey 저장 경로 없음</code></pre>
+            <p>업로드 결과가 서비스·repository의 생성 명령으로 전달되지 않아, 저장소가 활성화되면 파일과 DB 게시글 사이의 연결이 끊긴다.</p>
+          </figure>
+          <dl>
+            <dt>JWT 경계</dt><dd><code>JWT_SECRET</code> 또는 <code>JWT_SECRET_KEY</code> 문자열을 그대로 HS256 키로 사용한다.</dd>
+            <dt>요청 제한 경계</dt><dd>각 프로세스가 메모리의 <code>BoundedThrottlerStorage</code>를 독립 소유한다.</dd>
+            <dt>빌드 경계</dt><dd><code>tsconfig.json</code>에는 include/exclude가 없어, 루트의 모든 TypeScript 파일이 typecheck 대상이 된다.</dd>
+          </dl>
+        </section>
+        <section id="findings">
+          <h2>발견 사항</h2>
+          <table>
+            <caption>열린 finding</caption>
+            <thead><tr><th>ID·상태</th><th>심각도</th><th>근거와 영향</th><th>최소 수정 방향</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>R-001 · open</td><td>Blocker</td>
+                <td><code>refactor/test/database/setup.ts:1</code>와 <code>test/database/setup.ts:1</code>가 같은 전역 선언을 제공한다. 루트 <code>tsconfig.json</code>이 범위를 제한하지 않아 <code>pnpm typecheck</code>는 TS2451로 실패한다. 현재 품질 게이트가 깨져 새 타입 회귀를 신뢰성 있게 탐지할 수 없다.</td>
+                <td>중첩 복사본 <code>refactor/</code>를 작업 트리 밖으로 옮기거나, 의도된 별도 프로젝트라면 루트 TypeScript 검사·Docker build context에서 명시적으로 제외한다.</td>
+              </tr>
+              <tr>
+                <td>R-002 · open</td><td>Blocker</td>
+                <td><code>apps/api/src/api/posts/presentation/controller/post.controller.ts:67-78</code>는 파일을 먼저 업로드하지만 반환된 <code>storageKey</code>를 <code>PostService.createPost</code>에 전달하지 않는다. 그 서비스와 <code>PostRepository.createForOccurrence</code>에는 <code>post_img</code>를 생성하는 입력도 없다. 저장소 어댑터를 활성화하면 성공 응답 뒤 이미지가 조회되지 않고 고아 파일이 남는다.</td>
+                <td>게시글·이미지 메타데이터 저장을 하나의 생성 유스케이스로 연결하고, DB 실패 시 업로드 보상 삭제 또는 임시 키 확정 전략을 추가한다. 생성·조회·실패 보상 통합 테스트를 둔다.</td>
+              </tr>
+              <tr>
+                <td>R-003 · open</td><td>Blocker</td>
+                <td><code>apps/api/src/infrastructure/auth/service/token.service.ts:31-34</code>는 빈 문자열이나 짧은 <code>JWT_SECRET</code>을 허용한다. README의 “32자 이상”은 런타임에서 강제되지 않으므로, 배포 오설정 시 예측 가능한 HS256 키로 토큰 위조 위험이 생긴다.</td>
+                <td>기동 시 secret 존재·최소 바이트 길이(최소 32)를 검증하고, 빈 <code>JWT_SECRET</code>일 때만 legacy 키로 대체하지 않도록 명시한다. 실패 기동 테스트를 추가한다.</td>
+              </tr>
+              <tr>
+                <td>R-004 · open</td><td>Non-blocking risk</td>
+                <td><code>apps/api/src/composition/app.module.ts:19-22</code>의 rate limit 저장소는 인스턴스 로컬이다. Cloud Run 등 다중 인스턴스 배포에서는 클라이언트가 인스턴스별로 제한을 다시 받으므로, “분당 300회”가 전역 남용 방어가 아니다.</td>
+                <td>전역 제한이 요구사항이면 Redis 등 공유 저장소 또는 인프라 레벨 WAF/rate limit을 사용한다. 인스턴스별 제한이 의도라면 운영 문서와 경보 기준에 그 한계를 기록한다.</td>
+              </tr>
+              <tr>
+                <td>R-005 · open</td><td>Non-blocking risk</td>
+                <td>작업 트리의 추적되지 않은 <code>refactor/</code>는 별도 <code>package.json</code>, 소스, 테스트와 산출물을 포함한다. <code>.dockerignore</code>는 이를 제외하지 않아 Docker build context에 불필요한 복사본이 들어가며, R-001의 직접 원인이기도 하다.</td>
+                <td>이 디렉터리의 소유·목적을 확정하고, 별도 저장소/워크트리로 분리하거나 명시적으로 ignore·exclude한다.</td>
+              </tr>
+              <tr>
+                <td>R-006 · open</td><td>Blocker (저장소 활성화 전)</td>
+                <td><code>apps/api/src/api/common/http/imageUpload.options.ts:9-17</code>는 클라이언트가 선언한 <code>file.mimetype</code>만 신뢰한다. <code>FilesInterceptor</code>는 메모리에 최대 5개의 5 MiB 파일을 받는다. 실제 이미지 형식 검증·재인코딩 없이 공개 가능한 저장소에 연결하면 위장 파일 업로드와 인스턴스 메모리 고갈 경로가 된다.</td>
+                <td>바이트 시그니처 검증과 안전한 이미지 디코드·재인코딩을 저장소 경계에 추가하고, 요청당 전체 크기·동시 업로드 제한을 인프라와 애플리케이션에서 함께 적용한다.</td>
+              </tr>
+              <tr>
+                <td>R-007 · open</td><td>Non-blocking risk</td>
+                <td><code>cloudbuild.yaml</code>은 Docker build만 실행한다. Dockerfile의 <code>pnpm build</code>는 통과하지만 독립 <code>pnpm typecheck</code>가 실패하는 현재 상태를 차단하지 못한다. lint·단위 테스트·DB 통합 테스트도 CI gate에 없다.</td>
+                <td>Docker image build 전에 format, lint, typecheck, 단위·HTTP 계약 테스트를 별도 CI 단계로 만들고, PostgreSQL 서비스가 있는 DB 통합 테스트를 보호 브랜치 gate로 추가한다.</td>
+              </tr>
+              <tr>
+                <td>R-008 · open</td><td>Blocker (신규 DB 배포)</td>
+                <td><code>cloudbuild.yaml</code>은 이미지만 build/push하고, Dockerfile의 런타임 명령은 <code>node dist/main.js</code>뿐이다. <code>pnpm db:migrate</code>를 운영 DB에 실행하는 Job·release 단계가 저장소에 없다. 새 DB에는 schema와 필수 공개 metadata seed가 없어 로그인 이후 가입·도메인 API가 동작하지 않는다.</td>
+                <td>애플리케이션 rollout 전에 단일 실행되는 migration Job을 만들고, DB backup·실행자 권한·실패 중단·Drizzle journal 검증을 release 절차에 포함한다. 앱 컨테이너가 기동할 때마다 migration을 실행하지 않는다.</td>
+              </tr>
+              <tr>
+                <td>R-009 · open</td><td>Blocker (장애 감지)</td>
+                <td><code>apps/api/src/api/health/health.controller.ts</code>는 DB 연결·간단한 query·외부 필수 의존성을 확인하지 않고 항상 200을 반환한다. <code>Pool</code>도 lazy이므로 DB URL 오설정이나 DB 장애 시 Cloud Run은 ready로 판단하고 요청만 5xx가 된다.</td>
+                <td>liveness는 가볍게 유지하되 readiness endpoint 또는 startup probe에서 DB 연결과 최소 query를 확인한다. Cloud Run의 traffic 전환·알림은 readiness 실패와 API 5xx를 기준으로 설정한다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section id="verification">
+          <h2>검증 증거와 공백</h2>
+          <ul>
+            <li><code>pnpm build</code>: 통과.</li>
+            <li><code>pnpm typecheck</code>: 실패 — R-001의 TS2451 재선언 오류.</li>
+            <li><code>pnpm test --runInBand</code>: 이 샌드박스에서는 HTTP 테스트의 임시 포트 bind가 <code>EPERM</code>으로 거부됐다. 코드 실패로 판정하지 않았으며, 포트 허용 CI/로컬에서 재실행이 필요하다.</li>
+            <li><code>pnpm lint</code>, DB 통합 테스트, 배포 환경의 다중 인스턴스 rate limit: 앞 단계 실패 또는 환경 제약으로 이번 리뷰에서 완료 증거가 없다.</li>
+          </ul>
+        </section>
+        <aside>
+          <h2>잔여 위험</h2>
+          <p>일정·실행 처리에는 단위 테스트가 비교적 많지만, 현재 DB 통합 테스트와 HTTP 계약 테스트를 이 환경에서 통과시킨 최신 증거가 없다. 특히 동시 PATCH/삭제와 실제 PostgreSQL 제약은 별도 확인이 필요하다. <code>trust proxy=1</code>은 현재 Cloud Run 프록시 토폴로지와 공개 진입점 제약을 운영 환경에서 확인해야 한다. 그렇지 않으면 IP 기반 rate limit을 우회할 여지가 있다.</p>
+        </aside>
+        <section id="quality">
+          <h2>코드 품질 평가</h2>
+          <p>계층(API/core/infrastructure)과 port 분리, strict TypeScript, Zod 요청 검증, 도메인 오류 매핑, 일정 규칙 단위 테스트는 좋은 기반이다. 다만 기능 경계가 실제 영속 경로까지 닫히지 않은 이미지 업로드(R-002), 깨진 typecheck(R-001), CI 품질 게이트 부재(R-007) 때문에 현재 품질 상태는 <strong>구조는 양호하지만 배포 신뢰도는 낮음</strong>으로 평가한다.</p>
+        </section>
+        <section id="production-functionality">
+          <h2>운영 전 기능 완결성</h2>
+          <p>핵심 텍스트 기반 도메인(가입, 모각·조각, 실행, 게시글·댓글·좋아요·팔로우)은 구현되어 있다. 다만 Storage adapter가 의도적으로 disabled라 프로필 이미지 변경과 실제 게시글 이미지 첨부는 현재 항상 실패한다. Apple·Google 실제 client ID와 Kakao/Google/Apple 외부 egress도 운영 환경에서 준비·검증해야 소셜 가입이 기능적으로 열린다.</p>
+        </section>
+        <section id="judgment">
+          <h2>리뷰 판단</h2>
+          <p><strong>blocker 있음.</strong> 타입 검사 실패를 먼저 해소하고, 이미지 저장 경로와 JWT 기동 검증을 수정한 뒤 재리뷰가 필요하다. 이 판단은 배포·병합 최종 승인 판정이 아니다.</p>
+        </section>
+      </article>
+    </main>
+  </body>
+</html>
