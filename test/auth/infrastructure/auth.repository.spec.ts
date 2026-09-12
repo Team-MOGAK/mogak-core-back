@@ -15,6 +15,20 @@ const identity = {
   emailVerified: true,
 };
 
+function lockedUserSelect(result: readonly unknown[] = [{ id: 7 }]) {
+  const query = {
+    from: testMock(),
+    where: testMock(),
+    orderBy: testMock(),
+    for: testMock(),
+  };
+  query.from.mockReturnValue(query);
+  query.where.mockReturnValue(query);
+  query.orderBy.mockReturnValue(query);
+  query.for.mockResolvedValue(result);
+  return testMock().mockReturnValue(query);
+}
+
 describe('인증 저장소', () => {
   it('소셜 식별자 고유성 위반을 DuplicateSocialAccountException으로 변환한다', async () => {
     const transaction = testMock().mockRejectedValue({
@@ -33,6 +47,18 @@ describe('인증 저장소', () => {
       code: '23505',
       constraint: 'social_accounts_provider_user_unique',
     });
+    const repository = new AuthRepository({ transaction } as unknown as Database);
+
+    await expect(repository.createAccount(identity)).rejects.toBeInstanceOf(
+      DuplicateSocialAccountException,
+    );
+  });
+
+  it('Drizzle가 감싼 PostgreSQL 고유성 위반도 DuplicateSocialAccountException으로 변환한다', async () => {
+    const failure = new Error('Failed query', {
+      cause: { code: '23505', constraint: 'uq_social_account_provider_user' },
+    });
+    const transaction = testMock().mockRejectedValue(failure);
     const repository = new AuthRepository({ transaction } as unknown as Database);
 
     await expect(repository.createAccount(identity)).rejects.toBeInstanceOf(
@@ -65,7 +91,10 @@ describe('인증 저장소', () => {
     const failure = new Error('database unavailable');
     const values = testMock().mockRejectedValue(failure);
     const insert = testMock().mockReturnValue({ values });
-    const repository = new AuthRepository({ insert } as unknown as Database);
+    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+      callback({ select: lockedUserSelect(), insert }),
+    );
+    const repository = new AuthRepository({ transaction } as unknown as Database);
 
     await expect(
       repository.createSession(7, {
@@ -85,7 +114,10 @@ describe('인증 저장소', () => {
     const failure = new AuthPersistenceException('session insert invariant failed');
     const values = testMock().mockRejectedValue(failure);
     const insert = testMock().mockReturnValue({ values });
-    const repository = new AuthRepository({ insert } as unknown as Database);
+    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+      callback({ select: lockedUserSelect(), insert }),
+    );
+    const repository = new AuthRepository({ transaction } as unknown as Database);
 
     await expect(
       repository.createSession(7, {
@@ -165,9 +197,13 @@ describe('인증 저장소', () => {
     ]);
     const where = testMock().mockResolvedValue([]);
     const set = testMock().mockReturnValue({ where });
-    const select = testMock().mockReturnValue({
+    const normalizedSelect = testMock().mockReturnValue({
       from: testMock().mockReturnValue({ where: selected }),
     });
+    const lockedSelect = lockedUserSelect([{ id: 7 }]);
+    const select = testMock()
+      .mockImplementationOnce(() => lockedSelect())
+      .mockImplementationOnce(() => normalizedSelect());
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
       callback({ execute: testMock(), update: testMock().mockReturnValue({ set }), select }),
     );

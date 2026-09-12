@@ -29,11 +29,20 @@ import type {
   OwnedJogakResult,
 } from '@core/mogaks/application/type/jogak.result';
 import { MogakPersistenceException } from '@core/mogaks/domain/exception/mogakPersistence.exception';
+import { MAX_JOGAKS_PER_MOGAK } from '@core/mogaks/domain/policy/jogak.policy';
+import { MAX_MOGAKS_PER_MODARAT } from '@core/mogaks/domain/policy/mogak.policy';
 import { JogakExecutionStatus } from '@core/mogaks/domain/vo/jogakExecution.vo';
 import {
   JogakScheduleType,
   JogakScheduleWeekdayName,
 } from '@core/mogaks/domain/vo/jogakSchedule.vo';
+import {
+  lockJogakHierarchy as lockJogakHierarchyRows,
+  lockJogakRows as lockJogakRowsOrdered,
+  lockMogakHierarchy as lockMogakHierarchyRows,
+  lockMogakRows as lockMogakRowsOrdered,
+  lockUsers,
+} from '../../database/transactionLocks';
 
 type CreateModaratInput = Parameters<MogakRepositoryPort['createModarat']>[0];
 type UpdateModaratInput = Parameters<MogakRepositoryPort['updateOwnedModarat']>[0];
@@ -54,6 +63,10 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async createModarat(input: CreateModaratInput): Promise<ModaratResult> {
     return this.db.transaction(async (tx) => {
+      const locked = await lockUsers(tx, [input.userId]);
+      if (locked.length !== 1) {
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
       const [user] = await tx
         .select({ id: users.id })
         .from(users)
@@ -93,6 +106,7 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async updateOwnedModarat(input: UpdateModaratInput): Promise<ModaratResult | null> {
     return this.db.transaction(async (tx) => {
+      await lockUsers(tx, [input.userId]);
       const [updated] = await tx
         .update(modarats)
         .set({ title: input.title, color: input.color, updatedAt: input.now })
@@ -104,10 +118,12 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async deleteOwnedModarat(userId: number, modaratId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
+      await lockUsers(tx, [userId]);
       const [owned] = await tx
         .select({ id: modarats.id })
         .from(modarats)
-        .where(and(eq(modarats.id, modaratId), eq(modarats.userId, userId)));
+        .where(and(eq(modarats.id, modaratId), eq(modarats.userId, userId)))
+        .for('update');
       if (owned === undefined) return false;
 
       await this.deleteMogakTree(tx, await this.mogakIdsForModarats(tx, [modaratId]));
@@ -145,16 +161,26 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async createMogak(input: CreateMogakInput): Promise<MogakResult> {
     return this.db.transaction(async (tx) => {
-      const [owner] = await tx
+      const [ownerInfo] = await tx
         .select({ userId: modarats.userId })
         .from(modarats)
         .where(eq(modarats.id, input.modaratId));
-      if (owner === undefined) throw new MogakPersistenceException('Modarat did not exist');
-      const [stillOwned] = await tx
+      if (ownerInfo === undefined) throw new MogakPersistenceException('Modarat did not exist');
+      const locked = await lockUsers(tx, [ownerInfo.userId]);
+      if (locked.length !== 1) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      const [owner] = await tx
         .select({ id: modarats.id })
         .from(modarats)
-        .where(and(eq(modarats.id, input.modaratId), eq(modarats.userId, owner.userId)));
-      if (stillOwned === undefined) throw new MogakPersistenceException('Modarat did not exist');
+        .where(eq(modarats.id, input.modaratId))
+        .for('update');
+      if (owner === undefined) throw new MogakPersistenceException('Modarat did not exist');
+      const existing = await tx
+        .select({ id: mogaks.id })
+        .from(mogaks)
+        .where(eq(mogaks.modaratId, input.modaratId));
+      if (existing.length >= MAX_MOGAKS_PER_MODARAT) {
+        throw new DomainException(DomainErrorCode.MAX_MOGAKS);
+      }
       const [created] = await tx
         .insert(mogaks)
         .values({
@@ -210,12 +236,9 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async updateOwnedMogak(input: UpdateMogakInput): Promise<MogakResult | null> {
     return this.db.transaction(async (tx) => {
-      const [owned] = await tx
-        .select({ modaratId: mogaks.modaratId })
-        .from(mogaks)
-        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-        .where(and(eq(mogaks.id, input.mogakId), eq(modarats.userId, input.userId)));
-      if (owned === undefined) return null;
+      await lockUsers(tx, [input.userId]);
+      const hierarchy = await lockMogakHierarchyRows(tx, input.mogakId, input.userId);
+      if (hierarchy === undefined) return null;
       const [updated] = await tx
         .update(mogaks)
         .set({
@@ -225,7 +248,7 @@ export class MogakRepository implements MogakRepositoryPort {
           customCategoryName: input.customCategoryName,
           updatedAt: input.now,
         })
-        .where(and(eq(mogaks.id, input.mogakId), eq(mogaks.modaratId, owned.modaratId)))
+        .where(and(eq(mogaks.id, input.mogakId), eq(mogaks.modaratId, hierarchy.modaratId)))
         .returning({ id: mogaks.id });
       if (updated === undefined) return null;
       const [result] = await tx
@@ -240,14 +263,11 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async deleteOwnedMogak(userId: number, mogakId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      const [owned] = await tx
-        .select({ id: mogaks.id })
-        .from(mogaks)
-        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-        .where(and(eq(mogaks.id, mogakId), eq(modarats.userId, userId)));
+      await lockUsers(tx, [userId]);
+      const owned = await lockMogakHierarchyRows(tx, mogakId, userId);
       if (owned === undefined) return false;
 
-      await this.deleteMogakTree(tx, [mogakId]);
+      await this.deleteMogakTree(tx, [owned.mogakId]);
       return true;
     });
   }
@@ -265,6 +285,17 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async patchOwnedJogak(input: PatchOwnedJogakInput): Promise<OwnedJogakResult | null> {
     return this.db.transaction(async (tx) => {
+      const [candidate] = await tx
+        .select(selectOwnedJogakFields())
+        .from(jogaks)
+        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+        .leftJoin(mogakCategories, eq(mogaks.categoryId, mogakCategories.id))
+        .where(and(eq(jogaks.id, input.jogakId), eq(modarats.userId, input.userId)));
+      if (candidate === undefined) return null;
+      await lockUsers(tx, [input.userId]);
+      const hierarchy = await lockJogakHierarchyRows(tx, input.jogakId, input.userId);
+      if (hierarchy === undefined) return null;
       const [owned] = await tx
         .select(selectOwnedJogakFields())
         .from(jogaks)
@@ -318,15 +349,11 @@ export class MogakRepository implements MogakRepositoryPort {
 
   async deleteOwnedJogak(userId: number, jogakId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
-      const [owned] = await tx
-        .select({ id: jogaks.id })
-        .from(jogaks)
-        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
-        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-        .where(and(eq(jogaks.id, jogakId), eq(modarats.userId, userId)));
+      await lockUsers(tx, [userId]);
+      const owned = await lockJogakHierarchyRows(tx, jogakId, userId);
       if (owned === undefined) return false;
 
-      await this.deleteJogakTree(tx, [jogakId]);
+      await this.deleteJogakTree(tx, [owned.jogakId]);
       return true;
     });
   }
@@ -348,6 +375,7 @@ export class MogakRepository implements MogakRepositoryPort {
     mogakIds: readonly number[],
   ): Promise<void> {
     if (mogakIds.length === 0) return;
+    await lockMogakRowsOrdered(tx, mogakIds);
     const rows = await tx
       .select({ id: jogaks.id })
       .from(jogaks)
@@ -364,6 +392,7 @@ export class MogakRepository implements MogakRepositoryPort {
     jogakIds: readonly number[],
   ): Promise<void> {
     if (jogakIds.length === 0) return;
+    await lockJogakRowsOrdered(tx, jogakIds);
     const schedules = await tx
       .select({ id: jogakSchedules.id })
       .from(jogakSchedules)
@@ -384,34 +413,24 @@ export class MogakRepository implements MogakRepositoryPort {
       .select({ jogakId: jogaks.id })
       .from(jogaks)
       .innerJoin(jogakSchedules, eq(jogakSchedules.jogakId, jogaks.id))
-      .where(
-        and(
-          eq(jogaks.mogakId, mogakId),
-          or(
-            and(eq(jogakSchedules.scheduleType, 'ONCE'), gte(jogakSchedules.effectiveFrom, today)),
-            and(
-              eq(jogakSchedules.scheduleType, 'WEEKLY'),
-              or(isNull(jogakSchedules.effectiveTo), gte(jogakSchedules.effectiveTo, today)),
-            ),
-          ),
-        ),
-      );
+      .where(currentOrFutureJogakCondition(mogakId, today));
     return new Set(rows.map((row) => row.jogakId)).size;
   }
 
   async createJogakWithSchedule(input: CreateJogakWithScheduleInput): Promise<CreatedJogakResult> {
     return this.db.transaction(async (tx) => {
-      const [owner] = await tx
-        .select({ userId: modarats.userId })
-        .from(mogaks)
-        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
-        .where(eq(mogaks.id, input.mogak.id));
+      const lockedUsers = await lockUsers(tx, [input.userId]);
+      if (lockedUsers.length !== 1) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      const owner = await lockMogakHierarchyRows(tx, input.mogak.id, input.userId);
       if (owner === undefined) throw new MogakPersistenceException('Mogak did not exist');
-      const [stillOwned] = await tx
-        .select({ id: mogaks.id })
-        .from(mogaks)
-        .where(eq(mogaks.id, input.mogak.id));
-      if (stillOwned === undefined) throw new MogakPersistenceException('Mogak did not exist');
+      const existing = await tx
+        .select({ jogakId: jogaks.id })
+        .from(jogaks)
+        .innerJoin(jogakSchedules, eq(jogakSchedules.jogakId, jogaks.id))
+        .where(currentOrFutureJogakCondition(input.mogak.id, input.today));
+      if (new Set(existing.map((row) => row.jogakId)).size >= MAX_JOGAKS_PER_MOGAK) {
+        throw new DomainException(DomainErrorCode.MAX_MOGAKS);
+      }
       const [createdJogak] = await tx
         .insert(jogaks)
         .values({ mogakId: input.mogak.id, title: input.title })
@@ -602,6 +621,9 @@ export class MogakRepository implements MogakRepositoryPort {
         .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
         .where(eq(jogaks.id, input.jogakId));
       if (owner === undefined) return null;
+      await lockUsers(tx, [owner.userId]);
+      const hierarchy = await lockJogakHierarchyRows(tx, input.jogakId, owner.userId);
+      if (hierarchy === undefined) return null;
       const [stillOwned] = await tx
         .select({ id: jogaks.id })
         .from(jogaks)
@@ -629,13 +651,16 @@ export class MogakRepository implements MogakRepositoryPort {
   }): Promise<ExecutionResult | null> {
     return this.db.transaction(async (tx) => {
       const [owner] = await tx
-        .select({ userId: modarats.userId })
+        .select({ userId: modarats.userId, jogakId: jogakExecutions.jogakId })
         .from(jogakExecutions)
         .innerJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
         .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
         .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
         .where(eq(jogakExecutions.id, input.executionId));
       if (owner === undefined) return null;
+      await lockUsers(tx, [owner.userId]);
+      const hierarchy = await lockJogakHierarchyRows(tx, owner.jogakId, owner.userId);
+      if (hierarchy === undefined) return null;
       const [stillExists] = await tx
         .select({ id: jogakExecutions.id })
         .from(jogakExecutions)
@@ -720,4 +745,17 @@ function selectExecutionFields() {
     status: jogakExecutions.status,
     jogakTitleSnapshot: jogakExecutions.jogakTitleSnapshot,
   };
+}
+
+function currentOrFutureJogakCondition(mogakId: number, today: string) {
+  return and(
+    eq(jogaks.mogakId, mogakId),
+    or(
+      and(eq(jogakSchedules.scheduleType, 'ONCE'), gte(jogakSchedules.effectiveFrom, today)),
+      and(
+        eq(jogakSchedules.scheduleType, 'WEEKLY'),
+        or(isNull(jogakSchedules.effectiveTo), gte(jogakSchedules.effectiveTo, today)),
+      ),
+    ),
+  );
 }

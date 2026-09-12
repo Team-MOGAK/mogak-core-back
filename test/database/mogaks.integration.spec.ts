@@ -2,9 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import { and, asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 
 import type { Database } from '@infra/database/database.provider';
+import { DomainErrorCode } from '@core/common/error/domainException';
+import { MogakPersistenceException } from '@core/mogaks/domain/exception/mogakPersistence.exception';
+import * as schema from '@infra/database/schema';
 import {
   jogakExecutions,
   jogakSchedules,
@@ -15,7 +18,9 @@ import {
   posts,
   users,
 } from '@infra/database/schema';
+import { AuthRepository } from '@infra/auth/repository/auth.repository';
 import { JogaksService } from '@core/mogaks/application/service/jogaks.service';
+import { MogakService } from '@core/mogaks/application/service/mogak.service';
 import { MogakRepository } from '@infra/mogaks/repository/mogak.repository';
 import { pinoLoggerStub } from '../fixtures/pinoLogger.fixture';
 
@@ -25,7 +30,7 @@ if (databaseUrl === undefined) {
 }
 
 const pool = new Pool({ connectionString: databaseUrl });
-const db = drizzle(pool);
+const db = drizzle(pool, { schema });
 
 afterAll(async () => {
   await pool.end();
@@ -90,6 +95,199 @@ describe('모각 PostgreSQL 통합', () => {
     await expect(rowCount(jogakExecutions, jogakExecutions.jogakId, fixture.jogakId)).resolves.toBe(
       1,
     );
+  });
+
+  it('일곱 개 모각에서 동시 생성해도 여덟 개 상한을 넘기지 않는다', async () => {
+    const fixture = await createJogakFixture();
+    await db.insert(mogaks).values(
+      Array.from({ length: 6 }, (_, index) => ({
+        modaratId: fixture.modaratId,
+        title: `추가 모각 ${index + 2}`,
+        customCategoryName: `직접 입력 ${index + 2}`,
+      })),
+    );
+    const service = new MogakService(
+      new MogakRepository(db as unknown as Database, pinoLoggerStub()),
+    );
+
+    const results = await Promise.allSettled([
+      service.createMogak(fixture.userId, {
+        modaratId: fixture.modaratId,
+        title: '동시 모각 A',
+        customCategoryName: '동시 입력 A',
+      }),
+      service.createMogak(fixture.userId, {
+        modaratId: fixture.modaratId,
+        title: '동시 모각 B',
+        customCategoryName: '동시 입력 B',
+      }),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: { code: DomainErrorCode.MAX_MOGAKS },
+    });
+    await expect(
+      db.select().from(mogaks).where(eq(mogaks.modaratId, fixture.modaratId)),
+    ).resolves.toHaveLength(8);
+  });
+
+  it('일곱 개의 현재 조각에서 동시 생성해도 여덟 개 상한을 넘기지 않는다', async () => {
+    const fixture = await createJogakFixture();
+    const extraJogaks = await db
+      .insert(jogaks)
+      .values(
+        Array.from({ length: 6 }, (_, index) => ({
+          mogakId: fixture.mogakId,
+          title: `추가 조각 ${index + 2}`,
+        })),
+      )
+      .returning({ id: jogaks.id });
+    await db.insert(jogakSchedules).values(
+      extraJogaks.map((jogak) => ({
+        jogakId: jogak.id,
+        scheduleType: 'ONCE',
+        effectiveFrom: '2026-07-24',
+      })),
+    );
+    const service = new JogaksService(
+      new MogakRepository(db as unknown as Database, pinoLoggerStub()),
+      () => '2026-07-23',
+    );
+
+    const results = await Promise.allSettled([
+      service.create(fixture.userId, {
+        mogakId: fixture.mogakId,
+        title: '동시 조각 A',
+        schedule: { scheduleType: 'ONCE', effectiveFrom: '2026-07-25' },
+      }),
+      service.create(fixture.userId, {
+        mogakId: fixture.mogakId,
+        title: '동시 조각 B',
+        schedule: { scheduleType: 'ONCE', effectiveFrom: '2026-07-26' },
+      }),
+    ]);
+
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((result) => result.status === 'rejected')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected).toMatchObject({
+      status: 'rejected',
+      reason: { code: DomainErrorCode.MAX_MOGAKS },
+    });
+    await expect(
+      db.select().from(jogaks).where(eq(jogaks.mogakId, fixture.mogakId)),
+    ).resolves.toHaveLength(8);
+  });
+
+  it('조각 생성과 모각 삭제가 겹쳐도 부모에서 자식 순서로 대기하고 교착하지 않는다', async () => {
+    const fixture = await createJogakFixture();
+    const baseRepository = new MogakRepository(db as unknown as Database, pinoLoggerStub());
+    const mogak = await baseRepository.findOwnedMogak(fixture.userId, fixture.mogakId);
+    if (mogak === null) throw new Error('mogak fixture did not exist');
+
+    const blocker = await pool.connect();
+    const creating = await pool.connect();
+    const deleting = await pool.connect();
+    try {
+      await blocker.query('begin');
+      await blocker.query('select modarat_id from modarat where modarat_id = $1 for update', [
+        fixture.modaratId,
+      ]);
+
+      const createRepository = new MogakRepository(
+        drizzle(creating, { schema }) as unknown as Database,
+        pinoLoggerStub(),
+      );
+      const deleteRepository = new MogakRepository(
+        drizzle(deleting, { schema }) as unknown as Database,
+        pinoLoggerStub(),
+      );
+      const creatingOperation = createRepository.createJogakWithSchedule({
+        userId: fixture.userId,
+        mogak,
+        title: '교차 생성',
+        schedule: {
+          scheduleType: 'ONCE',
+          effectiveFrom: '2026-07-24',
+          effectiveTo: null,
+          weekdays: [],
+        },
+        today: '2026-07-23',
+      });
+      await waitForLock(await backendPid(creating));
+      const deletingOperation = deleteRepository.deleteOwnedMogak(fixture.userId, fixture.mogakId);
+      await waitForLock(await backendPid(deleting));
+
+      await blocker.query('commit');
+      const outcomes = await Promise.allSettled([creatingOperation, deletingOperation]);
+      expectHierarchyRaceOutcomes(outcomes);
+      await expect(rowCount(mogaks, mogaks.id, fixture.mogakId)).resolves.toBe(0);
+      await expect(rowCount(jogaks, jogaks.id, fixture.jogakId)).resolves.toBe(0);
+    } finally {
+      await safelyRollback(blocker);
+      await safelyRollback(creating);
+      await safelyRollback(deleting);
+      blocker.release();
+      creating.release();
+      deleting.release();
+    }
+  });
+
+  it('조각 생성과 회원 탈퇴가 겹쳐도 부모 잠금 순서가 일치해 교착하지 않는다', async () => {
+    const fixture = await createJogakFixture();
+    const baseRepository = new MogakRepository(db as unknown as Database, pinoLoggerStub());
+    const mogak = await baseRepository.findOwnedMogak(fixture.userId, fixture.mogakId);
+    if (mogak === null) throw new Error('mogak fixture did not exist');
+
+    const blocker = await pool.connect();
+    const creating = await pool.connect();
+    const withdrawing = await pool.connect();
+    try {
+      await blocker.query('begin');
+      await blocker.query('select modarat_id from modarat where modarat_id = $1 for update', [
+        fixture.modaratId,
+      ]);
+
+      const createRepository = new MogakRepository(
+        drizzle(creating, { schema }) as unknown as Database,
+        pinoLoggerStub(),
+      );
+      const createOperation = createRepository.createJogakWithSchedule({
+        userId: fixture.userId,
+        mogak,
+        title: '탈퇴 교차 생성',
+        schedule: {
+          scheduleType: 'ONCE',
+          effectiveFrom: '2026-07-24',
+          effectiveTo: null,
+          weekdays: [],
+        },
+        today: '2026-07-23',
+      });
+      await waitForLock(await backendPid(creating));
+      const withdrawOperation = new AuthRepository(
+        drizzle(withdrawing, { schema }) as never,
+      ).deleteUser(fixture.userId);
+      await waitForLock(await backendPid(withdrawing));
+
+      await blocker.query('commit');
+      const outcomes = await Promise.allSettled([createOperation, withdrawOperation]);
+      expectHierarchyRaceOutcomes(outcomes);
+      await expect(
+        db.select().from(users).where(eq(users.id, fixture.userId)),
+      ).resolves.toHaveLength(0);
+      await expect(rowCount(modarats, modarats.id, fixture.modaratId)).resolves.toBe(0);
+    } finally {
+      await safelyRollback(blocker);
+      await safelyRollback(creating);
+      await safelyRollback(withdrawing);
+      blocker.release();
+      creating.release();
+      withdrawing.release();
+    }
   });
 
   it('조각 제목이 바뀐 뒤에도 실행 제목 스냅샷을 유지한다', async () => {
@@ -445,6 +643,72 @@ async function createJogakFixture(
   }
 
   return { userId: user.id, modaratId: modarat.id, mogakId: mogak.id, jogakId: jogak.id };
+}
+
+async function backendPid(client: PoolClient): Promise<number> {
+  const [backend] = (await client.query<{ pid: number }>('select pg_backend_pid() as pid')).rows;
+  if (backend === undefined) throw new Error('backend pid was not returned');
+  return backend.pid;
+}
+
+async function waitForLock(pid: number): Promise<void> {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const [activity] = (
+      await pool.query<{ blocked: boolean }>(
+        'select cardinality(pg_blocking_pids($1)) > 0 as blocked',
+        [pid],
+      )
+    ).rows;
+    if (activity?.blocked === true) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error('transaction did not enter lock wait state');
+}
+
+async function safelyRollback(client: PoolClient): Promise<void> {
+  try {
+    await client.query('rollback');
+  } catch {
+    // The transaction may already have completed.
+  }
+}
+
+function expectHierarchyRaceOutcomes(outcomes: readonly PromiseSettledResult<unknown>[]): void {
+  expect(outcomes).toHaveLength(2);
+  const [writer, remover] = outcomes;
+  if (writer === undefined || remover === undefined) {
+    throw new Error('concurrency operation did not return both outcomes');
+  }
+  if (remover.status !== 'fulfilled' || remover.value !== true) {
+    throw new Error(`removal outcome was not fulfilled: ${JSON.stringify(remover)}`);
+  }
+  if (writer.status === 'fulfilled') {
+    expect(writer.value).toEqual(
+      expect.objectContaining({
+        jogakId: expect.any(Number),
+        mogakId: expect.any(Number),
+      }),
+    );
+  } else {
+    expect(writer.reason).toBeInstanceOf(MogakPersistenceException);
+    expect(writer.reason).toMatchObject({ message: 'Mogak did not exist' });
+  }
+  for (const outcome of outcomes) {
+    if (outcome.status === 'rejected') {
+      expect(hasErrorCode(outcome.reason, '40P01')).toBe(false);
+    }
+  }
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  const seen = new Set<object>();
+  let current: unknown = error;
+  while (typeof current === 'object' && current !== null && !seen.has(current)) {
+    if ('code' in current && current.code === code) return true;
+    seen.add(current);
+    current = 'cause' in current ? current.cause : undefined;
+  }
+  return false;
 }
 
 async function rowCount<TTable extends typeof modarats | typeof mogaks | typeof jogaks>(

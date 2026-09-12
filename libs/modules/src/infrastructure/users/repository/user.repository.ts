@@ -22,6 +22,7 @@ import type {
   RegistrationCandidate,
   UserProfileProjection,
 } from '@core/users/application/type/user.result';
+import { lockUsers, type UserLockMode } from '../../database/transactionLocks';
 
 @Injectable()
 export class UserRepository implements UserRepositoryPort {
@@ -56,6 +57,7 @@ export class UserRepository implements UserRepositoryPort {
   async updateNickname(command: UpdateNicknameCommand): Promise<boolean> {
     try {
       return await this.db.transaction(async (tx) => {
+        await lockUsers(tx, [command.userId], 'update');
         const updated = await tx
           .update(users)
           .set({ nickname: command.nickname, updatedAt: command.now })
@@ -70,6 +72,7 @@ export class UserRepository implements UserRepositoryPort {
 
   async updateJob(command: UpdateJobCommand): Promise<boolean> {
     return this.db.transaction(async (tx) => {
+      await lockUsers(tx, [command.userId], 'update');
       const updated = await tx
         .update(users)
         .set({ jobId: command.jobId, updatedAt: command.now })
@@ -81,6 +84,7 @@ export class UserRepository implements UserRepositoryPort {
 
   async updateProfileImageKey(command: UpdateProfileImageCommand): Promise<boolean> {
     return this.db.transaction(async (tx) => {
+      await lockUsers(tx, [command.userId], 'update');
       const updated = await tx
         .update(users)
         .set({ profileImageKey: command.profileImageKey, updatedAt: command.now })
@@ -95,6 +99,7 @@ export class UserRepository implements UserRepositoryPort {
   ): Promise<Readonly<{ id: number; nickname: string }>> {
     try {
       return await this.db.transaction(async (tx) => {
+        await lockUsers(tx, [command.userId], 'update');
         const [registered] = await tx
           .update(users)
           .set({
@@ -117,11 +122,13 @@ export class UserRepository implements UserRepositoryPort {
               'Pending user registration update did not return a row',
             );
           }
-          await replaceSession(tx, command);
+          await replaceSession(tx, command, 'update');
           return { id: existing.id, nickname: existing.nickname };
         }
 
-        for (const consent of command.consents) {
+        for (const consent of [...command.consents].sort(
+          (left, right) => left.consentItemId - right.consentItemId,
+        )) {
           await tx
             .insert(userConsents)
             .values({
@@ -142,7 +149,7 @@ export class UserRepository implements UserRepositoryPort {
             });
         }
 
-        await replaceSession(tx, command);
+        await replaceSession(tx, command, 'update');
         return { id: registered.id, nickname: registered.nickname };
       });
     } catch (error: unknown) {
@@ -160,9 +167,11 @@ export class UserRepository implements UserRepositoryPort {
 }
 
 async function replaceSession(
-  tx: Pick<Database, 'insert' | 'delete'>,
+  tx: Pick<Database, 'insert' | 'delete' | 'select'>,
   command: ReplaceSessionCommand | CompleteRegistrationCommand,
+  mode: UserLockMode = 'key share',
 ): Promise<void> {
+  await lockUsers(tx, [command.userId], mode);
   const deleted = await tx
     .delete(authSessions)
     .where(
@@ -195,12 +204,18 @@ function asUserPersistenceException(error: unknown, message: string): UserPersis
 }
 
 function isNicknameUniqueConstraint(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === '23505' &&
-    'constraint' in error &&
-    error.constraint === 'users_nickname_unique'
-  );
+  const seen = new WeakSet<object>();
+  let current: unknown = error;
+  while (isRecord(current) && !seen.has(current)) {
+    seen.add(current);
+    if (current.code === '23505' && current.constraint === 'users_nickname_unique') {
+      return true;
+    }
+    current = current.cause;
+  }
+  return false;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

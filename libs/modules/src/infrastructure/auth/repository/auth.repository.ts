@@ -1,9 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull } from 'drizzle-orm';
 
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import {
   authSessions,
   consentItems,
+  jogakExecutions,
   jogakSchedules,
   jogaks,
   modarats,
@@ -34,6 +36,7 @@ import {
   purgePostDomain,
   withdrawalTargetPostIds,
 } from './query/accountDeletionPurge.query';
+import { lockUsers, lockWithdrawalGate } from '../../database/transactionLocks';
 
 @Injectable()
 export class AuthRepository implements AuthPersistencePort {
@@ -86,6 +89,10 @@ export class AuthRepository implements AuthPersistencePort {
 
   async normalizeNullRole(userId: number, role: RegistrationRole): Promise<AuthUser> {
     return this.db.transaction(async (tx) => {
+      const locked = await lockUsers(tx, [userId], 'update');
+      if (locked.length !== 1) {
+        throw new AuthPersistenceException('user disappeared while normalizing role');
+      }
       await tx
         .update(users)
         .set({ role, updatedAt: new Date() })
@@ -139,9 +146,13 @@ export class AuthRepository implements AuthPersistencePort {
 
   async createSession(userId: number, session: SessionDraft): Promise<void> {
     try {
-      await this.db.insert(authSessions).values({ ...session, userId });
+      await this.db.transaction(async (tx) => {
+        const locked = await lockUsers(tx, [userId]);
+        if (locked.length !== 1) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+        await tx.insert(authSessions).values({ ...session, userId });
+      });
     } catch (error: unknown) {
-      if (error instanceof AuthPersistenceException) {
+      if (error instanceof DomainException || error instanceof AuthPersistenceException) {
         throw error;
       }
       throw new AuthPersistenceException('Failed to create auth session', { cause: error });
@@ -149,22 +160,26 @@ export class AuthRepository implements AuthPersistencePort {
   }
 
   async rotateSession(input: SessionRotationCommand): Promise<boolean> {
-    const rows = await this.db
-      .update(authSessions)
-      .set({
-        refreshTokenHash: input.nextRefreshTokenHash,
-        expiresAt: input.nextExpiresAt,
-        updatedAt: input.now,
-      })
-      .where(
-        and(
-          eq(authSessions.id, input.sessionId),
-          eq(authSessions.refreshTokenHash, input.currentRefreshTokenHash),
-          gt(authSessions.expiresAt, input.now),
-        ),
-      )
-      .returning({ id: authSessions.id });
-    return rows.length === 1;
+    return this.db.transaction(async (tx) => {
+      await lockUsers(tx, [input.userId]);
+      const rows = await tx
+        .update(authSessions)
+        .set({
+          refreshTokenHash: input.nextRefreshTokenHash,
+          expiresAt: input.nextExpiresAt,
+          updatedAt: input.now,
+        })
+        .where(
+          and(
+            eq(authSessions.id, input.sessionId),
+            eq(authSessions.userId, input.userId),
+            eq(authSessions.refreshTokenHash, input.currentRefreshTokenHash),
+            gt(authSessions.expiresAt, input.now),
+          ),
+        )
+        .returning({ id: authSessions.id });
+      return rows.length === 1;
+    });
   }
 
   async isSessionActive(sessionId: string, userId: number): Promise<boolean> {
@@ -179,13 +194,17 @@ export class AuthRepository implements AuthPersistencePort {
   }
 
   async deleteSession(sessionId: string, userId: number): Promise<void> {
-    await this.db
-      .delete(authSessions)
-      .where(and(eq(authSessions.id, sessionId), eq(authSessions.userId, userId)));
+    await this.db.transaction(async (tx) => {
+      await lockUsers(tx, [userId]);
+      await tx
+        .delete(authSessions)
+        .where(and(eq(authSessions.id, sessionId), eq(authSessions.userId, userId)));
+    });
   }
 
   async deleteUser(userId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
+      await lockWithdrawalGate(tx);
       const [user] = await tx
         .select({ id: users.id })
         .from(users)
@@ -216,6 +235,7 @@ async function lockWithdrawalTree(tx: Pick<Database, 'select'>, userId: number):
     .select({ id: modarats.id })
     .from(modarats)
     .where(eq(modarats.userId, userId))
+    .orderBy(asc(modarats.id))
     .for('update');
 
   const ownedMogakIds = tx
@@ -226,6 +246,7 @@ async function lockWithdrawalTree(tx: Pick<Database, 'select'>, userId: number):
     .select({ id: mogaks.id })
     .from(mogaks)
     .where(inArray(mogaks.modaratId, ownedModaratIds))
+    .orderBy(asc(mogaks.id))
     .for('update');
 
   const ownedJogakIds = tx
@@ -236,17 +257,26 @@ async function lockWithdrawalTree(tx: Pick<Database, 'select'>, userId: number):
     .select({ id: jogaks.id })
     .from(jogaks)
     .where(inArray(jogaks.mogakId, ownedMogakIds))
+    .orderBy(asc(jogaks.id))
     .for('update');
   await tx
     .select({ id: jogakSchedules.id })
     .from(jogakSchedules)
     .where(inArray(jogakSchedules.jogakId, ownedJogakIds))
+    .orderBy(asc(jogakSchedules.id))
+    .for('update');
+  await tx
+    .select({ id: jogakExecutions.id })
+    .from(jogakExecutions)
+    .where(inArray(jogakExecutions.jogakId, ownedJogakIds))
+    .orderBy(asc(jogakExecutions.id))
     .for('update');
   const targetPostIds = withdrawalTargetPostIds(tx, userId);
   await tx
     .select({ id: posts.id })
     .from(posts)
     .where(inArray(posts.id, targetPostIds))
+    .orderBy(asc(posts.id))
     .for('update');
 }
 
@@ -266,13 +296,22 @@ function asUserRole(value: string | null): UserRole | null {
 }
 
 function isUniqueConstraint(error: unknown, ...constraints: readonly string[]): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    error.code === '23505' &&
-    'constraint' in error &&
-    typeof error.constraint === 'string' &&
-    constraints.includes(error.constraint)
-  );
+  const seen = new Set<object>();
+  let current: unknown = error;
+  while (isRecord(current) && !seen.has(current)) {
+    if (
+      current.code === '23505' &&
+      typeof current.constraint === 'string' &&
+      constraints.includes(current.constraint)
+    ) {
+      return true;
+    }
+    seen.add(current);
+    current = current.cause;
+  }
+  return false;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

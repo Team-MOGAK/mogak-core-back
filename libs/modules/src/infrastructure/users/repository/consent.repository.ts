@@ -17,6 +17,7 @@ import { DomainErrorCode, DomainException } from '@core/common/error/domainExcep
 import type { Database } from '../../database/database.provider';
 import { DATABASE } from '../../database/database.tokens';
 import { consentItems, userConsents, users } from '../../database/schema';
+import { lockUsers } from '../../database/transactionLocks';
 
 @Injectable()
 export class ConsentRepository implements ConsentRepositoryPort {
@@ -64,6 +65,14 @@ export class ConsentRepository implements ConsentRepositoryPort {
     now: Date,
   ): Promise<void> {
     await this.db.transaction(async (tx) => {
+      const locked = await lockUsers(tx, [userId]);
+      if (locked.length !== 1) {
+        this.logger.warn({
+          event: 'user_not_found_after_lock',
+          operation: 'upsert_user_consents',
+        });
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
       const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
       if (user === undefined) {
         this.logger.warn({
@@ -72,7 +81,9 @@ export class ConsentRepository implements ConsentRepositoryPort {
         });
         throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       }
-      for (const command of commands) {
+      for (const command of [...commands].sort(
+        (left, right) => left.consentItemId - right.consentItemId,
+      )) {
         await tx
           .insert(userConsents)
           .values({
@@ -129,6 +140,14 @@ export class ConsentRepository implements ConsentRepositoryPort {
       throw new UserPersistenceException('Marketing consent item is not active');
     }
     return this.db.transaction(async (tx) => {
+      const locked = await lockUsers(tx, [userId]);
+      if (locked.length !== 1) {
+        this.logger.warn({
+          event: 'user_not_found_after_lock',
+          operation: 'update_marketing_consents',
+        });
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
       const [user] = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId));
       if (user === undefined) {
         this.logger.warn({
@@ -137,7 +156,7 @@ export class ConsentRepository implements ConsentRepositoryPort {
         });
         throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       }
-      for (const item of items) {
+      for (const item of [...items].sort((left, right) => left.id - right.id)) {
         const agreed =
           item.code === 'MARKETING'
             ? command.marketingAgreed === true

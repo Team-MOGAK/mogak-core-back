@@ -10,11 +10,7 @@ describe('게시글 저장소', () => {
     const returning = testMock().mockResolvedValue([]);
     const values = testMock().mockReturnValue({ returning });
     const insert = testMock().mockReturnValue({ values });
-    const select = selectSequence([
-      [{ authorId: 2, hierarchyOwnerId: null }],
-      [{ authorId: 2, hierarchyOwnerId: null }],
-      [{ id: 2 }],
-    ]);
+    const select = selectSequence({ comment: [] });
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
       callback({ execute: testMock(), select, insert }),
     );
@@ -29,7 +25,7 @@ describe('게시글 저장소', () => {
     const returning = testMock().mockResolvedValue([{ id: 3 }]);
     const values = testMock().mockReturnValue({ returning });
     const insert = testMock().mockReturnValue({ values });
-    const select = selectSequence([[{ id: 2 }], [{ id: 2 }], []]);
+    const select = selectSequence({ comment: [] });
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
       callback({ execute: testMock(), select, insert }),
     );
@@ -41,7 +37,7 @@ describe('게시글 저장소', () => {
   });
 });
 
-function selectSequence(results: readonly unknown[]) {
+function selectSequence(input: { comment: readonly unknown[] }) {
   let index = 0;
   return testMock().mockImplementation(() => {
     const query = {
@@ -49,11 +45,25 @@ function selectSequence(results: readonly unknown[]) {
       leftJoin: testMock(),
       innerJoin: testMock(),
       where: testMock(),
+      orderBy: testMock(),
+      for: testMock(),
     };
     query.from.mockReturnValue(query);
     query.leftJoin.mockReturnValue(query);
     query.innerJoin.mockReturnValue(query);
-    query.where.mockImplementation(() => Promise.resolve(results[index++]));
+    query.orderBy.mockReturnValue(query);
+    const call = index++;
+    if (call === 1) {
+      query.where.mockReturnValue(query);
+      query.for.mockResolvedValue([{ id: 2 }]);
+    } else if (call === 2) {
+      query.where.mockReturnValue(query);
+      query.for.mockResolvedValue([{ id: 1 }]);
+    } else if (call === 4) {
+      query.where.mockResolvedValue(input.comment);
+    } else {
+      query.where.mockResolvedValue([{ id: 1, authorId: 2, hierarchyOwnerId: null }]);
+    }
     return query;
   });
 }

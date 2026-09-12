@@ -29,6 +29,21 @@ describe('사용자 저장소', () => {
     );
   });
 
+  it('Drizzle이 cause에 감싼 닉네임 고유성 위반도 DuplicateNicknameException으로 변환한다', async () => {
+    const duplicate = Object.assign(new Error('duplicate nickname'), {
+      code: '23505',
+      constraint: 'users_nickname_unique',
+    });
+    const wrapped = new Error('Failed query: UPDATE users', { cause: duplicate });
+    const repository = new UserRepository({
+      transaction: testMock().mockRejectedValue(wrapped),
+    } as unknown as Database);
+
+    await expect(repository.updateNickname(command)).rejects.toBeInstanceOf(
+      DuplicateNicknameException,
+    );
+  });
+
   it('회원 완료의 닉네임 고유성 위반을 DuplicateNicknameException으로 변환한다', async () => {
     const duplicate = Object.assign(new Error('duplicate nickname'), {
       code: '23505',
@@ -101,7 +116,10 @@ describe('사용자 저장소', () => {
     const set = testMock().mockReturnValue({ where });
     const update = testMock().mockReturnValue({ set });
     const selected = testMock().mockResolvedValue([]);
-    const selectWhere = testMock().mockReturnValue({ for: selected });
+    const selectWhere = testMock().mockReturnValue({
+      orderBy: testMock().mockReturnValue({ for: selected }),
+      for: selected,
+    });
     const selectFrom = testMock().mockReturnValue({ where: selectWhere });
     const select = testMock().mockReturnValue({ from: selectFrom });
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
@@ -133,7 +151,10 @@ describe('사용자 저장소', () => {
     const selected = testMock().mockResolvedValue([
       { id: 7, nickname: '선착순닉네임', role: 'USER' },
     ]);
-    const selectWhere = testMock().mockReturnValue({ for: selected });
+    const selectWhere = testMock().mockReturnValue({
+      orderBy: testMock().mockReturnValue({ for: selected }),
+      for: selected,
+    });
     const selectFrom = testMock().mockReturnValue({ where: selectWhere });
     const select = testMock().mockReturnValue({ from: selectFrom });
     const insertValues = testMock().mockResolvedValue(undefined);
@@ -177,7 +198,10 @@ describe('사용자 저장소', () => {
     const selected = testMock().mockResolvedValue([
       { id: 7, nickname: '선착순닉네임', role: 'USER' },
     ]);
-    const selectWhere = testMock().mockReturnValue({ for: selected });
+    const selectWhere = testMock().mockReturnValue({
+      orderBy: testMock().mockReturnValue({ for: selected }),
+      for: selected,
+    });
     const selectFrom = testMock().mockReturnValue({ where: selectWhere });
     const select = testMock().mockReturnValue({ from: selectFrom });
     const deleteReturning = testMock().mockResolvedValue([]);
@@ -213,8 +237,19 @@ describe('사용자 저장소', () => {
     const remove = testMock().mockReturnValue({ where: deleteWhere });
     const insertValues = testMock().mockResolvedValue(undefined);
     const insert = testMock().mockReturnValue({ values: insertValues });
+    const lockFor = testMock().mockResolvedValue([{ id: 7 }]);
+    const lockQuery = {
+      from: testMock(),
+      where: testMock(),
+      orderBy: testMock(),
+      for: lockFor,
+    };
+    lockQuery.from.mockReturnValue(lockQuery);
+    lockQuery.where.mockReturnValue(lockQuery);
+    lockQuery.orderBy.mockReturnValue(lockQuery);
+    const select = testMock().mockReturnValue(lockQuery);
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
-      callback({ insert, delete: remove }),
+      callback({ insert, delete: remove, select }),
     );
     const repository = new UserRepository({ transaction } as unknown as Database);
 

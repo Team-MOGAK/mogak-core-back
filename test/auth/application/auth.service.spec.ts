@@ -154,6 +154,7 @@ describe('인증 서비스', () => {
       refreshToken: 'refresh-token',
     });
     expect(persistence.rotateSession).toHaveBeenCalledWith({
+      userId: 3,
       sessionId: SESSION_ID,
       currentRefreshTokenHash: 'current-refresh-token-hash',
       nextRefreshTokenHash: 'refresh-token-hash',

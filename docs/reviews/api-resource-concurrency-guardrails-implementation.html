@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>API 자원·용량 보호 구현 제어 기록</title>
+  <style>
+    :root { --ink:#172337; --muted:#53657c; --line:#d8e1ec; --accent:#1d4ed8; --warn:#9a3412; --bg:#f5f7fb; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.7 system-ui,sans-serif; }
+    header, nav, main, footer { max-width:1080px; margin:auto; padding:24px; }
+    header { padding-top:40px; }
+    h1 { line-height:1.25; font-size:32px; }
+    h2 { font-size:23px; margin-top:0; }
+    nav { display:flex; flex-wrap:wrap; gap:16px; padding-top:0; }
+    a { color:var(--accent); overflow-wrap:anywhere; }
+    section { background:#fff; border:1px solid var(--line); border-radius:12px; padding:24px; margin-bottom:20px; }
+    dl { display:grid; grid-template-columns:165px 1fr; gap:8px 18px; }
+    dt { font-weight:700; } dd { margin:0; }
+    table { width:100%; border-collapse:collapse; }
+    caption { text-align:left; font-weight:700; margin-bottom:8px; }
+    th, td { padding:11px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { background:#f0f4fa; }
+    .state { color:#086b45; font-weight:700; }
+    .pending { color:var(--warn); font-weight:700; }
+    figure { margin:18px 0; padding:16px; border:1px solid var(--line); border-radius:8px; background:#f8fafc; }
+    pre { white-space:pre-wrap; overflow:auto; margin:0; background:#eef3f9; padding:14px; }
+    aside { border-left:5px solid var(--warn); background:#fff2ef; padding:16px; }
+    .control-slide[hidden] { display:none; }
+    .question-result[hidden] { display:none; }
+    .question-result { background:#f0f5ff; padding:12px; margin-top:12px; }
+    .slide-nav { display:flex; align-items:center; gap:12px; margin-top:16px; }
+    .slide-nav button { padding:8px 12px; }
+    @media(max-width:650px) { header, nav, main, footer { padding:16px; } section { padding:16px; } dl { grid-template-columns:1fr; } h1 { font-size:27px; } }
+  </style>
+</head>
+<body>
+<header>
+  <p>구현 제어 기록 · 승인된 설계 기준</p>
+  <h1>API 자원·용량 보호 구현 제어 기록</h1>
+  <dl>
+    <dt>기준선</dt><dd><a href="api-resource-concurrency-guardrails-design.html">API 자원·용량 보호 설계</a> · 2026-09-12 승인</dd>
+    <dt>목적 (purpose)</dt><dd>API가 요청당 자원과 도메인 용량 상한을 지키도록 구현하고 검증한다.</dd>
+    <dt>사용자 (audience)</dt><dd>MOGAK 백엔드 개발자와 운영 담당자</dd>
+    <dt>문제 (problem)</dt><dd>과대 날짜·페이지 요청, 요약 피드의 댓글 과조회, 동시 생성의 용량 우회, 날짜 refine 예외와 쓰기·탈퇴 교착</dd>
+    <dt>핵심 흐름 (core-flow)</dt><dd>요청 검증 → 서비스 재검증 → 사용자 참여자 잠금 → 필요한 부모·자식·post 잠금과 재검사 → 원자 DML → 응답</dd>
+    <dt>구현 상태</dt><dd><span class="state">구현 완료</span></dd>
+    <dt>리뷰 상태</dt><dd><span class="state">해결됨 · 재리뷰 통과</span></dd>
+    <dt>생성·갱신</dt><dd><time datetime="2026-09-12">2026-09-12 KST</time></dd>
+  </dl>
+</header>
+<nav aria-label="구현 제어 탐색"><a href="#baseline">기준선</a><a href="#implementation">현재 구현</a><a href="#issues">이슈</a><a href="#verification">검증</a><a href="#risks">잔여 위험</a><a href="#review">코드 리뷰</a><a href="#understanding">구현 이해 점검</a></nav>
+<main><article>
+  <section id="baseline">
+    <h2>승인된 범위와 불변식</h2>
+    <ul>
+      <li>날짜 범위 최대 366일, 피드·게시글 <code>size</code> 최대 100, offset 계산은 safe integer 범위다.</li>
+      <li>네트워크 요약 feed는 댓글 행을 조회하지 않는다.</li>
+      <li>같은 부모에 대한 동시 생성은 부모 행 잠금 뒤 용량을 재검사해 8개 상한을 넘지 않는다.</li>
+      <li>생성·삭제·탈퇴의 hierarchy mutation은 <code>modarat → mogak → jogak</code> 순서로 필요한 행만 잠근다.</li>
+      <li>모든 쓰기 transaction은 관련 사용자 행을 ID 오름차순으로 먼저 잠그고, 사용자 자체 수정은 처음부터 <code>FOR UPDATE</code>를 취득한다. 탈퇴 transaction은 advisory gate와 사용자 <code>FOR UPDATE</code>를 먼저 취득한다.</li>
+      <li>post·comment·like는 행위자·post author·현재 execution owner를 잠근 뒤 post를 잠근다. 같은 <code>(post,user)</code> toggle은 <code>FOR NO KEY UPDATE</code>로 직렬화한다.</li>
+      <li>malformed calendar date는 날짜 산술 전에 비예외 predicate로 거부해 HTTP 400/Z005로 수렴한다.</li>
+      <li>기존 페이지·cursor 이름과 성공·오류 envelope을 유지한다.</li>
+      <li>동일 provider·subject 로그인 경쟁은 PostgreSQL 오류가 <code>cause</code>로 감싸져도 exact identity 재조회로 수렴한다.</li>
+    </ul>
+  </section>
+  <section id="implementation">
+    <h2>현재 구현</h2>
+    <figure><figcaption>구현 후 실제 경계</figcaption><pre><code>요청: requestSchema의 pageNumberSchema/pageSizeSchema와 dateRangeQuerySchema가 size 100, safe offset, 날짜 366일을 거부한다. 날짜 범위 refine은 isDateOnly를 먼저 검사해 2026-02-30에서도 예외를 던지지 않는다.
+서비스: PostService/SocialService/JogaksService가 저장소 호출 전에 페이지·offset·날짜를 다시 검사한다.
+조회: SocialService.toFeed(summary=true)는 이미지 projection만 조회하고 댓글 행을 생략한다.
+저장: transactionLocks가 사용자 ID 오름차순, modarat → mogak → jogak, post 순서를 공통 primitive로 제공한다. Mogak/Post/Social/User/Consent/Auth/AuthSessions writer와 탈퇴 purge가 이 규약을 사용한다.
+게시글: post·comment·like는 참여 사용자 잠금 후 부모 post 잠금을 취득하고, 삭제 뒤에는 정확한 not-found 결과를 반환한다. toggle은 같은 글 안에서 실제 호출 순서의 parity를 보존한다.
+탈퇴: transaction-scoped advisory gate로 탈퇴끼리만 직렬화하고, 관련 사용자와 삭제 대상 hierarchy/post를 잠근 뒤 children·관계·계정을 한 transaction에서 purge한다. 레거시 execution 연결 게시글 삭제 정책은 유지한다.
+인증: AuthRepository가 Drizzle Error.cause 안의 PostgreSQL unique constraint도 분류해 exact social identity fallback으로 전달하고, 세션 생성·회전도 탈퇴와 사용자 잠금으로 조정한다.
+검증: 공통/요청/서비스 단위 테스트, 전체 Jest 회귀, auth/user/consent/post/social/mogak 양방향 PostgreSQL 경합 테스트를 통과했다.</code></pre></figure>
+    <dl>
+      <dt>영향 파일</dt><dd>request schema·날짜 VO, <code>libs/core/src/core/common/resourceLimits.ts</code>, <code>libs/modules/src/infrastructure/database/transactionLocks.ts</code>, Mogak/Post/Social/User/Consent/Auth/AuthSessions repository와 purge query, 관련 core port·service·단위·DB 통합 테스트</dd>
+      <dt>설계 delta</dt><dd>승인된 G5-A에 따라 관련 사용자만 대기시키고 탈퇴끼리 advisory gate로 직렬화했다. D1-A·D2-A의 부모→자식 잠금과 cross-write/withdrawal 양방향 검증을 적용했으며 자동 <code>40P01</code> 재시도와 외부 응답 계약 변경은 포함하지 않았다.</dd>
+      <dt>구현 제어 상태</dt><dd><span class="pending">운영 제어 보류</span> · 정적·단위·PostgreSQL 기술 검증 완료, 운영 이해 점검 결과는 아직 기록되지 않음</dd>
+      <dt>구현 이해 상태</dt><dd class="pending">미실시 · 아래 질문은 운영 인수인계용</dd>
+    </dl>
+  </section>
+  <section id="issues">
+    <h2>이슈 레지스터</h2>
+    <table><caption>구현 이슈와 상태</caption><thead><tr><th scope="col">ID·상태</th><th scope="col">증상·원인</th><th scope="col">조치·검증</th><th scope="col">잔여 위험</th></tr></thead><tbody>
+      <tr><td>RG-001 · 해결</td><td>누락된 <code>pageSizeSchema</code>·<code>MAX_PAGE_SIZE</code>로 typecheck와 일부 Jest suite가 로딩 실패</td><td><code>resourceLimits.ts</code>와 공통 schema를 추가하고 <code>pnpm typecheck</code>, 전체 Jest 59개 suite를 통과</td><td>없음</td></tr>
+      <tr><td>RG-002 · 해결</td><td>개수 확인과 insert가 분리돼 동시 생성이 8개 상한을 넘을 수 있음</td><td>부모 row <code>FOR UPDATE</code> + transaction 내부 재검사와 동시성 회귀 테스트를 추가하고 PostgreSQL에서 통과</td><td>운영 환경의 lock 대기 시간은 별도 관측 필요</td></tr>
+      <tr><td>RG-003 · 해결</td><td>요약 feed가 댓글 본문 전체를 조회함</td><td><code>summary</code> 경로에서 댓글 조회를 생략하고 mock 호출 부재를 검증</td><td>피드 이미지·게시글 projection 비용은 유지</td></tr>
+      <tr><td>RG-004 · 해결</td><td>Drizzle가 감싼 PostgreSQL unique 오류를 top-level만 검사해 동일 소셜 identity 로그인 fallback이 500으로 끝남</td><td><code>AuthRepository</code>가 <code>cause</code> chain의 허용 constraint를 분류하고 auth unit·PostgreSQL 동시 로그인 테스트로 검증</td><td>허용하지 않은 unique 오류는 기존 persistence 오류로 유지</td></tr>
+      <tr><td>RG-005 · 해결</td><td>joined bare <code>FOR UPDATE</code>가 부모·자식 잠금을 planner 순서에 맡겨 생성과 상위 삭제·탈퇴 교차 실행에서 <code>40P01</code> 교착 가능성을 남김</td><td><code>lockMogakHierarchy</code>/<code>lockJogakHierarchy</code>와 삭제 tree의 명시적 부모→자식 잠금으로 정렬하고 교차 PostgreSQL integration test를 추가</td><td>운영 lock wait 시간과 timeout 관측은 별도 운영 게이트</td></tr>
+      <tr><td>RG-006 · 해결</td><td><code>2026-02-30</code> 같은 날짜가 refine 내부의 날짜 산술에서 <code>RangeError</code>를 던져 500으로 빠질 수 있음</td><td><code>isDateOnly</code>를 날짜 범위 산술보다 먼저 적용하고 schema·controller 회귀에서 safeParse 비예외와 400/Z005를 확인</td><td>다른 날짜 parser를 새로 도입할 때 같은 predicate 경계를 유지해야 함</td></tr>
+      <tr><td>RG-007 · 해결</td><td>post·comment·like FK writer가 탈퇴의 users/hierarchy 잠금과 다른 순서로 실행돼 <code>40P01</code> 또는 FK 오류가 날 수 있음</td><td>공통 user participant lock, post lock, withdrawal advisory gate/purge lock을 적용하고 post/social 양방향 경합에서 정확한 not-found·최종 삭제를 확인</td><td>규약을 우회하는 raw SQL writer는 별도 적용 전까지 보호되지 않음</td></tr>
+      <tr><td>RG-008 · 해결</td><td>경합 테스트가 <code>40P01</code>만 금지해 임의 SQL/runtime 오류를 성공으로 오인할 수 있음</td><td>mogak/post/auth/user/consent/social outcome을 fulfilled 값 또는 명시적 Domain/Persistence 오류로 구분하고 계정·관계·자원 최종 상태를 단언</td><td>테스트 DB와 운영 DB 설정 차이는 별도 게이트</td></tr>
+    </tbody></table>
+  </section>
+  <section id="verification">
+    <h2>검증 증거와 공백</h2>
+    <table><caption>명령별 결과</caption><thead><tr><th scope="col">명령·검사</th><th scope="col">결과</th><th scope="col">증거</th></tr></thead><tbody>
+      <tr><td><code>pnpm format:check</code></td><td class="state">통과</td><td>All matched files use Prettier code style</td></tr>
+      <tr><td><code>pnpm lint</code></td><td class="state">통과</td><td>ESLint exit code 0</td></tr>
+      <tr><td><code>pnpm typecheck</code></td><td class="state">통과</td><td>tsc --noEmit exit code 0</td></tr>
+      <tr><td><code>pnpm test --runInBand</code></td><td class="state">통과</td><td>59 suites, 280 tests passed</td></tr>
+      <tr><td><code>pnpm test:integration --runInBand test/database/mogaks.integration.spec.ts</code></td><td class="state">통과</td><td>Compose PostgreSQL에서 1 suite, 13 tests passed. create/delete·create/withdrawal 교차 잠금 테스트 포함</td></tr>
+      <tr><td><code>pnpm test:integration --runInBand</code></td><td class="state">통과</td><td>전용 PostgreSQL에서 5 suites, 47 tests passed. auth/user/consent/post/social/mogak 양방향 경합·상호 탈퇴와 최종 상태 단언 포함</td></tr>
+      <tr><td><code>pnpm build</code></td><td class="state">통과</td><td>webpack compiled successfully</td></tr>
+      <tr><td><code>git diff --check</code></td><td class="state">통과</td><td>변경 파일 공백·patch 오류 없음</td></tr>
+      <tr><td><code>pnpm db:migrate</code> (test DB)</td><td class="pending">환경 공백</td><td>기존 컨테이너에 Drizzle journal이 없어 초기 테이블 충돌로 중단; 통합 검증은 전용 DB 제약을 읽기 전용 확인 후 필요한 테스트 제약만 정렬해 수행</td></tr>
+    </tbody></table>
+  </section>
+  <aside id="risks"><h2>잔여 위험</h2><p>운영 DB의 lock 대기·transaction duration·pool 대기 관측과 migration journal이 없는 기존 설치의 정식 upgrade 절차는 별도 운영 게이트다. 애플리케이션 writer는 공통 규약을 따르지만 raw SQL이나 규약을 우회하는 새 writer는 자동으로 보호되지 않는다. 외부 storage가 재활성화되면 profile upload/delete와 탈퇴의 외부 효과를 별도 설계해야 한다.</p></aside>
+  <section id="review">
+    <h2>코드 리뷰</h2>
+    <dl>
+      <dt>리뷰 유형</dt><dd>자기 변경 리뷰</dd>
+      <dt>리뷰어</dt><dd>Codex</dd>
+      <dt>범위</dt><dd><code>main</code>의 <code>848f639</code> 기준 작업 트리 diff, 관련 호출 경로, 단위·통합 테스트와 PostgreSQL FK 잠금 상호작용</dd>
+      <dt>결과</dt><dd><span class="state">blocker 해소 · 재리뷰 통과</span></dd>
+    </dl>
+    <table><caption>리뷰 finding과 검증 공백</caption><thead><tr><th scope="col">ID·상태</th><th scope="col">근거</th><th scope="col">영향·처리</th></tr></thead><tbody>
+      <tr><td>RV-001 · non-blocking risk</td><td><code>pnpm db:migrate</code>는 기존 로컬 test DB에 Drizzle journal이 없어 초기 테이블 충돌로 중단됐다.</td><td>코드 동작 결함은 아니며, 깨끗한 DB에서 migration과 운영 upgrade 절차를 별도 검증해야 한다.</td></tr>
+      <tr><td>RV-002 · non-blocking risk</td><td>부모 행 <code>FOR UPDATE</code> 경합은 PostgreSQL 통합 테스트로 확인했지만 lock 대기 시간 관측은 없다.</td><td>기능 불변식은 검증됐고, 운영에서 lock wait 경보·타임아웃 기준을 추가한다.</td></tr>
+      <tr><td>RV-003 · 해결</td><td>조인에 지정한 bare <code>FOR UPDATE</code>는 부모·자식 행을 함께 잠근다. Jogak 생성의 조인 잠금과 상위 삭제·탈퇴의 부모→자식 잠금 순서가 달라 동시 실행에서 PostgreSQL 교착(<code>40P01</code>) 가능성이 있었다.</td><td><code>FOR UPDATE OF modarats</code>와 단일 테이블 자식 잠금으로 부모→자식 순서를 고정하고, create/delete·create/withdrawal 교차 경합을 PostgreSQL에서 검증했다.</td></tr>
+      <tr><td>RV-004 · 해결</td><td><code>dateRangeQuerySchema</code>가 invalid calendar date를 날짜 산술로 넘겨 <code>RangeError</code>를 던질 수 있었다.</td><td><code>isDateOnly</code> 선검사와 malformed date schema/controller 회귀를 추가해 safeParse는 비예외로 실패하고 HTTP는 400/Z005가 되도록 수정했다.</td></tr>
+      <tr><td>RV-005 · 해결</td><td>post·comment·like FK writer와 withdrawal이 users/hierarchy/post를 서로 다른 순서로 잠가 <code>40P01</code>을 재현했다.</td><td>참여 사용자 ID 정렬 잠금, post 잠금, withdrawal gate/tree를 공통 규약으로 적용하고 post·social 양방향 PostgreSQL 경합에서 40P01/23503 없이 정확한 실패와 최종 삭제를 검증했다.</td></tr>
+      <tr><td>RV-006 · 해결</td><td>기존 <code>expectNoDeadlock</code>가 임의 rejection을 허용했다.</td><td><code>expectHierarchyRaceOutcomes</code>와 post/auth/user/consent/social outcome 단언이 성공 값 또는 명시적 Domain/Persistence 결과만 허용하고 rollback·최종 상태를 확인한다.</td></tr>
+    </tbody></table>
+    <p><strong>리뷰 판단: blocker 해소.</strong> malformed date 경계, post write·withdrawal 잠금 순서, 경합 outcome 단언을 수정했고 전체 정적 게이트·Jest·전용 PostgreSQL 47개 테스트(상호 탈퇴 호출 순서 포함)를 통과했다. 운영 lock wait·migration 복구·규약 우회 writer는 별도 운영 게이트로 남긴다.</p>
+  </section>
+  <section id="understanding">
+    <h2>구현 이해 점검</h2>
+    <p class="pending">상태: 미실시. 아래 self-check는 브라우저 안에서만 동작하며 Codex로 결과를 전송하지 않는다. 기술 완료 여부와 별개로 운영 인수인계 때 실제 동작을 설명할 수 있는지 확인한다.</p>
+    <table><caption>구현 이해 커버리지</caption><thead><tr><th scope="col">축</th><th scope="col">질문 ID</th><th scope="col">비고</th></tr></thead><tbody>
+      <tr><th scope="row">목표·범위/결정</th><td>IC-1</td><td>부모→자식 잠금 순서와 <code>40P01</code> 처리</td></tr>
+      <tr><th scope="row">용량 불변식·경계</th><td>IC-2</td><td>잠금 뒤 재검사와 상한 오류</td></tr>
+      <tr><th scope="row">요청 비용·조회</th><td>IC-3</td><td>DB 전 입력 거부와 summary 댓글 조회 생략</td></tr>
+      <tr><th scope="row">장애·관측·검증</th><td>IC-4</td><td>lock wait/migration 공백의 첫 진단과 다음 조치</td></tr>
+      <tr><th scope="row">권한·외부 효과</th><td>면제</td><td>이번 변경은 기존 user ownership과 내부 PostgreSQL transaction만 사용하며 외부 시스템 호출이 없다.</td></tr>
+    </tbody></table>
+    <div id="understanding-slides">
+      <fieldset class="control-slide" data-id="IC-1" data-answer="b">
+        <legend>IC-1 · createJogak과 deleteOwnedMogak이 겹칠 때 기준 잠금 순서는?</legend>
+        <label><input type="radio" name="ic1" value="a"> query planner가 고른 순서를 따르고 충돌은 재시도한다.</label><br>
+        <label><input type="radio" name="ic1" value="b"> modarat을 먼저 잠근 뒤 mogak, 필요하면 jogak을 잠근다.</label><br>
+        <label><input type="radio" name="ic1" value="c"> 생성은 jogak부터, 삭제는 modarat부터 잠근다.</label>
+        <div><button type="button" data-submit>제출</button></div>
+        <div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div>
+      </fieldset>
+      <fieldset class="control-slide" data-id="IC-2" data-answer="c" hidden>
+        <legend>IC-2 · 현재 조각이 7개일 때 두 생성 요청이 동시에 통과하면?</legend>
+        <label><input type="radio" name="ic2" value="a"> 두 요청 모두 7개를 보고 9개를 저장한다.</label><br>
+        <label><input type="radio" name="ic2" value="b"> 두 요청 모두 성공하되 초과분은 나중에 정리한다.</label><br>
+        <label><input type="radio" name="ic2" value="c"> 한 요청만 8번째를 저장하고 다른 요청은 <code>MAX_MOGAKS</code>가 된다.</label>
+        <div><button type="button" data-submit>제출</button></div>
+        <div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div>
+      </fieldset>
+      <fieldset class="control-slide" data-id="IC-3" data-answer="a" hidden>
+        <legend>IC-3 · size 101 또는 367일 날짜 범위 요청의 첫 방어선은?</legend>
+        <label><input type="radio" name="ic3" value="a"> request schema와 service 경계에서 DB 호출 전에 거부한다.</label><br>
+        <label><input type="radio" name="ic3" value="b"> repository가 전체 결과를 만든 뒤 응답 크기만 줄인다.</label><br>
+        <label><input type="radio" name="ic3" value="c"> 운영 DB timeout을 기다린 뒤 persistence error로 바꾼다.</label>
+        <div><button type="button" data-submit>제출</button></div>
+        <div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div>
+      </fieldset>
+      <fieldset class="control-slide" data-id="IC-4" data-answer="b" hidden>
+        <legend>운영에서 lock wait 증가와 migration journal 공백이 함께 보이면 첫 조치는?</legend>
+        <label><input type="radio" name="ic4" value="a"> 모든 <code>40P01</code>을 무조건 재시도하고 migration을 바로 재실행한다.</label><br>
+        <label><input type="radio" name="ic4" value="b"> lock wait/transaction 상태를 관측하고, journal 없는 DB는 별도 upgrade 절차로 검증한다.</label><br>
+        <label><input type="radio" name="ic4" value="c"> 애플리케이션 오류를 무시하고 운영 DB를 초기화한다.</label>
+        <div><button type="button" data-submit>제출</button></div>
+        <div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div>
+      </fieldset>
+    </div>
+    <div class="slide-nav" aria-label="구현 이해 점검 이동">
+      <button type="button" data-prev disabled>이전</button>
+      <span><span data-position>1</span> / <span data-total>4</span> · 답변 <span data-answered>0</span>/4</span>
+      <button type="button" data-next>다음</button>
+    </div>
+    <output id="understanding-output" aria-live="polite">아직 제출된 답변이 없습니다.</output>
+  </section>
+</article></main>
+<footer>기술 구현 완료 상태는 정적 게이트, 전체 Jest, 전용 PostgreSQL 통합 증거를 반영했다. 운영 이해 점검은 별도 인수인계 절차이며, 운영 DB migration은 승인된 maintenance window에서 실행한다.</footer>
+<script>
+  const slides = [...document.querySelectorAll('.control-slide')];
+  const prev = document.querySelector('[data-prev]');
+  const next = document.querySelector('[data-next]');
+  const position = document.querySelector('[data-position]');
+  const total = document.querySelector('[data-total]');
+  const answered = document.querySelector('[data-answered]');
+  const output = document.querySelector('#understanding-output');
+  let current = 0;
+
+  total.textContent = String(slides.length);
+  function render() {
+    slides.forEach((slide, index) => { slide.hidden = index !== current; });
+    position.textContent = String(current + 1);
+    answered.textContent = String(slides.filter((slide) => slide.querySelector('input:checked')).length);
+    prev.disabled = current === 0;
+    next.disabled = current === slides.length - 1;
+  }
+
+  slides.forEach((slide) => {
+    slide.querySelector('[data-submit]').addEventListener('click', () => {
+      const chosen = slide.querySelector('input:checked')?.value;
+      const result = slide.querySelector('.question-result');
+      result.hidden = false;
+      if (chosen === slide.dataset.answer) {
+        result.querySelector('[data-status]').textContent = '상태: 확립';
+        result.querySelector('[data-explanation]').textContent = slide.dataset.id === 'IC-1'
+          ? '부모→자식 순서를 공유하면 create/delete 경로가 서로 다른 row-lock 순서를 만들지 않는다.'
+          : slide.dataset.id === 'IC-2'
+            ? '부모 잠금 뒤 transaction 안에서 다시 세므로 한 요청만 상한을 통과한다.'
+            : slide.dataset.id === 'IC-3'
+              ? '입력 상한을 DB 전에 검사해 배열 생성과 과대 조회 비용을 시작하지 않는다.'
+              : 'lock wait는 운영 증거로 확인하고 journal 없는 DB는 별도 유지보수 경로로 다룬다.';
+        result.querySelector('[data-next-action]').textContent = '다음: 실제 장애 시 이 경계를 로그·DB 상태와 대조한다.';
+        output.value = `${slide.dataset.id} 답변이 구현과 일치합니다. 이 결과는 배포 승인이 아닙니다.`;
+      } else {
+        result.querySelector('[data-status]').textContent = '상태: 보류';
+        result.querySelector('[data-explanation]').textContent = '현재 구현 제어 기록의 잠금·용량·입력·운영 경계를 다시 확인한다.';
+        result.querySelector('[data-next-action]').textContent = '다음: 해당 코드 경계와 검증 명령을 다시 읽는다.';
+        output.value = `${slide.dataset.id} 답변을 다시 확인하세요. 이 결과는 배포 승인이 아닙니다.`;
+      }
+      render();
+    });
+  });
+  prev.addEventListener('click', () => { current -= 1; render(); });
+  next.addEventListener('click', () => { current += 1; render(); });
+  render();
+</script>
+</body>
+</html>

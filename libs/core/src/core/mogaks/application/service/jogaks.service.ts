@@ -59,20 +59,23 @@ export class JogaksService implements OwnedOccurrencePort {
 
   async create(userId: number, input: CreateJogakCommand) {
     const schedule = validateSchedule(input.schedule);
+    const today = this.today();
     const mogak = await this.repository.findOwnedMogak(userId, input.mogakId);
     if (mogak === null) throw new DomainException(DomainErrorCode.MOGAK_NOT_FOUND);
     if (
       !validateJogakCapacity(
-        await this.repository.countJogaksWithCurrentOrFutureSchedule(input.mogakId, this.today()),
+        await this.repository.countJogaksWithCurrentOrFutureSchedule(input.mogakId, today),
       )
     ) {
       throw new DomainException(DomainErrorCode.MAX_MOGAKS);
     }
 
     const created = await this.repository.createJogakWithSchedule({
+      userId,
       mogak,
       title: requiredTrimmed(input.title),
       schedule,
+      today,
     });
     return {
       jogakId: created.jogakId,

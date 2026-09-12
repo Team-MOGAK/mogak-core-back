@@ -8,9 +8,16 @@ import { MogakRepository } from '@infra/mogaks/repository/mogak.repository';
 
 describe('모각 저장소', () => {
   it('잠금 뒤 사용자가 없으면 모다랫을 삽입하지 않고 전용 예외를 던진다', async () => {
-    const where = testMock().mockResolvedValue([]);
-    const from = testMock().mockReturnValue({ where });
-    const select = testMock().mockReturnValue({ from });
+    const lockQuery = {
+      from: testMock(),
+      where: testMock(),
+      orderBy: testMock(),
+      for: testMock().mockResolvedValue([]),
+    };
+    lockQuery.from.mockReturnValue(lockQuery);
+    lockQuery.where.mockReturnValue(lockQuery);
+    lockQuery.orderBy.mockReturnValue(lockQuery);
+    const select = testMock().mockReturnValue(lockQuery);
     const insert = testMock();
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
       callback({ select, insert }),
@@ -31,9 +38,20 @@ describe('모각 저장소', () => {
     const returning = testMock().mockResolvedValue([]);
     const values = testMock().mockReturnValue({ returning });
     const insert = testMock().mockReturnValue({ values });
-    const where = testMock().mockResolvedValue([{ id: 7 }]);
-    const from = testMock().mockReturnValue({ where });
-    const select = testMock().mockReturnValue({ from });
+    const lockQuery = {
+      from: testMock(),
+      where: testMock(),
+      orderBy: testMock(),
+      for: testMock().mockResolvedValue([{ id: 7 }]),
+    };
+    lockQuery.from.mockReturnValue(lockQuery);
+    lockQuery.where.mockReturnValue(lockQuery);
+    lockQuery.orderBy.mockReturnValue(lockQuery);
+    const userWhere = testMock().mockResolvedValue([{ id: 7 }]);
+    const userQuery = { from: testMock().mockReturnValue({ where: userWhere }) };
+    const select = testMock()
+      .mockImplementationOnce(() => lockQuery)
+      .mockImplementationOnce(() => userQuery);
     const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
       callback({ execute: testMock(), select, insert }),
     );
