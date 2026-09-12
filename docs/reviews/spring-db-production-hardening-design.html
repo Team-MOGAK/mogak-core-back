@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spring 운영 DB 배포 안정화 설계</title>
+  <style>
+    :root { --ink:#172337; --muted:#53657c; --line:#d8e1ec; --accent:#1d4ed8; --warn:#9a3412; --bg:#f5f7fb; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.7 system-ui,sans-serif; }
+    header,nav,main,footer { max-width:1120px; margin:auto; padding:24px; } header { padding-top:42px; }
+    h1 { line-height:1.25; font-size:32px; } h2 { font-size:23px; margin-top:0; } h3 { font-size:19px; }
+    nav { display:flex; flex-wrap:wrap; gap:18px; padding-top:0; } a { color:var(--accent); overflow-wrap:anywhere; }
+    section { background:#fff; border:1px solid var(--line); border-radius:12px; padding:24px; margin-bottom:20px; }
+    dl { display:grid; grid-template-columns:145px 1fr; gap:8px 18px; } dt { font-weight:700; } dd { margin:0; }
+    table { width:100%; border-collapse:collapse; } caption { text-align:left; font-weight:700; margin-bottom:8px; }
+    th,td { padding:12px; border:1px solid var(--line); text-align:left; vertical-align:top; } th { background:#f0f4fa; }
+    .state { font-weight:700; color:var(--warn); } .callout { border-left:5px solid var(--warn); background:#fff2ef; padding:18px; }
+    figure { margin:18px 0; padding:16px; border:1px solid var(--line); border-radius:8px; background:#f8fafc; }
+    pre { white-space:pre-wrap; overflow:auto; margin:0; background:#eef3f9; padding:14px; } code { overflow-wrap:anywhere; }
+    fieldset { margin:18px 0; border:1px solid var(--line); border-radius:8px; padding:16px; } legend { font-weight:700; }
+    .question-result[hidden] { display:none; } .question-result { background:#f0f5ff; padding:12px; margin-top:12px; }
+    .grilling { border-left:5px solid #7c3aed; background:#faf5ff; padding:18px; } .decision { border-top:1px solid var(--line); padding:16px 0; } .decision:first-of-type { border-top:0; }
+    .muted { color:var(--muted); } .table-wrap { overflow:auto; } button { padding:8px 12px; }
+    @media(max-width:650px) { header,nav,main,footer {padding:16px;} section{padding:16px;} dl{grid-template-columns:1fr;} dd{margin-bottom:12px;} h1{font-size:27px;} }
+  </style>
+</head>
+<body>
+<header>
+  <p class="muted">설계 의사결정 기준선 · High-risk · G14 구현 완료 · 운영 제어 보류</p>
+  <h1>Spring 운영 DB 배포 안정화 설계</h1>
+  <p class="callout"><strong>현재 상태: G10/G13-A와 G14-A 구현 완료; 운영 제어 보류.</strong> 기존 Spring 운영 DB에 Nest API를 연결할 때 확인된 데이터 손실·프로세스 종료·자원 고갈·동시성·로그 개인정보 위험과 중첩된 PostgreSQL 오류 매핑 문제를 한 기준선으로 관리한다. Multer 전이 취약점은 상위 Nest 버전만으로 해소되지 않아 루트 override, 업로드 인덱스 상한과 안전한 400 매핑을 적용했고, audit·전체 회귀·이미지 빌드까지 통과했다. migration·세션 정책·readiness·Cloud Run CD는 계속 별도 작업으로 보류한다.</p>
+  <dl>
+    <dt>목적 (purpose)</dt><dd>기존 Spring 운영 DB를 사용하는 Nest API 배포가 데이터 의미를 보존하고, 예상 가능한 장애·남용·인증 오설정을 안전하게 거부하도록 만든다.</dd>
+    <dt>사용자 (audience)</dt><dd>MOGAK 백엔드 개발자, 운영 배포 담당자, 장애 대응 담당자</dd>
+    <dt>문제 (problem)</dt><dd>반복 요일 백필 손실, 끊긴 DB 연결에 의한 프로세스 종료, 무제한 날짜·페이지 조회, 최초 소셜 로그인 경쟁 실패, DB 오류 로그의 원문 노출, 약한 JWT·세션 누적, 운영 의존성 보안 권고</dd>
+    <dt>핵심 흐름 (core-flow)</dt><dd>운영 DB 사전검사 → 안전한 레거시 백필/복구 → API 기동 검증 → 인증·조회·DB 장애 경계 → 관측·복구 증거 확인</dd>
+    <dt>범위</dt><dd>기존 승인: 중첩 PostgreSQL unique 오류 매핑, JWT secret 최소 길이 검증, PostgreSQL Pool error/timeout 보호, DB 오류 로그 정제, 운영 의존성 잠금 파일 갱신 및 관련 테스트·문서 · G14-A 확정: Multer 전이 취약점 패치와 multipart 인덱스 상한</dd>
+    <dt>비범위</dt><dd>새 이미지 저장소 구현, Spring 원본 데이터 정정, 실제 운영 DB에 직접 실행, Cloud Run·WAF 설정 변경, API의 unrelated contract 변경</dd>
+    <dt>생성·갱신</dt><dd><time datetime="2026-09-07">2026-09-07 KST</time></dd>
+    <dt>상태</dt><dd><span class="state">G14-A 구현 완료 · 운영 제어 보류</span></dd>
+  </dl>
+</header>
+<nav aria-label="설계 탐색"><a href="#evidence">근거</a><a href="#model">시스템 모델</a><a href="#decisions">의사결정</a><a href="#invariants">불변식</a><a href="#failure">실패·복구</a><a href="#verification">검증</a><a href="#grilling-state">설계 질문 상태</a><a href="#design-control-state">이해 점검</a><a href="#approval">승인</a></nav>
+<main><article>
+<section id="evidence">
+  <h2>확인된 근거</h2>
+  <ul>
+    <li>고정 의존성 설치 후 <code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>, <code>pnpm build</code>, 비DB Jest 274개는 통과했다.</li>
+    <li>별도 PostgreSQL 17에서 DB 통합 24개 중 23개 통과, 동일 소셜 identity 동시 로그인 1개 실패.</li>
+    <li>레거시 SQL의 현재 백필 문장을 합성 표본에 실행해 월·수 원본이 월요일 하나로 축소됨을 확인했다.</li>
+    <li>성공 조회 뒤 해당 API Pool의 idle backend를 종료하자 <code>Unhandled 'error' event</code>와 프로세스 exit 1이 발생했다.</li>
+    <li><code>0001-01-01 … 9999-12-31</code> 날짜 범위와 <code>size=1000000000</code>이 요청 검증을 통과했다. 1,000년 배열 생성은 약 219ms의 동기 작업이었다.</li>
+    <li>합성 DB 오류 파라미터가 현재 예외 로그의 message/stack에 남는 것을 확인했다. 1글자 JWT secret도 발급·검증됐다.</li>
+    <li>빈 PostgreSQL에서 신규 <code>pnpm db:migrate</code>가 <code>0004</code>의 <code>follow</code> 테이블 참조로 실패했고, 프로덕션 의존성 감사에서 <code>qs 6.15.3</code> moderate 권고 2건이 확인됐다.</li>
+    <li><code>pnpm audit --prod</code>가 <code>@nestjs/platform-express@11.1.28 → multer@2.2.0</code> 경로에서 high 3건·low 1건으로 실패했다. 레지스트리 확인 결과 Nest 11 최신 11.2.3과 Nest 12.0.1도 <code>multer 2.2.0</code>을 exact dependency로 선언한다.</li>
+    <li>G14-A 구현 후 루트 override·lockfile은 <code>multer@2.3.0</code> 단일 트리를 가리키고, 두 이미지 업로드 정책은 <code>fieldArrayIndexLimit: 0</code>을 사용한다. <code>pnpm audit --prod</code>는 <code>No known vulnerabilities found</code>를 반환했고, 실제 과대 배열 인덱스 multipart 요청은 400으로 거부됐다.</li>
+</ul>
+</section>
+<section id="model">
+  <h2>시스템 모델과 경계</h2>
+  <figure><figcaption>배포·요청·장애 흐름</figcaption><pre>운영 Spring DB
+  ├─ read-only 사전검사 → 백업 확인 → 호환 DDL/백필 transaction → 집합 검증
+  └─ API Pool → query → repository → core service → HTTP response
+                         ├─ Pool error → 안전한 로그·연결 재획득 → 프로세스 생존
+                         ├─ 과대 date/page → 경계에서 400
+                         ├─ social UNIQUE 경쟁 → exact identity 재조회 → 세션 발급
+                         └─ DB exception → SQL/params 없는 allowlist 로그 → 일반 500</pre><p>운영 DB는 전환의 정본이며, 이미 Nest에서 편집된 일정과 원본이 충돌하면 자동 덮어쓰지 않는다. API의 liveness와 DB readiness는 별도 의미로 관측한다.</p></figure>
+  <ol><li>읽기 전용 카탈로그·데이터 사전검사를 통과시킨다.</li><li>백업·복구 지점을 확보하고, 호환 SQL을 작은 트랜잭션 단위로 실행한다.</li><li>API는 강한 환경값과 DB 연결 설정으로 기동하며 readiness smoke를 통과해야 트래픽을 받는다.</li><li>요청 경계에서 비용을 제한하고, 저장소는 실패·경쟁 조건을 의미 있는 결과로 복구한다.</li><li>로그·메트릭으로 남은 장애를 탐지하고 재현 가능한 rollback/runbook을 사용한다.</li></ol>
+</section>
+<section id="decisions">
+  <h2>설계 의사결정 초안</h2>
+  <p>아래 권고는 현재 증거에 기반한 제안이다. 선택지는 사용자가 결정하며, 답변이 들어오면 이 기준선에 결정과 이유를 기록한다.</p>
+  <div class="decision"><h3>G1 · 레거시 요일 원본과 충돌 처리</h3><p>현재 SQL은 시작일 요일을 추론한다. 문서와 Spring 관계 모델은 <code>jogak_period → period.days</code> 전체 집합을 정본으로 설명한다.</p><p><strong>권고 A:</strong> 원본 관계에서 <code>DISTINCT</code> 요일을 복사하고, 고아·잘못된 요일·빈 WEEKLY·기존 대상 충돌을 사전검사에서 발견하면 쓰기 전 중단한다. 이미 잘못 이관된 행은 별도 승인된 repair 모드로만 교체한다. 자동 덮어쓰기의 편의는 포기하지만 기존 Nest 편집 손실을 막는다.</p><p>대안 B는 원본으로 기존 대상까지 자동 덮어쓰는 방식이며, 빠르지만 의미 충돌과 데이터 손실을 복구하기 어렵다.</p></div>
+  <div class="decision"><h3>G2 · 날짜·페이지 비용 상한</h3><p>현재 API 계약은 양의 안전 정수와 날짜 형식만 검사한다.</p><p><strong>권고 A:</strong> 날짜 범위 최대 366일, 피드·게시글 <code>size</code> 최대 100, page/cursor 곱셈이 안전 정수 범위를 넘지 않도록 거부한다. 초과는 기존 validation error envelope으로 반환한다. 네트워크 요약은 댓글 행을 조회하지 않는다.</p><p>대안 B는 31일/50개로 더 강하게 제한하는 방식이며 메모리 보호는 좋지만 기존 달력·피드 사용 계약을 깨뜨릴 수 있다.</p></div>
+  <div class="decision"><h3>G3 · DB 장애와 readiness</h3><p>현재 Pool은 <code>error</code> 이벤트 처리기가 없고 <code>/health</code>는 DB를 조회하지 않는 상수 200이다.</p><p><strong>권고 A:</strong> Pool에 안전한 error handler와 연결·쿼리 대기 timeout을 설정하고, <code>GET /health/ready</code>는 가벼운 DB <code>SELECT 1</code> 성공에만 200, 실패는 503을 반환한다. 기존 <code>/health</code> 계약은 유지한다. readiness에 개인정보·DB 오류·인증을 노출하지 않는다.</p><p>대안 B는 Pool handler만 추가하고 readiness를 운영 probe에서 다루지 않는 방식이며 API 계약 변화는 적지만 health false positive가 남는다.</p></div>
+  <div class="decision"><h3>G4 · 세션 보존</h3><p>로그인마다 새 <code>auth_sessions</code> 행이 생기고 자연 만료 정리·사용자별 상한이 없다.</p><p><strong>권고 A:</strong> 세션 생성 transaction에서 만료 행을 정리하고, 사용자별 활성 세션을 10개로 제한해 가장 오래된 세션부터 폐기한다. <code>expires_at</code> 인덱스와 운영 cleanup 명령/주기를 추가한다. 이로써 무제한 누적을 막지만 오래된 기기 로그인이 종료될 수 있다.</p><p>대안 B는 cleanup과 인덱스만 두고 세션 상한을 두지 않는 방식이며 사용자 경험은 보존하지만 계정별 무제한 누적을 남긴다.</p></div>
+  <div class="decision"><h3>G5 · JWT secret 오설정</h3><p>README는 32자 이상을 요구하지만 런타임은 길이를 검사하지 않는다.</p><p><strong>권고 A:</strong> 유효 secret을 UTF-8 기준 최소 32바이트로 검증하고, 누락·짧은 값·개발용 fallback이면 기동을 실패시킨다. 기존 운영 secret이 조건을 충족하는지 배포 전 별도 확인한다. 경고만 남기고 기동하는 대안은 인증 위조 위험을 남기므로 권고하지 않는다.</p></div>
+  <div class="decision"><h3>G6 · 오류 로그 개인정보</h3><p>현재 Drizzle 오류의 message/stack에 SQL 파라미터가 들어갈 수 있다.</p><p><strong>권고 A:</strong> DB/쿼리 오류는 오류 종류와 SQLSTATE·constraint·table 같은 allowlist만 기록하고 raw message/stack/params는 기록하지 않는다. 일반 애플리케이션 오류도 입력 원문이 포함되지 않는 안전한 snapshot만 남긴다. 진단 상세는 운영 접근 제한 DB error metric으로 대체한다.</p></div>
+  <div class="decision"><h3>G7 · 동시 로그인 복구</h3><p>기존 설계는 exact provider identity 재조회 후 세션 발급을 승인했지만 현재 Drizzle wrapped cause를 놓친다.</p><p><strong>권고 A:</strong> <code>cause</code>까지 PostgreSQL unique constraint를 판별하고 한 번만 exact identity를 재조회한다. 찾으면 RESUME 세션, 못 찾으면 원래 persistence 오류를 유지한다. 이메일만 같은 계정은 연결하지 않는다.</p></div>
+  <div class="decision"><h3>G8 · 신규 DB 마이그레이션 경로</h3><p>빈 PostgreSQL에서 <code>0004_withdrawal_purge_indexes.sql</code>가 존재하지 않는 <code>follow</code> 테이블을 참조한다. 이번 대상은 이미 운영 중인 Spring DB다.</p><p><strong>권고 B:</strong> 이번 배포에서는 Spring 호환 경로만 고치고, 신규 DB 경로는 별도 마이그레이션 기준선 작업으로 분리한다. 적용 이력이 있는 파일을 함께 수정하지 않는다. 신규 설치·복구도 이번 릴리스의 지원 범위라면 <strong>권고 A</strong>로 전환해 후속 migration과 빈 DB 재구축 검증까지 포함한다.</p></div>
+  <div class="decision"><h3>G9 · 운영 의존성 보안 패치</h3><p>프로덕션 의존성 감사에서 <code>qs 6.15.3</code>의 moderate 권고 2건이 확인됐고 수정 버전은 <code>6.16.0</code>이다. 현재 Express의 simple parser 경로에서 악용 가능성은 확정되지 않았다.</p><p><strong>권고 A:</strong> 잠금 파일을 <code>qs &gt;=6.16.0</code>으로 갱신하고 audit·빌드·회귀 테스트를 다시 실행한다. 패치 후에도 실제 도달 경로가 없는지 확인한다. 대안 B는 현 버전을 유지하고 외부 WAF·모니터링으로만 완화하는 방식이며 취약 권고를 계속 남긴다.</p></div>
+  <div class="decision"><h3>G10 · 중첩 PostgreSQL unique 오류 매핑</h3><p><code>UserRepository</code>는 <code>23505/users_nickname_unique</code>를 오류 객체의 최상위에서만 확인한다. Drizzle이 PostgreSQL 오류를 <code>cause</code>에 감싸면 같은 사용자 입력 경쟁이 내부 오류로 노출될 수 있다.</p><p><strong>권고 A:</strong> 순환 참조를 막는 <code>cause</code> 순회로 허용된 constraint만 판별하고, 중복 닉네임은 기존 <code>DuplicateNicknameException</code> 계약으로 변환한다. 다른 unique 오류와 원인 미확인은 persistence 오류로 남긴다. 데이터베이스의 고유 제약은 계속 최종 방어선으로 둔다.</p></div>
+  <div class="decision"><h3>G11 · 배포 설정의 외부 효과 경계</h3><p>현재 Cloud Build YAML은 이미지 build/push만 수행하며 실제 서비스명·리전·service account·DB 네트워크는 저장소에 없다.</p><p><strong>권고 A:</strong> Cloud Build에 commit SHA/digest, 단일 migration Job, no-traffic revision, readiness smoke, traffic 전환을 parameter로 선언하되 필수 substitution이 없으면 즉시 실패하게 한다. 실제 GCP 리소스 생성·secret 연결·traffic 전환은 구현하지 않고 별도 운영 승인 단계로 남긴다. 대안 B는 저장소에 현재 값을 하드코딩하는 방식이며 잘못된 프로젝트나 서비스로 배포할 위험이 있다.</p></div>
+  <div class="decision"><h3>G12 · 레거시 요일 충돌 복구 경계</h3><p>대상에 이미 존재하는 일정이 원본 Spring 요일 집합과 다르면 자동으로 어떤 쪽이 최신인지 결정할 수 없다.</p><p><strong>권고 A:</strong> 기본 migration은 원본 관계의 전체 요일을 신규 대상에만 복사하고, 기존 대상 불일치·고아·잘못된 값은 보고 후 전체 rollback한다. 과거 오이관 복구는 백업·대상 ID·전후 집합 보고가 확인된 별도 명령으로 분리한다. 운영 DB에서 자동 덮어쓰기나 무조건 재실행은 금지한다.</p></div>
+  <div class="decision"><h3>G13 · 이번 릴리스의 최소 구현 범위</h3><p>전체 하드닝을 한 번에 구현하면 운영 DB와 Cloud Run 정책을 추측하게 되고, 검증 표면이 과도하게 넓어진다.</p><p><strong>선택 A:</strong> 중첩 unique 매핑, JWT 최소 길이, Pool error/timeout, DB 오류 로그 정제, <code>qs</code> 잠금 파일만 이번 변경으로 구현하고, migration·세션 보존·readiness·Cloud Run CD는 별도 승인된 작업으로 보류한다. 선택 B는 전체 하드닝을 한 번에 구현하는 방식이며 대상 환경 확인과 rollback 증거가 없는 상태에서 위험하다.</p></div>
+  <div class="decision"><h3>G14 · Multer 전이 취약점 처리</h3><p><code>@nestjs/platform-express@11.1.28</code>이 <code>multer 2.2.0</code>을 exact dependency로 고정한다. 현재 사용하는 Nest 11 최신 11.2.3과 Nest 12.0.1도 같은 버전을 선언하므로 Nest만 올리는 방식은 감사 blocker를 해소하지 않는다. 애플리케이션은 <code>FileInterceptor</code>/<code>FilesInterceptor</code>와 고정 필드 <code>multipartFile</code>만 사용하고, 배열 인덱스가 필요한 multipart 필드는 없다.</p><p><strong>결정 A · 사용자 선택 2026-09-12:</strong> 루트 <code>pnpm.overrides.multer</code>를 정확히 <code>2.3.0</code>으로 고정하고, 두 이미지 업로드 정책의 <code>limits.fieldArrayIndexLimit</code>을 <code>0</code>으로 설정한다. Multer 2.3.0의 네 감사 권고 수정과 배열 인덱스 상한을 함께 적용하고, 타입 호환용 로컬 limits 타입·업로드 정책 회귀 테스트·전체 audit/빌드/회귀 검증을 추가한다. 현재 Node 24 런타임은 Multer의 최소 Node 요구를 충족한다.</p><p>대안 B(보류)는 Nest가 패치 dependency를 제공할 때까지 2.2.0을 유지하거나 Nest 의존성을 포크하는 방식이며, high 3건·low 1건을 계속 남기거나 유지보수 부담을 만든다.</p></div>
+</section>
+<section id="invariants">
+  <h2>불변식</h2>
+  <div class="table-wrap"><table><caption>구현과 운영 검증이 반드시 지켜야 하는 조건</caption><thead><tr><th scope="col">영역</th><th scope="col">불변식</th><th scope="col">실패 시 결과</th></tr></thead><tbody>
+    <tr><th scope="row">데이터</th><td>원본 WEEKLY 요일 집합 = 대상 weekday 집합; ONCE는 weekday 0개</td><td>전체 transaction rollback, 대상 ID와 차이 보고</td></tr>
+    <tr><th scope="row">충돌</th><td>기존 대상과 원본이 다르면 자동 덮어쓰기 금지</td><td>기본 모드 중단, 승인된 repair만 실행</td></tr>
+    <tr><th scope="row">가용성</th><td>idle client error가 발생해도 Node 프로세스가 종료되지 않음</td><td>안전 로그·재연결, readiness는 실패 가능</td></tr>
+    <tr><th scope="row">비용</th><td>날짜 일수·page size·offset 계산이 서버 상한 내</td><td>DB 호출 전 validation error</td></tr>
+    <tr><th scope="row">인증</th><td>약한 JWT로 기동하지 않음; 세션은 활성·유효 기간·상한을 만족</td><td>기동 실패 또는 오래된 세션 폐기</td></tr>
+    <tr><th scope="row">경쟁</th><td>동일 provider+subject 동시 로그인은 한 사용자와 각 세션으로 수렴</td><td>exact identity 재조회; unrelated unique는 오류 유지</td></tr>
+    <tr><th scope="row">개인정보</th><td>SQL parameters, token, request body 원문이 예외 snapshot에 없음</td><td>allowlist 로그만 기록</td></tr>
+    <tr><th scope="row">업로드</th><td>multipart 런타임은 Multer 2.3.0 이상이고 배열 인덱스 상한은 이 API의 최소 요구값(0)</td><td>설치·감사·업로드 정책 테스트를 통과하지 못하면 릴리스 차단</td></tr>
+</tbody></table></div>
+</section>
+<section id="failure">
+  <h2>실패·복구와 운영 절차</h2>
+  <ol>
+    <li>배포 전 운영 DB read-only preflight에서 테이블/컬럼/제약/고아/요일 충돌을 출력한다. 하나라도 차이가 있으면 쓰기 단계를 실행하지 않는다.</li>
+    <li>백업 확인 후 호환 SQL을 실행하고, 커밋 전 요일 집합·행 수·제약을 다시 비교한다. 실패하면 전체 transaction을 rollback한다.</li>
+    <li>새 revision은 readiness DB probe와 인증·조회 smoke가 모두 성공한 뒤 트래픽에 연결한다. 기존 health는 liveness로만 사용한다.</li>
+    <li>Pool error, DB timeout, 5xx, 429, readiness 503, session cleanup 건수, migration 차이를 구조화 metric/log로 관측한다.</li>
+    <li>전환 후 요일 차이가 발견되면 원본·대상 집합을 보존한 별도 repair report를 만들고 승인된 ID만 원자적으로 복구한다. 원본을 직접 수정하거나 무조건 재실행하지 않는다.</li>
+</ol>
+  <aside class="callout"><strong>금지:</strong> 운영 DB에서 현재 SQL을 그대로 재실행하거나, 실제 운영 URL로 통합 테스트를 실행하거나, 충돌 행을 원본 기준으로 자동 삭제·덮어쓰기하지 않는다.</aside>
+</section>
+<section id="verification">
+  <h2>검증 계획</h2>
+  <table><caption>구현 후 수용 기준</caption><thead><tr><th scope="col">기준</th><th scope="col">검증 명령·증거</th></tr></thead><tbody>
+    <tr><td>설정 오류가 기동을 막는다.</td><td>JWT 누락/31바이트/fallback 테스트, 정상 secret 기동 smoke</td></tr>
+    <tr><td>Pool이 idle error 뒤 생존하고 readiness가 DB 상태를 반영한다.</td><td>격리 PostgreSQL에서 backend 종료 재현, <code>/health</code> 200·<code>/health/ready</code> 503/200 확인</td></tr>
+    <tr><td>과대 날짜·size·offset이 DB 호출 전에 거절된다.</td><td>request schema와 service 경계 테스트, 최대값·경계값·overflow 테스트</td></tr>
+    <tr><td>요일 집합이 손실 없이 이관되고 충돌은 rollback된다.</td><td>Spring 관계 표본(복수·단일·빈·고아·기존 충돌) 전후 집합 비교와 SQL dry-run</td></tr>
+    <tr><td>동일 소셜 identity 경쟁이 수렴한다.</td><td><code>pnpm test:integration --runInBand</code>의 PostgreSQL 동시 로그인 테스트</td></tr>
+    <tr><td>오류 로그에 원문 파라미터가 없다.</td><td>합성 sentinel을 넣은 Drizzle error의 실제 Pino JSON 검사</td></tr>
+    <tr><td>multipart 입력이 패치된 Multer와 인덱스 상한을 사용한다.</td><td><code>pnpm why multer</code>, <code>pnpm audit --prod</code>, 업로드 limits 회귀 테스트와 실제 interceptor 회귀</td></tr>
+    <tr><td>세션 누적이 제한된다.</td><td>만료 cleanup·10개 상한·expires_at index·동시 로그인 회귀 테스트</td></tr>
+    <tr><td>전체 품질 게이트가 통과한다.</td><td><code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>, <code>pnpm build</code>, <code>pnpm test --runInBand</code>, disposable DB integration, Docker runtime build</td></tr>
+  </tbody></table>
+  <p class="muted">운영 Spring DB 자체에 대한 최종 검증은 sanitized clone 또는 승인된 maintenance window에서만 실행한다. 실제 운영 secret·DB URL·Cloud Run 설정은 로그에 기록하지 않는다.</p>
+</section>
+<section id="grilling-state" class="grilling">
+  <h2>설계 의사결정 상태 (grilling-state)</h2>
+  <dl>
+    <dt>진행 상태</dt><dd>구현 완료 · 운영 제어 보류 · 2026-09-12 KST</dd>
+    <dt>범위</dt><dd>기존 승인: G10 중첩 unique 오류, G13 최소 구현 범위 A · 보완 후보: G14 Multer 취약점</dd>
+    <dt>현재 frontier</dt><dd>없음 — G14-A 코드·lockfile 반영과 보안·회귀 검증 완료</dd>
+    <dt>해결된 결정</dt><dd>사용자가 2026-09-07 KST에 G1-A, G2-A, G3-A, G4-A, G5-A, G6-A, G7-A, G8-B, G9-A를 선택했고, 2026-09-12 KST에 G10-A·G13-A·G14-A를 선택했다.</dd>
+    <dt>보류한 가지</dt><dd>G1/G8/G12 migration·요일 repair, G3 readiness endpoint, G4 세션 상한·cleanup 운영, G11 실제 GCP 리소스·secret 연결·traffic 전환</dd>
+    <dt>중요 가정</dt><dd>이번 배포는 기존 Spring 운영 DB를 사용하며, 호환 SQL은 운영 DB에 직접 실행하지 않고 사전검사·백업·승인된 maintenance window를 거친다.</dd>
+  </dl>
+  <p>기존 G1–G9 선택은 유지하되 G13-A 범위 밖 항목은 계속 보류한다. G14-A는 사용자 승인 범위대로 구현·검증을 완료했고, 실제 운영 DB·GCP 변경은 수행하지 않았다.</p>
+</section>
+<section id="design-control-state">
+  <h2>설계 이해·통제 상태</h2>
+  <p><strong>상태: 확인 중.</strong> 질문 세트는 설계 선택 자체가 아니라 구현 후 동작·불변식·경계·실패 복구를 예측하도록 구성했다. 브라우저 결과는 대화로 자동 전달되지 않으며 구현 승인과 별개다.</p>
+  <table><caption>질문 커버리지</caption><thead><tr><th scope="col">축</th><th scope="col">질문 ID</th><th scope="col">질문이 확인하는 것</th></tr></thead><tbody>
+    <tr><th scope="row">데이터·충돌</th><td>DC-1</td><td>요일 집합 불변식과 기본 중단/repair 경계</td></tr>
+    <tr><th scope="row">장애·readiness</th><td>DC-2</td><td>Pool 단절 뒤 liveness와 readiness의 분리</td></tr>
+    <tr><th scope="row">비용·경계</th><td>DC-3</td><td>날짜·size·offset 상한이 DB 호출 전에 적용되는지</td></tr>
+    <tr><th scope="row">세션 상태</th><td>DC-4</td><td>만료 cleanup과 10개 활성 세션 상한의 영향</td></tr>
+    <tr><th scope="row">기동 보안</th><td>DC-5</td><td>JWT secret 검증 실패 시 안전한 기동 거부</td></tr>
+    <tr><th scope="row">관측·개인정보</th><td>DC-6</td><td>DB 오류 로그 allowlist와 원문 제거</td></tr>
+    <tr><th scope="row">동시성</th><td>DC-7</td><td>동일 identity 경쟁 수렴과 unrelated unique 오류 구분</td></tr>
+    <tr><th scope="row">범위·복구</th><td>DC-8</td><td>신규 DB migration 분리 결정의 배포 영향</td></tr>
+    <tr><th scope="row">의존성</th><td>DC-9</td><td>qs 패치 후 audit·회귀 검증의 수용 기준</td></tr>
+    <tr><th scope="row">multipart 보안</th><td>DC-10</td><td>Multer override와 배열 인덱스 상한의 적용 범위</td></tr>
+  </tbody></table>
+  <div id="control-progress" aria-live="polite">질문 1 / 10 · 답변 0 / 10</div>
+  <div id="control-slides">
+    <fieldset class="control-slide" data-id="DC-1" data-answer="a"><legend>DC-1 · 원본에 월·수, 대상에 월요일만 있고 아직 repair 승인이 없다. 기본 백필 실행 결과는?</legend><label><input type="radio" name="dc1" value="a"> 충돌을 보고하고 쓰기 전에 중단한다.</label><br><label><input type="radio" name="dc1" value="b"> 원본 월·수를 즉시 덮어쓴다.</label><br><label><input type="radio" name="dc1" value="c"> 두 집합을 합쳐 저장한다.</label><div class="control-actions"><button type="button" data-prev>이전</button><button type="button" data-submit>제출</button><button type="button" data-next>다음</button></div><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+    <fieldset class="control-slide" data-id="DC-2" data-answer="b" hidden><legend>DC-2 · DB backend가 끊긴 직후 각 endpoint의 의미는?</legend><label><input type="radio" name="dc2" value="a"> /health와 /health/ready 모두 200이어야 한다.</label><br><label><input type="radio" name="dc2" value="b"> /health는 liveness로 200일 수 있고 /health/ready는 DB 실패로 503이어야 한다.</label><br><label><input type="radio" name="dc2" value="c"> 두 endpoint 모두 프로세스 종료를 유도해야 한다.</label><div class="control-actions"><button type="button" data-prev>이전</button><button type="button" data-submit>제출</button><button type="button" data-next>다음</button></div><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+    <fieldset class="control-slide" data-id="DC-3" data-answer="c" hidden><legend>DC-3 · 367일 일정 조회와 size=101 피드 요청의 공통 결과는?</legend><label><input type="radio" name="dc3" value="a"> 정상 처리하고 DB가 결과를 제한한다.</label><br><label><input type="radio" name="dc3" value="b"> 서버가 조용히 최대값으로 바꾼다.</label><br><label><input type="radio" name="dc3" value="c"> DB 호출 전에 validation error로 거부한다.</label><div class="control-actions"><button type="button" data-prev>이전</button><button type="button" data-submit>제출</button><button type="button" data-next>다음</button></div><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+    <fieldset class="control-slide" data-id="DC-4" data-answer="a" hidden><legend>DC-4 · 이미 활성 세션이 10개인 사용자가 새로 로그인하면?</legend><label><input type="radio" name="dc4" value="a"> 만료 행을 정리하고 가장 오래된 활성 세션부터 폐기한 뒤 새 세션을 만든다.</label><br><label><input type="radio" name="dc4" value="b"> 새 세션을 무제한 추가한다.</label><br><label><input type="radio" name="dc4" value="c"> 사용자의 모든 세션을 삭제한다.</label><div class="control-actions"><button type="button" data-prev>이전</button><button type="button" data-submit>제출</button><button type="button" data-next>다음</button></div><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+    <fieldset class="control-slide" data-id="DC-5" data-answer="b" hidden><legend>DC-5 · secret이 없거나 UTF-8 31바이트인 revision의 기동 결과는?</legend><label><input type="radio" name="dc5" value="a"> 경고만 남기고 기동한다.</label><br><label><input type="radio" name="dc5" value="b"> 설정 오류로 기동을 실패시킨다.</label><br><label><input type="radio" name="dc5" value="c"> 개발용 fallback으로 계속 기동한다.</label><div class="control-actions"><button type="button" data-prev>이전</button><button type="button" data-submit>제출</button><button type="button" data-next>다음</button></div><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+    <fieldset class="control-slide" data-id="DC-6" data-answer="c" hidden><legend>DC-6 · DB query에 sentinel 개인정보가 들어간 오류를 기록할 때 남길 수 있는 것은?</legend><label><input type="radio" name="dc6" value="a"> raw message와 stack 전체</label><br><label><input type="radio" name="dc6" value="b"> SQL과 바인딩 params 전체</label><br><label><input type="radio" name="dc6" value="c"> 오류 종류와 SQLSTATE·constraint·table 같은 allowlist</label><div class="control-actions"><button type="button" data-prev>이전</button><button type="button" data-submit>제출</button><button type="button" data-next>다음</button></div><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+    <fieldset class="control-slide" data-id="DC-7" data-answer="a" hidden><legend>DC-7 · 같은 provider+subject 두 요청이 동시에 첫 로그인할 때 기대 결과는?</legend><label><input type="radio" name="dc7" value="a"> 하나의 사용자로 수렴하고 각 요청은 세션을 발급받는다.</label><br><label><input type="radio" name="dc7" value="b"> 두 사용자 계정을 만든다.</label><br><label><input type="radio" name="dc7" value="c"> 이메일이 같으면 다른 provider도 자동 병합한다.</label><div class="control-actions"><button type="button" data-prev>이전</button><button type="button" data-submit>제출</button><button type="button" data-next>다음</button></div><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+    <fieldset class="control-slide" data-id="DC-8" data-answer="b" hidden><legend>DC-8 · 이번 revision에서 신규 DB를 처음 만드는 운영자는 어떤 경로를 사용해야 하는가?</legend><label><input type="radio" name="dc8" value="a"> 기존 Spring 호환 SQL을 신규 DB에 그대로 실행한다.</label><br><label><input type="radio" name="dc8" value="b"> 이번 범위 밖인 신규 DB 기준선 작업을 별도로 완료한 뒤 사용한다.</label><br><label><input type="radio" name="dc8" value="c"> 실패하는 0004 migration을 무시하고 다음 단계로 진행한다.</label><div class="control-actions"><button type="button" data-prev>이전</button><button type="button" data-submit>제출</button><button type="button" data-next>다음</button></div><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+    <fieldset class="control-slide" data-id="DC-9" data-answer="a" hidden><legend>DC-9 · qs 패치의 수용 조건으로 맞는 것은?</legend><label><input type="radio" name="dc9" value="a"> 잠금 파일을 6.16.0 이상으로 갱신하고 audit·빌드·회귀 테스트를 통과시킨다.</label><br><label><input type="radio" name="dc9" value="b"> moderate 권고는 도달 가능성이 낮으므로 검증하지 않는다.</label><br><label><input type="radio" name="dc9" value="c"> 패키지를 제거하고 query parser를 무조건 끈다.</label><div class="control-actions"><button type="button" data-prev>이전</button><button type="button" data-submit>제출</button><button type="button" data-next>다음</button></div><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+    <fieldset class="control-slide" data-id="DC-10" data-answer="a" hidden><legend>DC-10 · Nest가 Multer 2.2.0을 exact dependency로 고정하고 업로드 필드에 배열 인덱스가 없다면?</legend><label><input type="radio" name="dc10" value="a"> Multer 2.3.0 override와 fieldArrayIndexLimit 0을 적용하고 audit·업로드 회귀를 통과시킨다.</label><br><label><input type="radio" name="dc10" value="b"> Nest만 올려서 해결될 때까지 2.2.0을 유지한다.</label><br><label><input type="radio" name="dc10" value="c"> Multer를 전역 middleware로 추가해 우회한다.</label><div class="control-actions"><button type="button" data-prev>이전</button><button type="button" data-submit>제출</button><button type="button" data-next>다음</button></div><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+  </div>
+  <output id="control-output" aria-live="polite">아직 제출된 답변이 없습니다. 이 결과는 정보용이며 구현 승인이 아닙니다.</output>
+</section>
+<section id="approval"><h2>설계 승인 상태</h2><p><strong>G10-A/G13-A/G14-A 설계·구현 승인 · 2026-09-12 KST.</strong> 사용자가 기존 최소 구현 범위, 보류 항목, 실제 운영 DB·GCP 리소스에 쓰지 않는 경계와 Multer override·인덱스 상한 결정을 승인했고, 이 범위의 구현 진행을 승인했다. 구현 통제 기록은 <a href="spring-db-production-hardening-implementation.html">별도 문서</a>에서 관리한다.</p></section>
+</article></main>
+<footer>기준선 문서 · 구현 제어 기록은 <a href="spring-db-production-hardening-implementation.html">별도 문서</a>에 반영됨 · 운영 제어는 보류</footer>
+<script>
+  const controlSlides = [...document.querySelectorAll('.control-slide')];
+  const controlState = new Map();
+  const explanations = {
+    'DC-1': ['확립', '요일 집합 불일치는 자동 덮어쓰기 대상이 아니다. 기본 모드는 사전검사에서 중단하고 승인된 repair만 허용한다.', '충돌 ID와 양쪽 집합을 보존해 repair 보고서로 넘긴다.'],
+    'DC-2': ['확립', 'liveness는 프로세스 생존을, readiness는 DB 요청 가능 여부를 뜻한다. Pool error가 나도 프로세스를 종료시키지 않는다.', 'readiness 503과 안전 로그를 관측하고 연결 복구 후 다시 확인한다.'],
+    'DC-3': ['확립', '서버 상한은 DB·배열 작업 전에 적용되어야 한다. 조용한 clamp는 호출자가 비용을 예측하지 못하게 한다.', '기존 validation error envelope과 경계값 테스트를 확인한다.'],
+    'DC-4': ['확립', '새 로그인은 만료 행을 정리한 뒤 활성 세션 상한을 지키며 가장 오래된 세션부터 폐기한다.', 'cleanup 건수와 폐기된 세션을 metric으로 확인한다.'],
+    'DC-5': ['확립', '약한 secret으로 기동하면 토큰 위조 위험이 지속되므로 설정 오류로 fail-fast한다.', '배포 secret을 32바이트 이상인지 별도로 확인하고 revision을 다시 기동한다.'],
+    'DC-6': ['확립', 'raw message·stack·params는 SQL과 입력 원문을 포함할 수 있다. 진단에 필요한 allowlist만 구조화 로그에 남긴다.', 'sentinel이 실제 Pino JSON에 없는지 검증한다.'],
+    'DC-7': ['확립', 'unique 경쟁은 원인 cause를 unwrap한 뒤 exact provider+subject만 재조회하면 동일 사용자로 수렴한다.', '다른 unique constraint나 이메일만 같은 계정은 일반 persistence 오류로 남긴다.'],
+    'DC-8': ['확립', '이번 배포는 기존 Spring DB 호환 경로를 대상으로 하며 신규 DB migration 기준선은 별도 작업이다.', '실패하는 신규 경로를 무시하고 진행하지 말고 별도 지원 여부를 release gate에서 확인한다.'],
+    'DC-9': ['확립', '수정 버전으로 잠금 파일을 갱신한 뒤 audit뿐 아니라 빌드와 회귀 테스트로 런타임 영향을 확인한다.', '남은 advisories와 실제 도달 경로를 배포 기록에 남긴다.'],
+    'DC-10': ['확립', 'Nest의 exact transitive pin은 override로 패치하고, 배열 필드를 사용하지 않는 이 API는 fieldArrayIndexLimit 0으로 요청 경계를 고정한다.', 'multer 2.3.0 설치 트리·audit·업로드 interceptor 회귀를 확인한다.']
+  };
+  let current = 0;
+  function renderControl() {
+    controlSlides.forEach((slide, index) => { slide.hidden = index !== current; });
+    const answered = [...controlState.values()].filter(Boolean).length;
+    document.querySelector('#control-progress').textContent = `질문 ${current + 1} / ${controlSlides.length} · 답변 ${answered} / ${controlSlides.length}`;
+    document.querySelector('#control-output').value = `현재 ${controlSlides[current].dataset.id}. ${answered}개 제출됨. 이 결과는 정보용이며 구현 승인이 아닙니다.`;
+  }
+  controlSlides.forEach((slide, index) => {
+    slide.querySelector('[data-prev]').addEventListener('click', () => { current = Math.max(0, index - 1); renderControl(); });
+    slide.querySelector('[data-next]').addEventListener('click', () => { current = Math.min(controlSlides.length - 1, index + 1); renderControl(); });
+    slide.querySelector('[data-submit]').addEventListener('click', () => {
+      const chosen = slide.querySelector('input:checked')?.value;
+      const result = slide.querySelector('.question-result');
+      const status = result.querySelector('[data-status]');
+      const explanation = result.querySelector('[data-explanation]');
+      const nextAction = result.querySelector('[data-next-action]');
+      result.hidden = false;
+      if (!chosen) {
+        controlState.set(slide.dataset.id, false);
+        status.textContent = '상태: 미실시';
+        explanation.textContent = '선택된 답변이 없습니다.';
+        nextAction.textContent = '다시 선택한 뒤 제출하세요.';
+      } else if (chosen === slide.dataset.answer) {
+        controlState.set(slide.dataset.id, true);
+        const [s, e, n] = explanations[slide.dataset.id];
+        status.textContent = `상태: ${s}`;
+        explanation.textContent = e;
+        nextAction.textContent = `다음 조치: ${n}`;
+      } else {
+        controlState.set(slide.dataset.id, false);
+        status.textContent = '상태: 보류';
+        explanation.textContent = '선택한 답변이 설계된 불변식·실패 경계와 맞지 않습니다.';
+        nextAction.textContent = '위 근거와 구현 경계를 다시 확인한 뒤 재제출하세요.';
+      }
+      renderControl();
+    });
+  });
+  renderControl();
+</script>
+</body>
+</html>

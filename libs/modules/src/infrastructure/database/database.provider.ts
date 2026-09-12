@@ -7,13 +7,17 @@ import { DATABASE, PG_POOL } from './database.tokens';
 
 export type Database = NodePgDatabase<typeof schema>;
 
+const DATABASE_CONNECTION_TIMEOUT_MS = 5_000;
+const DATABASE_QUERY_TIMEOUT_MS = 10_000;
+const DATABASE_IDLE_TIMEOUT_MS = 30_000;
+
 export const databaseProviders = [
   {
     provide: PG_POOL,
     inject: [ConfigService],
     useFactory: (config: ConfigService): Pool => {
       const databaseUrl = config.get<string>('DATABASE_URL');
-      if (databaseUrl !== undefined) return new Pool({ connectionString: databaseUrl });
+      if (databaseUrl !== undefined) return createPool(databaseUrl);
 
       const jdbcUrl = config.getOrThrow<string>('APP_DB_URL');
       const url = new URL(jdbcUrl.startsWith('jdbc:') ? jdbcUrl.slice('jdbc:'.length) : jdbcUrl);
@@ -25,7 +29,7 @@ export const databaseProviders = [
       const password = config.get<string>('APP_DB_PASSWORD');
       if (username !== undefined) url.username = username;
       if (password !== undefined) url.password = password;
-      return new Pool({ connectionString: url.toString() });
+      return createPool(url.toString());
     },
   },
   {
@@ -34,3 +38,37 @@ export const databaseProviders = [
     useFactory: (pool: Pool): Database => drizzle(pool, { schema }),
   },
 ];
+
+function createPool(connectionString: string): Pool {
+  const pool = new Pool({
+    connectionString,
+    connectionTimeoutMillis: DATABASE_CONNECTION_TIMEOUT_MS,
+    idleTimeoutMillis: DATABASE_IDLE_TIMEOUT_MS,
+    query_timeout: DATABASE_QUERY_TIMEOUT_MS,
+    statement_timeout: DATABASE_QUERY_TIMEOUT_MS,
+  });
+  pool.on('error', (error: Error) => {
+    const details = error as Error & {
+      code?: unknown;
+      constraint?: unknown;
+      table?: unknown;
+    };
+    // Idle client errors must be observed so EventEmitter does not terminate the process.
+    // Keep only allowlisted PostgreSQL identifiers in the application log.
+    console.error({
+      event: 'database_pool_error',
+      code: safeDatabaseCode(details.code),
+      constraint: safeDatabaseIdentifier(details.constraint),
+      table: safeDatabaseIdentifier(details.table),
+    });
+  });
+  return pool;
+}
+
+function safeDatabaseCode(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[0-9A-Z]{5}$/.test(value) ? value : undefined;
+}
+
+function safeDatabaseIdentifier(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[A-Za-z0-9_]{1,128}$/.test(value) ? value : undefined;
+}

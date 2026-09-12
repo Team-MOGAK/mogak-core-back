@@ -6,6 +6,7 @@ import {
   type ExceptionFilter,
 } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
+import { DrizzleError, DrizzleQueryError } from 'drizzle-orm';
 import { InjectPinoLogger } from 'nestjs-pino';
 import type { PinoLogger } from 'nestjs-pino';
 import type { Response } from 'express';
@@ -46,6 +47,11 @@ const MAX_LOG_DEPTH = 5;
 const MAX_LOG_ARRAY_LENGTH = 20;
 const MAX_LOG_OBJECT_KEYS = 30;
 const MAX_LOG_STRING_LENGTH = 1_000;
+const MULTIPART_INPUT_ERROR_CODES = new Set([
+  'LIMIT_FIELD_ARRAY_INDEX',
+  'LIMIT_FIELD_NESTING',
+  'INVALID_FIELD_NAME',
+]);
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -65,6 +71,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         route: staticRoute(request),
       });
       response.status(exception.getStatus()).json(throttlerResponse(exception));
+      return;
+    }
+
+    if (isMultipartInputError(exception)) {
+      this.logger.warn(
+        { type: 'multipart_rejected', code: exception.code },
+        'Multipart request rejected',
+      );
+      response.status(HttpStatus.BAD_REQUEST).json(errorResponse(AppErrorCode.BAD_REQUEST));
       return;
     }
 
@@ -110,20 +125,39 @@ type ExceptionDetails = Readonly<{
 }>;
 
 function databaseErrorDetails(exception: unknown): DatabaseErrorDetails | undefined {
-  const cause = exception instanceof Error ? exception.cause : undefined;
-  if (!isRecord(cause)) return undefined;
+  const seen = new WeakSet<object>();
+  let current: unknown = exception;
+  let isDatabaseError = false;
+  const details: { code?: string; constraint?: string; table?: string } = {};
 
-  const details = {
-    code: stringOrUndefined(cause.code),
-    constraint: stringOrUndefined(cause.constraint),
-    table: stringOrUndefined(cause.table),
-  } satisfies DatabaseErrorDetails;
+  while (isErrorLike(current) && !seen.has(current)) {
+    seen.add(current);
+    if (current instanceof DrizzleError || current instanceof DrizzleQueryError) {
+      isDatabaseError = true;
+    }
 
-  return Object.values(details).some((value) => value !== undefined) ? details : undefined;
+    const code = safeDatabaseCode(current.code);
+    const constraint = safeDatabaseIdentifier(current.constraint);
+    const table = safeDatabaseIdentifier(current.table);
+    if (details.code === undefined && code !== undefined) details.code = code;
+    if (details.constraint === undefined && constraint !== undefined)
+      details.constraint = constraint;
+    if (details.table === undefined && table !== undefined) details.table = table;
+
+    current = current.cause;
+  }
+
+  return isDatabaseError || Object.values(details).some((value) => value !== undefined)
+    ? details
+    : undefined;
 }
 
-function stringOrUndefined(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+function safeDatabaseCode(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[0-9A-Z]{5}$/.test(value) ? value : undefined;
+}
+
+function safeDatabaseIdentifier(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[A-Za-z0-9_]{1,128}$/.test(value) ? value : undefined;
 }
 
 function unhandledExceptionLog(exception: unknown): {
@@ -135,11 +169,15 @@ function unhandledExceptionLog(exception: unknown): {
 }
 
 function exceptionDetails(error: Error): ExceptionDetails {
+  const database = databaseErrorDetails(error);
+  if (database !== undefined) {
+    return { name: error.name, message: 'Database operation failed', database };
+  }
+
   return {
     name: error.name,
     message: error.message,
     stack: error.stack,
-    database: databaseErrorDetails(error),
   };
 }
 
@@ -238,6 +276,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function isErrorLike(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isMultipartInputError(exception: unknown): exception is { code: string } {
+  return (
+    isErrorLike(exception) &&
+    typeof exception.code === 'string' &&
+    MULTIPART_INPUT_ERROR_CODES.has(exception.code)
+  );
 }
 
 function isSensitiveKey(key: string): boolean {

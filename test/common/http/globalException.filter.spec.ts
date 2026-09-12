@@ -1,7 +1,10 @@
 import { HttpStatus, ServiceUnavailableException } from '@nestjs/common';
 import { jest } from '@jest/globals';
 import { ThrottlerException } from '@nestjs/throttler';
+import { DrizzleQueryError } from 'drizzle-orm';
 import type { PinoLogger } from 'nestjs-pino';
+import pino from 'pino';
+import { Writable } from 'node:stream';
 
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { GlobalExceptionFilter } from '@api/common/http/globalException.filter';
@@ -436,6 +439,62 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
     resetLogger();
   });
 
+  it('Multer 2.3의 새 multipart 입력 오류를 안전한 400으로 변환한다', () => {
+    const exception = Object.assign(new Error('Field name array index too large'), {
+      code: 'LIMIT_FIELD_ARRAY_INDEX',
+      field: 'items[4294967294]',
+    });
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const warn = logger.warn;
+    const host = { switchToHttp: () => ({ getResponse: () => ({ status }) }) };
+
+    new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'BAD_REQUEST', code: 'Z002' }),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      { type: 'multipart_rejected', code: 'LIMIT_FIELD_ARRAY_INDEX' },
+      'Multipart request rejected',
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('4294967294');
+  });
+
+  it.each([
+    ['timeout', new Error('Query read timeout')],
+    ['connection reset', Object.assign(new Error('Connection terminated'), { code: 'ECONNRESET' })],
+    ['SQLSTATE', Object.assign(new Error('constraint violation'), { code: '23505' })],
+  ])('%s인 Drizzle 오류도 SQL 원문 없이 Pino 로그에 기록한다', (_label, cause) => {
+    let output = '';
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        output += chunk.toString();
+        callback();
+      },
+    });
+    const log = pino({}, stream);
+    const queryError = new DrizzleQueryError(
+      'SELECT $1 /* private-query */',
+      ['private-param'],
+      cause,
+    );
+    const wrapped = new Error('private-wrapper', { cause: queryError });
+    const response = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+
+    new GlobalExceptionFilter(log as unknown as PinoLogger).catch(wrapped, {
+      switchToHttp: () => ({ getResponse: () => response }),
+    } as never);
+
+    expect(output).not.toContain('private-query');
+    expect(output).not.toContain('private-param');
+    expect(output).not.toContain('private-wrapper');
+    const record = JSON.parse(output) as { err: { message: string; stack?: string } };
+    expect(record.err.message).toBe('Database operation failed');
+    expect(record.err.stack ?? '').toBe('');
+  });
+
   it('500 응답을 만들고 원인 스택을 error 로그에 남긴다', () => {
     const exception = new Error('database connection failed');
     const json = jest.fn();
@@ -484,12 +543,50 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
         event: 'unhandled_exception',
         err: expect.objectContaining({
           name: exception.name,
-          message: exception.message,
+          message: 'Database operation failed',
           database: { code: '23503', constraint: 'mogak_modarat_id_fkey', table: 'mogak' },
         }),
       },
       'Unhandled exception',
     );
+    expect(error.mock.calls[0]?.[0]).toEqual(
+      expect.not.objectContaining({ stack: expect.anything() }),
+    );
+  });
+
+  it('DrizzleQueryError의 SQL·파라미터·스택을 로그에서 제거하고 안전한 메타데이터만 남긴다', () => {
+    const databaseCause = Object.assign(new Error('duplicate key detail'), {
+      code: '23505',
+      constraint: 'users_nickname_unique',
+      table: 'users',
+    });
+    const exception = new DrizzleQueryError(
+      'UPDATE users SET nickname = $1 WHERE id = $2 /* query-secret */',
+      ['nickname-secret', 7],
+      databaseCause,
+    );
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const error = logger.error;
+    const host = { switchToHttp: () => ({ getResponse: () => ({ status }) }) };
+
+    new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
+
+    expect(error).toHaveBeenCalledWith(
+      {
+        event: 'unhandled_exception',
+        err: {
+          name: exception.name,
+          message: 'Database operation failed',
+          database: { code: '23505', constraint: 'users_nickname_unique', table: 'users' },
+        },
+      },
+      'Unhandled exception',
+    );
+    const serialized = JSON.stringify(error.mock.calls);
+    expect(serialized).not.toContain('query-secret');
+    expect(serialized).not.toContain('nickname-secret');
+    expect(serialized).not.toContain('duplicate key detail');
   });
 });
 

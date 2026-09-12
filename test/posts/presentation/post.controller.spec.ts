@@ -201,6 +201,17 @@ describe('게시글 HTTP 계약', () => {
     expect(posts.createPost).not.toHaveBeenCalled();
   });
 
+  it('배열 인덱스가 과도한 multipart 필드는 Multer 경계에서 거부한다', async () => {
+    await request(app.getHttpServer())
+      .post('/api/jogaks/11/posts')
+      .field('request', JSON.stringify({ targetDate: '2026-07-23', contents: '오늘 회고' }))
+      .field('items[4294967294]', 'payload')
+      .expect(400);
+
+    expect(storage.uploadPostImages).not.toHaveBeenCalled();
+    expect(posts.createPost).not.toHaveBeenCalled();
+  });
+
   it('승인된 중첩 댓글 작성자를 유지하며 댓글과 좋아요 경로를 유지한다', async () => {
     posts.listComments.mockResolvedValue({
       comments: [

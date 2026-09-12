@@ -12,10 +12,14 @@ describe('이미지 업로드 정책', () => {
   it('5 MiB와 게시글 다섯 장을 제한하며 허용된 이미지 MIME만 받는다', () => {
     expect(MAX_IMAGE_FILE_SIZE_BYTES).toBe(5 * 1024 * 1024);
     expect(MAX_POST_IMAGE_COUNT).toBe(5);
-    expect(profileImageUploadOptions.limits).toEqual({ fileSize: MAX_IMAGE_FILE_SIZE_BYTES });
+    expect(profileImageUploadOptions.limits).toEqual({
+      fileSize: MAX_IMAGE_FILE_SIZE_BYTES,
+      fieldArrayIndexLimit: 0,
+    });
     expect(postImageUploadOptions.limits).toEqual({
       fileSize: MAX_IMAGE_FILE_SIZE_BYTES,
       files: MAX_POST_IMAGE_COUNT,
+      fieldArrayIndexLimit: 0,
     });
 
     const filter = profileImageUploadOptions.fileFilter;

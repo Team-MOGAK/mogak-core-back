@@ -23,15 +23,24 @@ const REFRESH_TOKEN_TYPE = 'refresh';
 const ACCESS_TOKEN_TTL_SECONDS = 15 * 60;
 const REFRESH_TOKEN_TTL_SECONDS = 31 * 24 * 60 * 60;
 const CLOCK_TOLERANCE_SECONDS = 30;
+export const MIN_JWT_SECRET_BYTES = 32;
 
 @Injectable()
 export class JwtTokenService implements SessionTokenIssuerPort, AuthTokenVerifierPort {
   private readonly secret: Uint8Array;
 
   constructor(@Inject(ConfigService) config: ConfigService) {
-    this.secret = new TextEncoder().encode(
-      config.get<string>('JWT_SECRET') ?? config.getOrThrow<string>('JWT_SECRET_KEY'),
-    );
+    const configuredSecret =
+      config.get<string>('JWT_SECRET') ?? config.get<string>('JWT_SECRET_KEY');
+    if (typeof configuredSecret !== 'string' || configuredSecret.trim().length === 0) {
+      throw new Error('JWT_SECRET 또는 JWT_SECRET_KEY가 비어 있습니다.');
+    }
+
+    const secret = new TextEncoder().encode(configuredSecret);
+    if (secret.byteLength < MIN_JWT_SECRET_BYTES) {
+      throw new Error(`JWT secret은 UTF-8 기준 ${MIN_JWT_SECRET_BYTES}바이트 이상이어야 합니다.`);
+    }
+    this.secret = secret;
   }
 
   async issue(input: AuthenticatedPrincipal): Promise<IssuedSessionTokens> {

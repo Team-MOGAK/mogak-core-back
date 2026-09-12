@@ -5,6 +5,14 @@ import { DomainErrorCode, DomainException } from '@core/common/error/domainExcep
 export const MAX_IMAGE_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 export const MAX_POST_IMAGE_COUNT = 5;
 
+type SecureMulterOptions = Omit<MulterOptions, 'limits'> & {
+  limits: NonNullable<MulterOptions['limits']> & {
+    fieldArrayIndexLimit: number;
+  };
+};
+
+const MAX_FIELD_ARRAY_INDEX = 0;
+
 const imageMimeTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 const allowImage: NonNullable<MulterOptions['fileFilter']> = (_request, file, callback) => {
@@ -15,12 +23,19 @@ const allowImage: NonNullable<MulterOptions['fileFilter']> = (_request, file, ca
   callback(null, true);
 };
 
-export const profileImageUploadOptions: MulterOptions = {
-  limits: { fileSize: MAX_IMAGE_FILE_SIZE_BYTES },
+export const profileImageUploadOptions: SecureMulterOptions = {
+  limits: {
+    fileSize: MAX_IMAGE_FILE_SIZE_BYTES,
+    fieldArrayIndexLimit: MAX_FIELD_ARRAY_INDEX,
+  },
   fileFilter: allowImage,
 };
 
-export const postImageUploadOptions: MulterOptions = {
-  limits: { fileSize: MAX_IMAGE_FILE_SIZE_BYTES, files: MAX_POST_IMAGE_COUNT },
+export const postImageUploadOptions: SecureMulterOptions = {
+  limits: {
+    fileSize: MAX_IMAGE_FILE_SIZE_BYTES,
+    files: MAX_POST_IMAGE_COUNT,
+    fieldArrayIndexLimit: MAX_FIELD_ARRAY_INDEX,
+  },
   fileFilter: allowImage,
 };
