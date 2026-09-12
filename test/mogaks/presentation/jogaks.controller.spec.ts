@@ -87,9 +87,14 @@ describe('조각 HTTP 계약', () => {
       .get('/api/jogaks/not-a-number')
       .expect(400)
       .expect(({ body }) => expect(body.code).toBe('Z005'));
+    await request(app.getHttpServer())
+      .get('/api/jogaks/routines?startDay=2026-02-30&endDay=2026-03-01')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
 
     expect(jogaks.listDay).not.toHaveBeenCalled();
     expect(jogaks.getDetail).not.toHaveBeenCalled();
+    expect(jogaks.listRoutines).not.toHaveBeenCalled();
   });
 
   it('일간 조각 식별자는 제거하고 조각 생성과 날짜 조회 경로를 유지한다', async () => {

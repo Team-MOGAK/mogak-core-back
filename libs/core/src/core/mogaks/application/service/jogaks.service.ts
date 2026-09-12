@@ -1,3 +1,4 @@
+import { MAX_DATE_RANGE_DAYS } from '../../../common/resourceLimits';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { requiredTrimmed } from '@core/common/validation/requiredText';
 import { MogakPersistenceException } from '../../domain/exception/mogakPersistence.exception';
@@ -9,6 +10,7 @@ import { validateJogakCapacity } from '../../domain/policy/jogak.policy';
 import {
   assertDateRange as assertScheduleDateRange,
   datesInclusive as scheduleDatesInclusive,
+  dateRangeDays,
   deriveOccurrenceStatus,
   isDateOnly,
   createJogakSchedule,
@@ -261,10 +263,11 @@ export class JogaksService implements OwnedOccurrencePort {
       ]),
     );
     const today = this.today();
+    const dates = datesInclusive(startDate, endDate);
     const occurrences: OccurrenceResult[] = [];
 
     for (const schedule of schedules) {
-      for (const scheduledDate of datesInclusive(startDate, endDate)) {
+      for (const scheduledDate of dates) {
         if (!occursOn(schedule.schedule, scheduledDate)) continue;
         const execution =
           executionByNaturalKey.get(executionKey(schedule.jogakId, scheduledDate)) ?? null;
@@ -514,6 +517,9 @@ function categoryOf(
 function assertDateRange(startDate: string, endDate: string): void {
   try {
     assertScheduleDateRange(startDate, endDate);
+    if (dateRangeDays(startDate, endDate) > MAX_DATE_RANGE_DAYS) {
+      throw new RangeError('date range is too large');
+    }
   } catch {
     throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
   }

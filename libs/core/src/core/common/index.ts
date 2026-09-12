@@ -3,3 +3,4 @@ export * from './error/domainException';
 export * from './type/mergePatch';
 export * from './util/idGenerator';
 export * from './validation/requiredText';
+export * from './resourceLimits';

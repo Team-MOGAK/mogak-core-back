@@ -1,3 +1,4 @@
+import { isSafePageOffset } from '../../../common/resourceLimits';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import type { OwnedMogakPort } from '@core/mogaks/application/port/ownedMogak.port';
 import type { OwnedOccurrencePort } from '@core/mogaks/application/port/ownedOccurrence.port';
@@ -87,6 +88,9 @@ export class PostService {
   }
 
   async listMogakPosts(userId: number, mogakId: number, page: number, size: number) {
+    if (!isSafePageOffset(page, size)) {
+      throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
+    }
     await this.mogaks.resolveOwnedMogak(userId, mogakId);
     const posts = await this.repository.listOwnedMogakPosts({
       userId,

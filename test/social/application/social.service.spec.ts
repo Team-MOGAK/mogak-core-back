@@ -141,6 +141,7 @@ describe('소셜 팔로우 서비스', () => {
       limit: 11,
       offset: 0,
     });
+    expect(social.listComments).not.toHaveBeenCalled();
   });
 
   it('게시글을 조회하기 전에 지원하지 않는 네트워크 정렬을 거부한다', async () => {

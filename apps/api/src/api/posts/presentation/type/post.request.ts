@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 import {
   calendarDateSchema,
+  pageNumberSchema,
+  pageSizeSchema,
+  pageOffsetWithinSafeInteger,
   positiveIdSchema,
   requiredTextSchema,
 } from '@api/common/validation/requestSchema';
@@ -29,8 +32,12 @@ export type LikePostRequest = z.infer<typeof likePostRequestSchema>;
 export const postDateQuerySchema = z.object({ targetDate: calendarDateSchema }).strict();
 export type PostDateQuery = z.infer<typeof postDateQuerySchema>;
 export const postPageQuerySchema = z
-  .object({ page: z.coerce.number().int().min(0).default(0), size: positiveIdSchema })
-  .strict();
+  .object({ page: pageNumberSchema.default(0), size: pageSizeSchema })
+  .strict()
+  .refine(({ page, size }) => pageOffsetWithinSafeInteger(page, size), {
+    path: ['page'],
+    message: 'page offset is too large',
+  });
 export type PostPageQuery = z.infer<typeof postPageQuerySchema>;
 export const jogakIdParamsSchema = z.object({ jogakId: positiveIdSchema }).strict();
 export type JogakIdParams = z.infer<typeof jogakIdParamsSchema>;

@@ -1,6 +1,7 @@
 import {
   createJogakSchedule,
   currentScheduleIndexOn,
+  assertDateRange,
   occursOn,
   representativeScheduleIndexOn,
   successorScheduleIndexOf,
@@ -96,5 +97,10 @@ describe('Jogak 일정 규칙', () => {
     ];
 
     expect(representativeScheduleIndexOn(schedules, '2026-07-23')).toBe(0);
+  });
+
+  it('일정 조회 범위를 최대 366일로 제한한다', () => {
+    expect(() => assertDateRange('2026-01-01', '2027-01-01')).not.toThrow();
+    expect(() => assertDateRange('2026-01-01', '2027-01-02')).toThrow('invalid date range');
   });
 });
