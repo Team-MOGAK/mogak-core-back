@@ -460,6 +460,9 @@ describe('게시글 서비스', () => {
     await expect(service.listMogakPosts(7, 3, Number.MAX_SAFE_INTEGER, 2)).rejects.toEqual(
       new DomainException(DomainErrorCode.INVALID_PARAMETER),
     );
+    await expect(service.listMogakPosts(7, 3, Number.MAX_SAFE_INTEGER, 100)).rejects.toEqual(
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
+    );
     expect(ownedMogaks.resolveOwnedMogak).not.toHaveBeenCalled();
     expect(posts.listOwnedMogakPosts).not.toHaveBeenCalled();
   });

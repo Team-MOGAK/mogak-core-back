@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>일회성 조각 기본 예정일 설계</title>
+    <style>
+      body { max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #172033; font: 16px/1.55 system-ui, sans-serif; }
+      header, section { border-bottom: 1px solid #d9e0ea; padding: 1rem 0; }
+      nav a { margin-right: 1rem; } mark { background: #fff0b8; } .question { display: none; } .question.active { display: block; }
+      .result[hidden] { display: none; } output { display: block; margin-top: .75rem; } button { margin: .5rem .5rem 0 0; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>일회성 조각 기본 예정일 설계</h1>
+      <dl>
+        <dt>목적</dt><dd>루틴이 아닌 조각을 날짜 입력 없이도 생성하고, 원하면 사용자가 예정일을 직접 정할 수 있게 한다.</dd>
+        <dt>사용자</dt><dd>모각 안에 일회성 조각을 만드는 로그인 사용자와 API 연동 클라이언트</dd>
+        <dt>문제</dt><dd><code>isRoutine: false</code>인 기존 생성 요청은 <code>today</code> 값을 반드시 보내야 해, 기본 날짜 생성이 불가능하다.</dd>
+        <dt>핵심 흐름</dt><dd>일회성 생성 요청 → 선택적 <code>today</code> 해석 → 명시 날짜 또는 서버 KST 오늘 날짜로 ONCE 일정 저장</dd>
+        <dt>강도</dt><dd>Compact</dd>
+        <dt>단계</dt><dd>설계 승인 대기</dd>
+        <dt>생성·갱신</dt><dd><time datetime="2026-08-17T18:19:20+09:00">2026-08-17 18:19 KST</time></dd>
+      </dl>
+      <nav aria-label="설계 탐색"><a href="#goal">목표</a><a href="#change">변경 모델</a><a href="#risk">핵심 불변식</a><a href="#verification">검증</a><a href="#control">이해 점검</a><a href="#approval">승인</a></nav>
+    </header>
+    <main><article>
+      <section id="goal"><h2>목표와 범위</h2><p><mark>기존 legacy 생성 형식에서 <code>isRoutine: false</code>이면 <code>today</code>를 생략할 수 있다.</mark> 생략 시 서비스가 사용하는 KST 기준 오늘 날짜를 일회성 일정의 <code>effectiveFrom</code>으로 저장한다. <code>today</code>를 보내면 그 값을 그대로 사용한다.</p><p>명시 <code>schedule: { scheduleType: 'ONCE', effectiveFrom }</code> 형식은 이미 날짜를 명시하므로 변경하지 않는다. 루틴의 시작일·요일 규칙, 다른 필드 혼용 거부, 목록·실행 API는 범위 밖이다.</p></section>
+      <section id="change"><h2>변경 모델</h2><ol><li>컨트롤러는 legacy 요청이 <code>isRoutine: false</code>이고 <code>today</code>가 없을 때, 일정을 강제로 만들지 않고 “기본 일회성 일정” 의도를 application 계층에 전달한다.</li><li>서비스는 이 경우 주입된 <code>today()</code> 값을 사용해 <code>{ scheduleType: 'ONCE', effectiveFrom: today() }</code>를 만든 뒤 기존 일정 검증·저장 흐름을 사용한다.</li><li><code>today</code>가 있으면 기존처럼 그 날짜를 <code>effectiveFrom</code>으로 쓴다. 루틴은 계속 시작일이 필요하다.</li></ol></section>
+      <section id="risk"><h2>핵심 위험과 불변식</h2><aside><strong>날짜 기준 위험:</strong> 서버 시각을 컨트롤러에서 직접 읽으면 테스트와 KST 날짜 경계가 흔들릴 수 있다. 따라서 이미 서비스에 주입된 <code>today()</code> 단일 기준을 사용한다.</aside><p><strong>불변식:</strong> 기본값은 오직 명시적으로 <code>isRoutine: false</code>인 legacy 요청에만 적용한다. <code>isRoutine</code> 자체가 없거나 루틴 요청의 시작일이 없는 경우는 계속 잘못된 요청으로 거부한다.</p></section>
+      <section id="verification"><h2>검증 계획</h2><ul><li>presentation 테스트: <code>isRoutine: false</code>와 생략된 <code>today</code>가 기본 일정 의도로 서비스에 전달되는지 확인한다.</li><li>application 테스트: 고정된 <code>today()</code>에서 기본 ONCE 일정이 그 날짜로 저장되고, 명시 <code>today</code>는 덮어쓰지 않는지 확인한다.</li><li>회귀 테스트: 루틴의 시작일 누락과 필드 혼용은 기존 오류로 유지되는지 확인한다.</li></ul></section>
+      <section id="control"><h2>설계 이해 점검</h2><p><strong>design-control-state:</strong> 미실시. 범위(Q1), 날짜 기준·불변식(Q2), 실패 경계(Q3), 검증(Q4)을 다룬다. 권한·외부 효과·복구는 이 요청에 해당하지 않는다.</p>
+        <div id="progress">1 / 4 · 답변 0개</div>
+        <form id="quiz">
+          <fieldset class="question active" data-index="0"><legend>Q1. <code>isRoutine: false</code>이고 <code>today</code>가 없으면 어떤 일정이 저장되어야 할까?</legend><label><input type="radio" name="q1" value="a" /> 요청을 항상 거부한다.</label><br /><label><input type="radio" name="q1" value="b" /> 서비스의 KST 오늘 날짜를 시작일로 하는 ONCE 일정</label><br /><label><input type="radio" name="q1" value="c" /> 루틴 일정으로 바꾼다.</label><div class="result" hidden><strong>상태</strong><p class="status"></p><strong>설명</strong><p class="explanation"></p><strong>다음 행동</strong><p class="next"></p></div></fieldset>
+          <fieldset class="question" data-index="1"><legend>Q2. 사용자가 <code>today: '2026-08-20'</code>를 명시하면 무엇을 사용해야 할까?</legend><label><input type="radio" name="q2" value="a" /> 서버 오늘 날짜로 바꾼다.</label><br /><label><input type="radio" name="q2" value="b" /> 사용자가 지정한 2026-08-20을 사용한다.</label><br /><label><input type="radio" name="q2" value="c" /> 날짜 없이 저장한다.</label><div class="result" hidden><strong>상태</strong><p class="status"></p><strong>설명</strong><p class="explanation"></p><strong>다음 행동</strong><p class="next"></p></div></fieldset>
+          <fieldset class="question" data-index="2"><legend>Q3. 루틴 요청에서 시작일이 없으면 새 기본값을 적용할까?</legend><label><input type="radio" name="q3" value="a" /> 적용한다.</label><br /><label><input type="radio" name="q3" value="b" /> 적용하지 않고 기존처럼 거부한다.</label><div class="result" hidden><strong>상태</strong><p class="status"></p><strong>설명</strong><p class="explanation"></p><strong>다음 행동</strong><p class="next"></p></div></fieldset>
+          <fieldset class="question" data-index="3"><legend>Q4. 기본 날짜의 결정 위치는 어디가 적절할까?</legend><label><input type="radio" name="q4" value="a" /> 컨트롤러의 직접 시스템 시계</label><br /><label><input type="radio" name="q4" value="b" /> 주입된 <code>today()</code>를 가진 application 서비스</label><div class="result" hidden><strong>상태</strong><p class="status"></p><strong>설명</strong><p class="explanation"></p><strong>다음 행동</strong><p class="next"></p></div></fieldset>
+        </form>
+        <button type="button" id="previous">이전</button><button type="button" id="next">다음</button><button type="button" id="submit">제출</button><output id="overall" aria-live="polite">로컬 결과는 Codex에 자동 전달되지 않습니다.</output>
+      </section>
+      <section id="approval"><h2>설계 승인 상태</h2><p><strong>approval-state:</strong> 설계 승인 대기 전. 이해 점검은 설계 승인과 별개이며, 로컬 결과는 Codex에 자동 전달되지 않는다.</p></section>
+    </article></main>
+    <script>
+      (() => { const questions = [...document.querySelectorAll('.question')]; const answers = ['b','b','b','b']; let index = 0; const show = () => { questions.forEach((q,i)=>q.classList.toggle('active',i===index)); const count = questions.filter((q,i)=>document.querySelector(`input[name=q${i+1}]:checked`)).length; document.querySelector('#progress').textContent = `${index+1} / ${questions.length} · 답변 ${count}개`; }; document.querySelector('#previous').onclick=()=>{index=Math.max(0,index-1);show()}; document.querySelector('#next').onclick=()=>{index=Math.min(questions.length-1,index+1);show()}; document.querySelector('#submit').onclick=()=>{let correct=0; questions.forEach((q,i)=>{const picked=document.querySelector(`input[name=q${i+1}]:checked`)?.value; const card=q.querySelector('.result'); card.hidden=false; q.querySelector('.status').textContent=picked===answers[i]?'확립':'보류'; q.querySelector('.explanation').textContent=picked===answers[i]?'선택한 동작이 설계와 일치합니다.':'설계의 기본값·명시값·루틴 경계를 다시 확인하세요.'; q.querySelector('.next').textContent=picked===answers[i]?'승인 여부를 별도로 결정합니다.':'변경 모델과 불변식을 다시 검토합니다.'; if(picked===answers[i]) correct++; }); document.querySelector('#overall').textContent=`${correct}/${questions.length}개를 설계와 일치하게 답했습니다. 로컬 결과는 Codex에 자동 전달되지 않습니다.`; show();}; show(); })();
+    </script>
+  </body>
+</html>

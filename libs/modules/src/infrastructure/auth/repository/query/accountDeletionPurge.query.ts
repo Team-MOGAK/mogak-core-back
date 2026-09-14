@@ -21,7 +21,7 @@ import {
 type CteTransaction = Pick<Database, '$with' | 'with' | 'select' | 'delete'>;
 
 export async function purgePostDomain(tx: CteTransaction, userId: number): Promise<void> {
-  const targetPosts = tx.$with('target_posts').as(withdrawalTargetPostIds(tx, userId));
+  const targetPosts = tx.$with('target_posts').as(withdrawalOwnedPostIds(tx, userId));
   const targetPostIds = tx.select({ id: targetPosts.id }).from(targetPosts);
   const deletedImages = tx
     .$with('deleted_images')
@@ -176,7 +176,7 @@ export async function purgeAccountRelations(tx: CteTransaction, userId: number):
     );
 }
 
-export function withdrawalTargetPostIds(tx: Pick<Database, 'select'>, userId: number) {
+export function withdrawalOwnedPostIds(tx: Pick<Database, 'select'>, userId: number) {
   const ownedExecutionIds = tx
     .select({ id: jogakExecutions.id })
     .from(jogakExecutions)
@@ -188,6 +188,29 @@ export function withdrawalTargetPostIds(tx: Pick<Database, 'select'>, userId: nu
     .select({ id: posts.id })
     .from(posts)
     .where(or(eq(posts.authorId, userId), inArray(posts.jogakExecutionId, ownedExecutionIds)));
+}
+
+/** Every post whose row must be locked before removing a user's leaf relations. */
+export function withdrawalTargetPostIds(tx: Pick<Database, 'select'>, userId: number) {
+  const ownedPostIds = withdrawalOwnedPostIds(tx, userId);
+  const commentedPostIds = tx
+    .select({ id: postComments.postId })
+    .from(postComments)
+    .where(eq(postComments.authorId, userId));
+  const likedPostIds = tx
+    .select({ id: postLikes.postId })
+    .from(postLikes)
+    .where(eq(postLikes.userId, userId));
+  return tx
+    .select({ id: posts.id })
+    .from(posts)
+    .where(
+      or(
+        inArray(posts.id, ownedPostIds),
+        inArray(posts.id, commentedPostIds),
+        inArray(posts.id, likedPostIds),
+      ),
+    );
 }
 
 function cteCompleted(cte: { getSQL(): ReturnType<typeof sql> }) {

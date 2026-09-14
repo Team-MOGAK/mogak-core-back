@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { MAX_DATE_RANGE_DAYS } from '@core/common/resourceLimits';
+import { dateRangeDays, isDateOnly } from '@core/mogaks/domain/vo/jogakScheduleDate.vo';
 import {
   calendarDateSchema,
   positiveIdSchema,
@@ -19,7 +21,18 @@ export const dateQuerySchema = z.object({ date: calendarDateSchema }).strict();
 export type DateQueryRequest = z.infer<typeof dateQuerySchema>;
 export const dateRangeQuerySchema = z
   .object({ startDay: calendarDateSchema, endDay: calendarDateSchema })
-  .strict();
+  .strict()
+  .refine(
+    ({ startDay, endDay }) => {
+      if (!isDateOnly(startDay) || !isDateOnly(endDay)) return false;
+      const days = dateRangeDays(startDay, endDay);
+      return days >= 1 && days <= MAX_DATE_RANGE_DAYS;
+    },
+    {
+      path: ['endDay'],
+      message: 'date range is too large',
+    },
+  );
 export type DateRangeQueryRequest = z.infer<typeof dateRangeQuerySchema>;
 export const createJogakRequestSchema = z
   .object({

@@ -13,9 +13,17 @@ describe('동의 저장소', () => {
   ] as const)(
     '잠금 뒤 사용자가 없으면 %s을 삽입하지 않고 전용 예외를 던진다',
     async (_, method) => {
-      const whereAfterLock = testMock().mockResolvedValue([]);
-      const fromAfterLock = testMock().mockReturnValue({ where: whereAfterLock });
-      const selectAfterLock = testMock().mockReturnValue({ from: fromAfterLock });
+      const lockFor = testMock().mockResolvedValue([]);
+      const lockQuery = {
+        from: testMock(),
+        where: testMock(),
+        orderBy: testMock(),
+        for: lockFor,
+      };
+      lockQuery.from.mockReturnValue(lockQuery);
+      lockQuery.where.mockReturnValue(lockQuery);
+      lockQuery.orderBy.mockReturnValue(lockQuery);
+      const selectAfterLock = testMock().mockReturnValue(lockQuery);
       const insert = testMock();
       const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
         callback({ select: selectAfterLock, insert }),
@@ -45,6 +53,7 @@ describe('동의 저장소', () => {
 
       await expect(call).rejects.toEqual(new DomainException(DomainErrorCode.USER_NOT_FOUND));
       expect(selectAfterLock).toHaveBeenCalledTimes(1);
+      expect(lockFor).toHaveBeenCalledTimes(1);
       expect(insert).not.toHaveBeenCalled();
     },
   );

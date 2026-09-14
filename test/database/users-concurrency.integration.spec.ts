@@ -4,9 +4,20 @@ import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 
-import { authSessions, addresses, jobs, users } from '@infra/database/schema';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
+import { AuthRepository } from '@infra/auth/repository/auth.repository';
+import {
+  authSessions,
+  addresses,
+  consentItems,
+  jobs,
+  userConsents,
+  users,
+} from '@infra/database/schema';
 import { CurrentSessionNotActiveException } from '@core/users/domain/exception/userPersistence.exception';
+import { ConsentRepository } from '@infra/users/repository/consent.repository';
 import { UserRepository } from '@infra/users/repository/user.repository';
+import { pinoLoggerStub } from '../fixtures/pinoLogger.fixture';
 
 const databaseUrl = process.env.DATABASE_URL;
 if (databaseUrl === undefined) {
@@ -198,8 +209,111 @@ describe('사용자 가입 PostgreSQL 동시성 통합', () => {
     expect(storedSessions).toHaveLength(1);
     expect([replacementSessionA, replacementSessionB]).toContain(storedSessions[0]?.id);
   });
+
+  it.each(['write-first', 'withdrawal-first'] as const)(
+    '프로필 수정과 회원 탈퇴가 %s로 시작해도 계정이 부활하지 않는다',
+    async (order) => {
+      const [user] = await db
+        .insert(users)
+        .values({ email: `${randomUUID()}@mogak.test`, role: 'USER' })
+        .returning({ id: users.id });
+      if (user === undefined) throw new Error('user fixture insert did not return a row');
+
+      const repository = new UserRepository(db as never);
+      const update = () =>
+        repository.updateNickname({
+          userId: user.id,
+          nickname: `동시 수정 ${randomUUID()}`,
+          now: new Date('2026-08-29T00:00:00.000Z'),
+        });
+      const withdraw = () => new AuthRepository(db as never).deleteUser(user.id);
+      const outcomes =
+        order === 'write-first'
+          ? await Promise.allSettled([update(), withdraw()])
+          : await Promise.allSettled([withdraw(), update()]);
+      const updateOutcome = order === 'write-first' ? outcomes[0] : outcomes[1];
+      const withdrawalOutcome = order === 'write-first' ? outcomes[1] : outcomes[0];
+
+      expect(withdrawalOutcome).toMatchObject({ status: 'fulfilled', value: true });
+      expect(updateOutcome).toMatchObject({ status: 'fulfilled' });
+      if (updateOutcome?.status === 'fulfilled') expect(typeof updateOutcome.value).toBe('boolean');
+      for (const outcome of outcomes) {
+        if (outcome.status === 'rejected') {
+          expect(hasErrorCode(outcome.reason, '40P01')).toBe(false);
+          expect(hasErrorCode(outcome.reason, '23503')).toBe(false);
+        }
+      }
+      await expect(db.select().from(users).where(eq(users.id, user.id))).resolves.toHaveLength(0);
+    },
+  );
+
+  it.each(['write-first', 'withdrawal-first'] as const)(
+    '동의 갱신과 회원 탈퇴가 %s로 시작해도 동의가 남지 않는다',
+    async (order) => {
+      const [user] = await db
+        .insert(users)
+        .values({ email: `${randomUUID()}@mogak.test`, role: 'USER' })
+        .returning({ id: users.id });
+      const [item] = await db
+        .insert(consentItems)
+        .values({
+          code: `CONCURRENT_${randomUUID()}`,
+          name: '동시성 테스트 동의',
+          required: false,
+          active: true,
+        })
+        .returning({ id: consentItems.id });
+      if (user === undefined || item === undefined) {
+        throw new Error('consent fixture insert did not return rows');
+      }
+
+      const repository = new ConsentRepository(db as never, pinoLoggerStub());
+      const update = () =>
+        repository.upsertUserConsents(
+          user.id,
+          [{ consentItemId: item.id, agreed: true }],
+          new Date('2026-08-29T00:00:00.000Z'),
+        );
+      const withdraw = () => new AuthRepository(db as never).deleteUser(user.id);
+      const outcomes =
+        order === 'write-first'
+          ? await Promise.allSettled([update(), withdraw()])
+          : await Promise.allSettled([withdraw(), update()]);
+      const updateOutcome = order === 'write-first' ? outcomes[0] : outcomes[1];
+      const withdrawalOutcome = order === 'write-first' ? outcomes[1] : outcomes[0];
+
+      expect(withdrawalOutcome).toMatchObject({ status: 'fulfilled', value: true });
+      if (updateOutcome?.status === 'fulfilled') {
+        expect(updateOutcome.value).toBeUndefined();
+      } else if (updateOutcome?.status === 'rejected') {
+        expect(updateOutcome.reason).toBeInstanceOf(DomainException);
+        expect(updateOutcome.reason.code).toBe(DomainErrorCode.USER_NOT_FOUND);
+      }
+      for (const outcome of outcomes) {
+        if (outcome.status === 'rejected') {
+          expect(hasErrorCode(outcome.reason, '40P01')).toBe(false);
+          expect(hasErrorCode(outcome.reason, '23503')).toBe(false);
+        }
+      }
+      await expect(db.select().from(users).where(eq(users.id, user.id))).resolves.toHaveLength(0);
+      await expect(
+        db.select().from(userConsents).where(eq(userConsents.userId, user.id)),
+      ).resolves.toHaveLength(0);
+    },
+  );
 });
 
 function tokenHash(): string {
   return randomUUID().replaceAll('-', '');
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  const seen = new Set<object>();
+  let current: unknown = error;
+  while (typeof current === 'object' && current !== null && !seen.has(current)) {
+    if ('code' in current && current.code === code) return true;
+    seen.add(current);
+    current = 'cause' in current ? current.cause : undefined;
+  }
+  return false;
 }

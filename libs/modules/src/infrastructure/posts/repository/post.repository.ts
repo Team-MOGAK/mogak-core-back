@@ -33,12 +33,19 @@ import type {
   PostDetailRow,
   PostImageRow,
 } from '../type/post.projection';
+import { lockJogakHierarchy, lockUsers } from '../../database/transactionLocks';
 
 type CreatePostForOccurrenceInput = CreatePostCommand & Readonly<{ jogakTitleSnapshot: string }>;
 type CreatePostForOccurrenceResult =
   Readonly<{ type: 'CREATED'; post: CreatedPostRow }> | Readonly<{ type: 'DUPLICATE' }>;
 type PostRecord = Readonly<{ id: number }>;
 type UpdatedPostRecord = Readonly<{ id: number; contents: string; updatedAt: Date }>;
+type PostLockMode = 'key share' | 'update' | 'no key update';
+type PostParticipantRow = Readonly<{
+  id: number;
+  authorId: number;
+  hierarchyOwnerId: number | null;
+}>;
 
 @Injectable()
 export class PostRepository implements PostRepositoryPort {
@@ -51,27 +58,33 @@ export class PostRepository implements PostRepositoryPort {
     input: CreatePostForOccurrenceInput,
   ): Promise<CreatePostForOccurrenceResult> {
     return this.db.transaction(async (tx) => {
-      const [stillOwned] = await tx
-        .select({ id: jogaks.id })
+      const [hierarchyOwner] = await tx
+        .select({ userId: modarats.userId })
         .from(jogaks)
+        .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+        .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
         .where(eq(jogaks.id, input.jogakId));
-      if (stillOwned === undefined) {
+      if (hierarchyOwner === undefined) {
         this.logger.warn({
           event: 'jogak_not_found_after_lock',
           operation: 'create_post_for_occurrence',
         });
         throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
       }
-      const [author] = await tx
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.id, input.authorId));
-      if (author === undefined) {
+      const lockedUsers = await lockUsers(tx, [input.authorId, hierarchyOwner.userId]);
+      if (!lockedUsers.includes(input.authorId)) {
         this.logger.warn({
           event: 'user_not_found_after_lock',
           operation: 'create_post_for_occurrence',
         });
         throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
+      const lockedHierarchy = await lockJogakHierarchy(tx, input.jogakId, hierarchyOwner.userId);
+      if (lockedHierarchy === undefined) {
+        throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
+      }
+      if (hierarchyOwner.userId !== input.authorId) {
+        throw new DomainException(DomainErrorCode.FORBIDDEN);
       }
       const [insertedExecution] = await tx
         .insert(jogakExecutions)
@@ -148,6 +161,8 @@ export class PostRepository implements PostRepositoryPort {
     }>,
   ): Promise<UpdatedPostRecord | null> {
     return this.db.transaction(async (tx) => {
+      const participants = await lockPostParticipants(tx, input.postId, input.authorId, 'update');
+      if (participants === undefined || participants.authorId !== input.authorId) return null;
       const [post] = await tx
         .update(posts)
         .set({ contents: input.contents, updatedAt: input.now })
@@ -159,12 +174,15 @@ export class PostRepository implements PostRepositoryPort {
 
   async deleteOwnedPost(input: Readonly<{ postId: number; authorId: number }>): Promise<boolean> {
     return this.db.transaction(async (tx) => {
+      const participants = await lockPostParticipants(tx, input.postId, input.authorId, 'update');
+      if (participants === undefined || participants.authorId !== input.authorId) return false;
       // Explicit child cleanup keeps normal post deletion independent of the
       // database's FK cascade just like withdrawal does.
       const [owned] = await tx
         .select({ id: posts.id })
         .from(posts)
-        .where(and(eq(posts.id, input.postId), eq(posts.authorId, input.authorId)));
+        .where(and(eq(posts.id, input.postId), eq(posts.authorId, input.authorId)))
+        .for('update');
       if (owned === undefined) return false;
       await tx.delete(postImages).where(eq(postImages.postId, input.postId));
       await tx.delete(postComments).where(eq(postComments.postId, input.postId));
@@ -256,29 +274,13 @@ export class PostRepository implements PostRepositoryPort {
 
   async toggleLike(input: Readonly<{ postId: number; userId: number }>): Promise<ToggleLikeResult> {
     return this.db.transaction(async (tx) => {
-      // Re-read after locks: withdrawal may have deleted the post while this
-      // request was waiting.
-      const [post] = await tx
-        .select({ id: posts.id })
-        .from(posts)
-        .where(eq(posts.id, input.postId));
+      const post = await lockPostParticipants(tx, input.postId, input.userId, 'no key update');
       if (post === undefined) {
         this.logger.warn({
           event: 'post_not_found_after_lock',
           operation: 'toggle_like',
         });
         throw new DomainException(DomainErrorCode.POST_NOT_FOUND);
-      }
-      const [actor] = await tx
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.id, input.userId));
-      if (actor === undefined) {
-        this.logger.warn({
-          event: 'user_not_found_after_lock',
-          operation: 'toggle_like',
-        });
-        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       }
       const [created] = await tx
         .insert(postLikes)
@@ -315,27 +317,13 @@ export class PostRepository implements PostRepositoryPort {
 
   async createComment(input: Readonly<{ postId: number; authorId: number; contents: string }>) {
     return this.db.transaction(async (tx) => {
-      const [post] = await tx
-        .select({ id: posts.id })
-        .from(posts)
-        .where(eq(posts.id, input.postId));
+      const post = await lockPostParticipants(tx, input.postId, input.authorId, 'key share');
       if (post === undefined) {
         this.logger.warn({
           event: 'post_not_found_after_lock',
           operation: 'create_comment',
         });
         throw new DomainException(DomainErrorCode.POST_NOT_FOUND);
-      }
-      const [author] = await tx
-        .select({ id: users.id })
-        .from(users)
-        .where(eq(users.id, input.authorId));
-      if (author === undefined) {
-        this.logger.warn({
-          event: 'user_not_found_after_lock',
-          operation: 'create_comment',
-        });
-        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       }
       const [created] = await tx
         .insert(postComments)
@@ -396,6 +384,8 @@ export class PostRepository implements PostRepositoryPort {
     }>,
   ): Promise<PostCommentResult | null> {
     return this.db.transaction(async (tx) => {
+      const post = await lockPostParticipants(tx, input.postId, input.authorId, 'key share');
+      if (post === undefined) return null;
       const [updated] = await tx
         .update(postComments)
         .set({ contents: input.contents, updatedAt: input.now })
@@ -430,6 +420,8 @@ export class PostRepository implements PostRepositoryPort {
 
   async deleteComment(input: Readonly<{ postId: number; commentId: number; authorId: number }>) {
     return this.db.transaction(async (tx) => {
+      const post = await lockPostParticipants(tx, input.postId, input.authorId, 'key share');
+      if (post === undefined) return false;
       const deleted = await tx
         .delete(postComments)
         .where(
@@ -443,6 +435,52 @@ export class PostRepository implements PostRepositoryPort {
       return deleted.length === 1;
     });
   }
+}
+
+async function lockPostParticipants(
+  tx: Pick<Database, 'select'>,
+  postId: number,
+  actorId: number,
+  mode: PostLockMode,
+): Promise<PostParticipantRow | undefined> {
+  const initial = await findPostParticipants(tx, postId);
+  if (initial === undefined) return undefined;
+
+  const participantIds = [initial.authorId, actorId];
+  if (initial.hierarchyOwnerId !== null) participantIds.push(initial.hierarchyOwnerId);
+  const lockedUsers = await lockUsers(tx, participantIds);
+  if (!lockedUsers.includes(actorId)) {
+    throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+  }
+
+  const postQuery = tx.select({ id: posts.id }).from(posts).where(eq(posts.id, postId));
+  if (mode === 'key share') {
+    await postQuery.for('key share', { of: posts });
+  } else if (mode === 'no key update') {
+    await postQuery.for('no key update', { of: posts });
+  } else {
+    await postQuery.for('update', { of: posts });
+  }
+  return findPostParticipants(tx, postId);
+}
+
+async function findPostParticipants(
+  tx: Pick<Database, 'select'>,
+  postId: number,
+): Promise<PostParticipantRow | undefined> {
+  const [row] = await tx
+    .select({
+      id: posts.id,
+      authorId: posts.authorId,
+      hierarchyOwnerId: modarats.userId,
+    })
+    .from(posts)
+    .leftJoin(jogakExecutions, eq(posts.jogakExecutionId, jogakExecutions.id))
+    .leftJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
+    .leftJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+    .leftJoin(modarats, eq(mogaks.modaratId, modarats.id))
+    .where(eq(posts.id, postId));
+  return row;
 }
 
 function toPostDetailResult(row: PostDetailRow): PostDetailResult {

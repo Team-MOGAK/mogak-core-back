@@ -32,9 +32,10 @@ export class JwtTokenService implements SessionTokenIssuerPort, AuthTokenVerifie
   constructor(@Inject(ConfigService) config: ConfigService) {
     const configuredSecret =
       config.get<string>('JWT_SECRET') ?? config.get<string>('JWT_SECRET_KEY');
-    if (configuredSecret === undefined || configuredSecret.trim().length === 0) {
-      throw new Error('JWT_SECRET 또는 JWT_SECRET_KEY가 필요합니다.');
+    if (typeof configuredSecret !== 'string' || configuredSecret.trim().length === 0) {
+      throw new Error('JWT_SECRET 또는 JWT_SECRET_KEY가 비어 있습니다.');
     }
+
     const secret = new TextEncoder().encode(configuredSecret);
     if (secret.byteLength < MIN_JWT_SECRET_BYTES) {
       throw new Error(`JWT secret은 UTF-8 기준 ${MIN_JWT_SECRET_BYTES}바이트 이상이어야 합니다.`);

@@ -7,12 +7,29 @@ import { AuthPersistenceException } from '@core/auth/domain/exception/authPersis
 
 const SESSION_ID = 'ebc0d040-a6e8-4a95-9c13-5f84c7bc6a5f';
 
+function lockedUserSelect(result: readonly unknown[] = [{ id: 7 }]) {
+  const query = {
+    from: testMock(),
+    where: testMock(),
+    orderBy: testMock(),
+    for: testMock(),
+  };
+  query.from.mockReturnValue(query);
+  query.where.mockReturnValue(query);
+  query.orderBy.mockReturnValue(query);
+  query.for.mockResolvedValue(result);
+  return testMock().mockReturnValue(query);
+}
+
 describe('인증 세션 저장소', () => {
   it('세션 삽입 결과가 없으면 AuthPersistenceException을 던진다', async () => {
     const returning = testMock().mockResolvedValue([]);
     const values = testMock().mockReturnValue({ returning });
     const insert = testMock().mockReturnValue({ values });
-    const repository = new AuthSessionsRepository({ insert } as unknown as Database);
+    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+      callback({ select: lockedUserSelect(), insert }),
+    );
+    const repository = new AuthSessionsRepository({ transaction } as unknown as Database);
 
     await expect(
       repository.create({
@@ -32,7 +49,10 @@ describe('인증 세션 저장소', () => {
       returning: testMock().mockRejectedValue(failure),
     });
     const insert = testMock().mockReturnValue({ values });
-    const repository = new AuthSessionsRepository({ insert } as unknown as Database);
+    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+      callback({ select: lockedUserSelect(), insert }),
+    );
+    const repository = new AuthSessionsRepository({ transaction } as unknown as Database);
 
     await expect(
       repository.create({
@@ -55,7 +75,10 @@ describe('인증 세션 저장소', () => {
       returning: testMock().mockRejectedValue(failure),
     });
     const insert = testMock().mockReturnValue({ values });
-    const repository = new AuthSessionsRepository({ insert } as unknown as Database);
+    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+      callback({ select: lockedUserSelect(), insert }),
+    );
+    const repository = new AuthSessionsRepository({ transaction } as unknown as Database);
 
     await expect(
       repository.create({
@@ -72,10 +95,14 @@ describe('인증 세션 저장소', () => {
     const where = testMock().mockReturnValue({ returning });
     const set = testMock().mockReturnValue({ where });
     const update = testMock().mockReturnValue({ set });
-    const repository = new AuthSessionsRepository({ update } as unknown as Database);
+    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+      callback({ select: lockedUserSelect(), update }),
+    );
+    const repository = new AuthSessionsRepository({ transaction } as unknown as Database);
 
     await expect(
       repository.rotate({
+        userId: 7,
         sessionId: SESSION_ID,
         currentRefreshTokenHash: 'current-hash',
         nextRefreshTokenHash: 'next-hash',
@@ -98,10 +125,14 @@ describe('인증 세션 저장소', () => {
     const where = testMock().mockReturnValue({ returning });
     const set = testMock().mockReturnValue({ where });
     const update = testMock().mockReturnValue({ set });
-    const repository = new AuthSessionsRepository({ update } as unknown as Database);
+    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+      callback({ select: lockedUserSelect(), update }),
+    );
+    const repository = new AuthSessionsRepository({ transaction } as unknown as Database);
 
     await expect(
       repository.rotate({
+        userId: 7,
         sessionId: SESSION_ID,
         currentRefreshTokenHash: 'current-hash',
         nextRefreshTokenHash: 'next-hash',

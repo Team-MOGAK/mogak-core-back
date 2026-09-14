@@ -82,6 +82,7 @@ describe('조각 서비스', () => {
     });
     expect(mogaks.createJogakWithSchedule).toHaveBeenCalledWith(
       expect.objectContaining({
+        userId: 7,
         mogak: expect.objectContaining({ id: 3 }),
         title: '정보처리기사 문제 풀이',
       }),

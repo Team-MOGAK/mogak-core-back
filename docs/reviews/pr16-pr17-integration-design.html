@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR16·PR17 통합 병합 설계</title>
+  <style>
+    :root { --ink:#18212f; --muted:#536174; --line:#d8dee8; --bg:#f6f8fb; --card:#fff; --warn:#9a4b00; --ok:#136b45; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.65 system-ui,-apple-system,sans-serif; }
+    header, nav, main, footer { max-width:1040px; margin:auto; padding:18px 24px; }
+    header, article, fieldset { background:var(--card); border:1px solid var(--line); border-radius:10px; }
+    header { margin-top:24px; }
+    nav { display:flex; flex-wrap:wrap; gap:12px; }
+    nav a { color:#1457a6; }
+    article { padding:22px; }
+    section { margin:0 0 28px; }
+    h1,h2 { line-height:1.25; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { border-bottom:1px solid var(--line); padding-bottom:8px; }
+    dl { display:grid; grid-template-columns:170px 1fr; gap:6px 18px; }
+    dt { color:var(--muted); font-weight:700; }
+    dd { margin:0; }
+    table { width:100%; border-collapse:collapse; }
+    caption { text-align:left; font-weight:700; margin:8px 0; }
+    th,td { border:1px solid var(--line); padding:9px; text-align:left; vertical-align:top; }
+    th { background:#eef2f7; }
+    figure { margin:14px 0; padding:14px; border:1px solid var(--line); border-radius:8px; background:#f9fbfd; }
+    pre { overflow:auto; padding:12px; background:#111827; color:#e5e7eb; border-radius:7px; }
+    aside { border-left:5px solid var(--warn); background:#fff4e8; padding:12px 15px; }
+    .state { color:var(--warn); font-weight:700; }
+    .muted { color:var(--muted); }
+    .control-slide { padding:14px; margin:10px 0; }
+    .control-slide[hidden] { display:none; }
+    .result { margin-top:10px; padding:10px; background:#eef8f2; border-radius:7px; }
+    .result[hidden] { display:none; }
+    .slide-nav { display:flex; align-items:center; gap:12px; margin-top:10px; }
+    button { padding:7px 12px; cursor:pointer; }
+    @media(max-width:680px) { header,nav,main,footer { padding:14px; } dl { grid-template-columns:1fr; } article { padding:15px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <p>설계 기준선 · PR 통합·병합 구조 · <span class="state">설계 승인됨</span></p>
+    <h1>PR16·PR17 통합 병합 설계</h1>
+    <dl>
+      <dt>목적 (purpose)</dt><dd>서로 다른 두 하드닝 기능을 공통 코드 충돌 없이 통합하고, 두 PR을 순차적으로 검토·병합 가능하게 만든다.</dd>
+      <dt>사용자 (audience)</dt><dd>Team-MOGAK 저장소의 PR 작성자·리뷰어·병합 담당자</dd>
+      <dt>문제 (problem)</dt><dd>PR16과 PR17이 같은 <code>main@848f639</code>에서 갈라져 22개 파일을 공유하고, 15개 파일에서 실제 3-way 충돌이 발생한다.</dd>
+      <dt>핵심 흐름 (core-flow)</dt><dd>범위 결정 → 공통 구현 통합 → PR16 기준 병합 → PR17 증분 검토·병합 → 기능별 후속 운영 확인</dd>
+      <dt>강도</dt><dd>High-risk: 인증·세션, DB migration·readiness, 동시성 잠금, 원격 브랜치와 PR 상태를 함께 다룬다.</dd>
+      <dt>근거 범위</dt><dd><a href="https://github.com/Team-MOGAK/mogak-core-back/pull/16">PR #16</a> <code>518bd5e</code> · <a href="https://github.com/Team-MOGAK/mogak-core-back/pull/17">PR #17</a> <code>df90cd8</code> · 공통 기준 <code>848f639</code></dd>
+    </dl>
+  </header>
+  <nav aria-label="설계 탐색">
+    <a href="#goal">목표</a><a href="#evidence">근거</a><a href="#model">병합 모델</a><a href="#decisions">의사결정</a><a href="#invariants">불변식</a><a href="#failure">실패·복구</a><a href="#verification">검증</a><a href="#grilling-state">grilling</a><a href="#design-control-state">이해 점검</a><a href="#approval">승인</a>
+  </nav>
+  <main>
+    <article>
+      <section id="goal">
+        <h2>목표와 제외 범위</h2>
+        <ul>
+          <li>PR16의 Spring 운영 DB 안정화 기능과 PR17의 API 자원·동시성 보호 기능을 모두 보존한다.</li>
+          <li>공통 파일에는 두 기능을 합친 단일 구현만 남긴다. 자동으로 한쪽 변경을 선택하지 않는다.</li>
+          <li>각 PR은 별도 리뷰 단위를 유지하되, PR17은 PR16을 먼저 병합해야 하는 stacked PR로 운영한다.</li>
+          <li>실제 운영 DB 실행, Cloud Run 변경, 외부 트래픽 전환은 이 작업에서 수행하지 않는다.</li>
+        </ul>
+      </section>
+      <section id="evidence">
+        <h2>확인된 근거</h2>
+        <table>
+          <caption>두 PR의 관계</caption>
+          <thead><tr><th>항목</th><th>PR16</th><th>PR17</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">목적</th><td>Spring DB migration·readiness·세션·DB/JWT 경계</td><td>페이지/날짜 자원 제한·동시성 잠금·repository 경계</td></tr>
+            <tr><th scope="row">기준</th><td><code>main@848f639</code>에서 <code>518bd5e</code></td><td><code>main@848f639</code>에서 <code>df90cd8</code></td></tr>
+            <tr><th scope="row">겹침</th><td colspan="2">22개 파일 변경, synthetic 3-way merge에서 텍스트 충돌 15개</td></tr>
+            <tr><th scope="row">의도 차이</th><td>readiness·legacy migration·session cleanup을 구현</td><td>위 세 항목은 후속 범위로 두고 해당 코드 일부를 제거</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section id="model">
+        <h2>제안 병합 모델</h2>
+        <figure>
+          <figcaption>텍스트 등가: PR16을 기반으로 PR17을 재구성한 뒤 순차 병합한다.</figcaption>
+          <pre><code>main 848f639
+├── PR16 518bd5e  (DB·인증·migration 안정화)
+└── PR17 df90cd8  (현재 sibling, 재구성 대상)
+
+제안: main → PR16 → PR17
+                         └─ PR16 공통 동작을 보존한 PR17 증분 변경</code></pre>
+        </figure>
+        <p>현재 PR17을 PR16 위로 rebase하거나 merge commit으로 재구성하고, PR17의 base를 PR16으로 설정한다. PR16 병합 후 PR17을 <code>main</code>으로 retarget하고 incremental diff와 CI를 확인한다. 원격 브랜치 history를 덮어쓰는 force push는 기본 경로로 사용하지 않는다.</p>
+      </section>
+      <section id="decisions">
+        <h2>열린 의사결정</h2>
+        <table>
+          <caption>grilling frontier</caption>
+          <thead><tr><th>ID</th><th>결정</th><th>선택지</th><th>권고</th><th>상태</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">G1</th><td>PR 간 관계</td><td>A stacked PR16→PR17 / B 공통 기반 PR 후 두 후속 PR</td><td>A — 현재 브랜치 변경을 가장 적게 하면서 두 기능을 모두 유지한다. B는 더 독립적이지만 공통 코드 추출 작업이 크다.</td><td>확정 · A</td></tr>
+            <tr><th scope="row">G2</th><td>PR16-only 기능의 최종 보존</td><td>A readiness·migration·session cleanup 유지 / B PR17처럼 후속 범위로 제외</td><td>A — 두 PR의 기능을 모두 보존한다. 운영 DB 실행은 계속 금지한다.</td><td>확정 · A</td></tr>
+            <tr><th scope="row">G3</th><td>원격 history 변경</td><td>A merge commit으로 보존 / B rebase 후 force-with-lease</td><td>A — 복구 가능성과 감사 추적을 우선하고 원격 history를 덮어쓰지 않는다.</td><td>확정 · A</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section id="invariants">
+        <h2>불변식과 공통 구현 원칙</h2>
+        <ol>
+          <li>선택한 경우 PR16의 `/health/ready`, legacy migration preflight/rollback, 만료 세션 cleanup을 PR17 재구성 과정에서 삭제하지 않는다.</li>
+          <li>PR17의 page/date bound, offset overflow 방지, transaction/advisory lock과 lock ordering을 유지한다.</li>
+          <li><code>globalException.filter.ts</code>, request schema, post/social service, auth repository/token, database provider에는 중복 상수·서로 다른 오류 계약을 남기지 않는다.</li>
+          <li>충돌은 파일별로 의도와 불변식을 확인해 해결한다. “ours/theirs 전부 선택”을 허용하지 않는다.</li>
+          <li>migration은 테스트용 격리 PostgreSQL에서만 검증하고 실제 운영 DB에는 접근하지 않는다.</li>
+        </ol>
+      </section>
+      <section id="failure">
+        <h2>실패·복구와 외부 효과</h2>
+        <aside>충돌 해결 중 동작 선택이 새로 필요하거나 PR16/17의 범위가 달라지면 구현을 멈추고 설계 승인을 다시 받는다.</aside>
+        <ul>
+          <li>통합 브랜치에서 typecheck·lint·test가 실패하면 원인별로 수정하고, 의미가 불명확한 실패는 원격 push 전에 중단한다.</li>
+          <li>원격 변경 전 현재 head를 별도 백업 ref로 기록한다. merge commit 경로에서는 force push를 하지 않는다.</li>
+          <li>PR16 merge 후 PR17의 base를 변경할 때 GitHub diff와 mergeability를 새로 확인한다. 운영 배포나 DB migration 실행은 후속 승인 범위다.</li>
+        </ul>
+      </section>
+      <section id="verification">
+        <h2>검증 계획</h2>
+        <ol>
+          <li>격리 worktree에서 PR16과 PR17의 3-way merge를 수행하고 15개 충돌을 파일별로 해결한다.</li>
+          <li><code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>, <code>pnpm test --runInBand</code>를 실행한다.</li>
+          <li>PR16 migration/session/readiness와 PR17 concurrency/resource 경계의 관련 통합 테스트를 별도로 확인한다.</li>
+          <li>실제 원격 push 전 <code>git diff --check</code>와 변경 파일·PR diff를 재검토한다.</li>
+        </ol>
+      </section>
+      <section id="grilling-state">
+        <h2>설계 의사결정 상태 (grilling-state)</h2>
+        <p><strong>진행 상태: 완료.</strong> 사용자가 G1-A, G2-A, G3-A를 선택했다. PR16을 먼저 병합하고 PR17을 그 위의 stacked PR로 병합하며, PR16의 readiness·legacy migration·session cleanup을 보존하고, 원격 history는 merge commit으로 유지한다. material frontier는 남아 있지 않다.</p>
+        <dl><dt>확정 결정</dt><dd>G1-A · G2-A · G3-A</dd><dt>보류한 branch</dt><dd>없음. 실제 운영 DB 실행·Cloud Run 변경은 설계 비범위로 계속 보류한다.</dd></dl>
+        <p class="muted">이 질문은 구현 승인이나 이해 점검이 아니라, 어떤 동작과 PR 관계를 만들지 결정하는 단계다.</p>
+      </section>
+      <section id="design-control-state">
+        <h2>설계 이해·통제 점검 (design-control-state)</h2>
+        <p><strong>미실시 · 설계 결정 후 확인 예정.</strong> 아래 문항은 선택된 설계의 결과를 예측하는 비차단 self-check다. 결과는 브라우저 안에만 존재하며 구현 승인을 대신하지 않는다.</p>
+        <details><summary>커버리지</summary><ul><li>목표·범위: DC-1</li><li>공통 구현·불변식: DC-2</li><li>브랜치·PR 경계: DC-3</li><li>충돌·실패 복구: DC-4</li><li>원격 효과·운영: DC-5</li><li>검증·잔여 위험: DC-6</li></ul></details>
+        <div id="control-slides">
+          <fieldset class="control-slide" data-id="DC-1" data-answer="a" data-explanation="두 PR은 목적이 다르지만 공통 구현을 공유하므로 통합 기준선이 필요하다." data-next-action="G1·G2·G3 결정 후 구현 승인을 검토한다."><legend>DC-1 · 두 PR의 목적과 병합 관계를 어떻게 이해해야 하는가?</legend><label><input type="radio" name="DC-1" value="a"> 목적은 다르지만 공통 코드를 합친 뒤 순차 병합한다.</label><br><label><input type="radio" name="DC-1" value="b"> 목적이 다르므로 충돌도 없고 그대로 병합한다.</label><br><button type="button" data-submit>제출</button><div class="result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+          <fieldset class="control-slide" data-id="DC-2" data-answer="a" data-explanation="공통 파일은 두 기능의 불변식을 모두 만족하는 단일 구현이어야 한다." data-next-action="공통 파일 검증 목록을 유지한다." hidden><legend>DC-2 · 충돌 파일을 합칠 때 지켜야 할 것은?</legend><label><input type="radio" name="DC-2" value="a"> 두 기능의 계약과 불변식을 함께 만족하는 한 버전으로 정리한다.</label><br><label><input type="radio" name="DC-2" value="b"> 충돌 표시를 없애기 위해 한 브랜치 전체를 선택한다.</label><br><button type="button" data-submit>제출</button><div class="result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+          <fieldset class="control-slide" data-id="DC-3" data-answer="a" data-explanation="PR17은 PR16을 기준으로 한 증분 PR이며, PR16 병합 후 main으로 retarget한다." data-next-action="base와 incremental diff를 다시 확인한다." hidden><legend>DC-3 · stacked PR의 병합 순서는?</legend><label><input type="radio" name="DC-3" value="a"> PR16을 먼저 병합하고 PR17을 그 위의 증분 변경으로 병합한다.</label><br><label><input type="radio" name="DC-3" value="b"> 두 PR은 어느 순서로든 현재 상태 그대로 병합한다.</label><br><button type="button" data-submit>제출</button><div class="result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+          <fieldset class="control-slide" data-id="DC-4" data-answer="a" data-explanation="동작 선택이 필요한 충돌은 임의로 해결하지 않고 설계 결정을 다시 확인한다." data-next-action="새 설계 delta가 있으면 재승인을 요청한다." hidden><legend>DC-4 · 충돌 해결 중 새로운 동작 선택이 생기면?</legend><label><input type="radio" name="DC-4" value="a"> 구현을 멈추고 범위·불변식과 설계를 다시 확인한다.</label><br><label><input type="radio" name="DC-4" value="b"> 테스트가 나중에 알려줄 때까지 한쪽을 선택한다.</label><br><button type="button" data-submit>제출</button><div class="result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+          <fieldset class="control-slide" data-id="DC-5" data-answer="a" data-explanation="원격 PR history와 운영 DB는 별도의 외부 효과이므로 검증 전 실행하지 않는다." data-next-action="원격 변경 전 백업 ref와 diff를 확인한다." hidden><legend>DC-5 · 원격 PR과 운영 DB에 대한 경계는?</legend><label><input type="radio" name="DC-5" value="a"> 원격 push·base 변경은 로컬 검증 후 진행하고 운영 DB는 건드리지 않는다.</label><br><label><input type="radio" name="DC-5" value="b"> 충돌을 줄이기 위해 운영 migration을 먼저 실행한다.</label><br><button type="button" data-submit>제출</button><div class="result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+          <fieldset class="control-slide" data-id="DC-6" data-answer="a" data-explanation="두 PR의 고유 경계와 공통 경계를 모두 검증해야 병합 가능성을 판단할 수 있다." data-next-action="관련 단위·통합·전체 게이트를 기록한다." hidden><legend>DC-6 · 성공 조건은?</legend><label><input type="radio" name="DC-6" value="a"> 공통 코드와 각 PR 고유 기능의 테스트·정적 게이트를 모두 통과한다.</label><br><label><input type="radio" name="DC-6" value="b"> GitHub가 CLEAN이면 로컬 검증은 생략한다.</label><br><button type="button" data-submit>제출</button><div class="result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset>
+        </div>
+        <div class="slide-nav"><button type="button" data-prev>이전</button><span data-progress></span><button type="button" data-next>다음</button></div>
+        <output id="control-output" aria-live="polite">아직 제출된 답변이 없습니다.</output>
+      </section>
+      <section id="approval">
+        <h2>설계 승인 상태</h2>
+        <p><strong>설계 승인됨 · 2026-09-15 KST.</strong> 사용자가 G1-A·G2-A·G3-A를 선택하고 이 설계로 구현을 시작하도록 승인했다. 승인 범위는 PR16→PR17 stacked 통합, PR16 고유 기능 보존, 공통 충돌 해결, merge commit 이력 유지, 로컬 검증과 원격 PR 갱신이다.</p>
+        <p>연결된 구현 제어 기록: <a href="pr16-pr17-integration-implementation.html">pr16-pr17-integration-implementation.html</a></p>
+      </section>
+    </article>
+  </main>
+  <footer class="muted">설계 기준선 · 생성 2026-09-15 KST · PR16·PR17 통합 병합 목적</footer>
+  <script>
+    const slides = [...document.querySelectorAll('.control-slide')];
+    let current = 0;
+    const render = () => {
+      slides.forEach((slide, index) => { slide.hidden = index !== current; });
+      document.querySelector('[data-progress]').textContent = `${current + 1} / ${slides.length}`;
+    };
+    document.querySelector('[data-prev]').addEventListener('click', () => { current = Math.max(0, current - 1); render(); });
+    document.querySelector('[data-next]').addEventListener('click', () => { current = Math.min(slides.length - 1, current + 1); render(); });
+    slides.forEach((slide) => slide.querySelector('[data-submit]').addEventListener('click', () => {
+      const selected = slide.querySelector('input:checked');
+      const result = slide.querySelector('.result');
+      result.hidden = false;
+      result.querySelector('[data-status]').textContent = selected && selected.value === slide.dataset.answer ? '확립' : '보류';
+      result.querySelector('[data-explanation]').textContent = slide.dataset.explanation;
+      result.querySelector('[data-next-action]').textContent = slide.dataset.nextAction;
+      document.querySelector('#control-output').textContent = `${slide.dataset.id} 제출됨. 결과는 정보용이며 구현 승인이 아닙니다.`;
+    }));
+    render();
+  </script>
+</body>
+</html>

@@ -6,10 +6,10 @@ import {
   type ExceptionFilter,
 } from '@nestjs/common';
 import { ThrottlerException } from '@nestjs/throttler';
+import { DrizzleError, DrizzleQueryError } from 'drizzle-orm';
 import { InjectPinoLogger } from 'nestjs-pino';
 import type { PinoLogger } from 'nestjs-pino';
 import type { Response } from 'express';
-import { DrizzleError, DrizzleQueryError } from 'drizzle-orm';
 
 import { DomainException } from '@core/common/error/domainException';
 import { AppErrorCode, type AppErrorCode as AppErrorDefinition } from './appErrorCode';
@@ -47,6 +47,11 @@ const MAX_LOG_DEPTH = 5;
 const MAX_LOG_ARRAY_LENGTH = 20;
 const MAX_LOG_OBJECT_KEYS = 30;
 const MAX_LOG_STRING_LENGTH = 1_000;
+const MULTIPART_INPUT_ERROR_CODES = new Set([
+  'LIMIT_FIELD_ARRAY_INDEX',
+  'LIMIT_FIELD_NESTING',
+  'INVALID_FIELD_NAME',
+]);
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -66,6 +71,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         route: staticRoute(request),
       });
       response.status(exception.getStatus()).json(throttlerResponse(exception));
+      return;
+    }
+
+    if (isMultipartInputError(exception)) {
+      this.logger.warn(
+        { type: 'multipart_rejected', code: exception.code },
+        'Multipart request rejected',
+      );
+      response.status(HttpStatus.BAD_REQUEST).json(errorResponse(AppErrorCode.BAD_REQUEST));
       return;
     }
 
@@ -113,13 +127,15 @@ type ExceptionDetails = Readonly<{
 function databaseErrorDetails(exception: unknown): DatabaseErrorDetails | undefined {
   const seen = new WeakSet<object>();
   let current: unknown = exception;
-  const details: DatabaseErrorDetails = {};
   let isDatabaseError = false;
+  const details: DatabaseErrorDetails = {};
+
   while (isErrorLike(current) && !seen.has(current)) {
     seen.add(current);
     if (current instanceof DrizzleQueryError || current instanceof DrizzleError) {
       isDatabaseError = true;
     }
+
     const code = safeDatabaseCode(current.code);
     const constraint = safeDatabaseIdentifier(current.constraint);
     const table = safeDatabaseIdentifier(current.table);
@@ -127,9 +143,9 @@ function databaseErrorDetails(exception: unknown): DatabaseErrorDetails | undefi
     if (details.constraint === undefined && constraint !== undefined)
       details.constraint = constraint;
     if (details.table === undefined && table !== undefined) details.table = table;
+
     current = current.cause;
   }
-
   return isDatabaseError || Object.values(details).some((value) => value !== undefined)
     ? details
     : undefined;
@@ -144,7 +160,7 @@ function safeDatabaseIdentifier(value: unknown): string | undefined {
 }
 
 function isErrorLike(value: unknown): value is Record<string, unknown> {
-  return value instanceof Error || isRecord(value);
+  return typeof value === 'object' && value !== null;
 }
 
 function unhandledExceptionLog(exception: unknown): {
@@ -158,12 +174,9 @@ function unhandledExceptionLog(exception: unknown): {
 function exceptionDetails(error: Error): ExceptionDetails {
   const database = databaseErrorDetails(error);
   if (database !== undefined) {
-    return {
-      name: error.name,
-      message: 'Database operation failed',
-      database,
-    };
+    return { name: error.name, message: 'Database operation failed', database };
   }
+
   return {
     name: error.name,
     message: error.message,
@@ -266,6 +279,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
+}
+
+function isMultipartInputError(exception: unknown): exception is { code: string } {
+  return (
+    isErrorLike(exception) &&
+    typeof exception.code === 'string' &&
+    MULTIPART_INPUT_ERROR_CODES.has(exception.code)
+  );
 }
 
 function isSensitiveKey(key: string): boolean {

@@ -13,6 +13,10 @@ export function compareDateOnly(left: string, right: string): number {
   return toUtcDate(left).getTime() - toUtcDate(right).getTime();
 }
 
+export function dateRangeDays(start: string, end: string): number {
+  return Math.floor((toUtcDate(end).getTime() - toUtcDate(start).getTime()) / 86_400_000) + 1;
+}
+
 export function weekdayFor(value: string): JogakScheduleWeekdayName {
   const weekdays: readonly JogakScheduleWeekdayName[] = [
     'SUNDAY',

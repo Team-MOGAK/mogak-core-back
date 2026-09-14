@@ -1,4 +1,5 @@
 import type { JogakOccurrenceStatus } from '../vo/jogakExecution.vo';
+import { MAX_DATE_RANGE_DAYS } from '../../../common/resourceLimits';
 import {
   ISO_WEEKDAYS,
   type JogakScheduleInput,
@@ -7,7 +8,8 @@ import {
 } from '../vo/jogakSchedule.vo';
 import { compareDateOnly, isDateOnly, toUtcDate, weekdayFor } from '../vo/jogakScheduleDate.vo';
 
-export const MAX_SCHEDULE_RANGE_DAYS = 366;
+/** Backwards-compatible domain name for the shared date-range limit. */
+export const MAX_SCHEDULE_RANGE_DAYS = MAX_DATE_RANGE_DAYS;
 
 export function createJogakSchedule(input: JogakScheduleInput): ValidatedJogakSchedule {
   const effectiveTo = input.effectiveTo ?? null;
@@ -138,7 +140,7 @@ export function datesInclusive(startDate: string, endDate: string): string[] {
   return dates;
 }
 
-export { compareDateOnly, isDateOnly } from '../vo/jogakScheduleDate.vo';
+export { compareDateOnly, dateRangeDays, isDateOnly } from '../vo/jogakScheduleDate.vo';
 
 function assertDateOnly(value: string, name: string): void {
   if (!isDateOnly(value)) throw new RangeError(`invalid ${name} date`);

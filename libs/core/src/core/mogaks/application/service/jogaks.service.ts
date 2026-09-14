@@ -1,3 +1,4 @@
+import { MAX_DATE_RANGE_DAYS } from '../../../common/resourceLimits';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { requiredTrimmed } from '@core/common/validation/requiredText';
 import { MogakPersistenceException } from '../../domain/exception/mogakPersistence.exception';
@@ -9,6 +10,7 @@ import { validateJogakCapacity } from '../../domain/policy/jogak.policy';
 import {
   assertDateRange as assertScheduleDateRange,
   datesInclusive as scheduleDatesInclusive,
+  dateRangeDays,
   deriveOccurrenceStatus,
   isDateOnly,
   createJogakSchedule,
@@ -57,20 +59,23 @@ export class JogaksService implements OwnedOccurrencePort {
 
   async create(userId: number, input: CreateJogakCommand) {
     const schedule = validateSchedule(input.schedule);
+    const today = this.today();
     const mogak = await this.repository.findOwnedMogak(userId, input.mogakId);
     if (mogak === null) throw new DomainException(DomainErrorCode.MOGAK_NOT_FOUND);
     if (
       !validateJogakCapacity(
-        await this.repository.countJogaksWithCurrentOrFutureSchedule(input.mogakId, this.today()),
+        await this.repository.countJogaksWithCurrentOrFutureSchedule(input.mogakId, today),
       )
     ) {
       throw new DomainException(DomainErrorCode.MAX_MOGAKS);
     }
 
     const created = await this.repository.createJogakWithSchedule({
+      userId,
       mogak,
       title: requiredTrimmed(input.title),
       schedule,
+      today,
     });
     return {
       jogakId: created.jogakId,
@@ -261,8 +266,8 @@ export class JogaksService implements OwnedOccurrencePort {
       ]),
     );
     const today = this.today();
-    const occurrences: OccurrenceResult[] = [];
     const dates = datesInclusive(startDate, endDate);
+    const occurrences: OccurrenceResult[] = [];
 
     for (const schedule of schedules) {
       for (const scheduledDate of dates) {
@@ -515,6 +520,9 @@ function categoryOf(
 function assertDateRange(startDate: string, endDate: string): void {
   try {
     assertScheduleDateRange(startDate, endDate);
+    if (dateRangeDays(startDate, endDate) > MAX_DATE_RANGE_DAYS) {
+      throw new RangeError('date range is too large');
+    }
   } catch {
     throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
   }

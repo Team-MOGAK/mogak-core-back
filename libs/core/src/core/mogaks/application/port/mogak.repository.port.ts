@@ -59,7 +59,13 @@ export interface MogakRepositoryPort {
   deleteOwnedJogak(userId: number, jogakId: number): Promise<boolean>;
   countJogaksWithCurrentOrFutureSchedule(mogakId: number, today: string): Promise<number>;
   createJogakWithSchedule(
-    input: Readonly<{ mogak: MogakResult; title: string; schedule: ValidatedJogakSchedule }>,
+    input: Readonly<{
+      userId: number;
+      mogak: MogakResult;
+      title: string;
+      schedule: ValidatedJogakSchedule;
+      today: string;
+    }>,
   ): Promise<CreatedJogakResult>;
   listOccurrenceScheduleRows(
     query: Readonly<{

@@ -71,6 +71,7 @@ export class AuthService {
     }
     const nextTokens = await this.sessionTokenIssuer.issue(this.principal(user, claims.sessionId));
     const rotated = await this.authPersistence.rotateSession({
+      userId: claims.userId,
       sessionId: claims.sessionId,
       currentRefreshTokenHash: claims.refreshTokenHash,
       nextRefreshTokenHash: nextTokens.refreshTokenHash,

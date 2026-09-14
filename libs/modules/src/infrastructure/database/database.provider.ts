@@ -53,8 +53,8 @@ function createPool(connectionString: string): Pool {
       constraint?: unknown;
       table?: unknown;
     };
-    // A Pool error is emitted by an idle client. The listener keeps EventEmitter from
-    // terminating the process while retaining only safe PostgreSQL identifiers.
+    // Idle client errors must be observed so EventEmitter does not terminate the process.
+    // Keep only allowlisted PostgreSQL identifiers in the application log.
     console.error({
       event: 'database_pool_error',
       code: safeDatabaseCode(details.code),

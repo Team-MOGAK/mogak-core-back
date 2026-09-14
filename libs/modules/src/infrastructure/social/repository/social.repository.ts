@@ -34,6 +34,7 @@ import type {
   FeedImageProjection,
   FeedPostProjection,
 } from '../type/social.projection';
+import { lockUsers } from '../../database/transactionLocks';
 
 @Injectable()
 export class SocialRepository implements SocialRepositoryPort {
@@ -52,10 +53,7 @@ export class SocialRepository implements SocialRepositoryPort {
 
   async createFollow(command: FollowCommand): Promise<void> {
     await this.db.transaction(async (tx) => {
-      const existing = await tx
-        .select({ id: users.id })
-        .from(users)
-        .where(inArray(users.id, [command.followerId, command.followingId]));
+      const existing = await lockUsers(tx, [command.followerId, command.followingId]);
       if (existing.length !== new Set([command.followerId, command.followingId]).size) {
         this.logger.warn({
           event: 'user_not_found_after_lock',
@@ -76,6 +74,10 @@ export class SocialRepository implements SocialRepositoryPort {
 
   async deleteFollow(command: FollowCommand): Promise<void> {
     await this.db.transaction(async (tx) => {
+      const existing = await lockUsers(tx, [command.followerId, command.followingId]);
+      if (existing.length !== new Set([command.followerId, command.followingId]).size) {
+        throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+      }
       const deleted = await tx
         .delete(follows)
         .where(andFollow(command))

@@ -1,0 +1,276 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>API 자원·용량 보호 설계 — 쓰기·탈퇴 경계 재정의</title><style>
+    :root { --ink:#172337; --muted:#53657c; --line:#d8e1ec; --accent:#1d4ed8; --warn:#9a3412; --bg:#f5f7fb; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.7 system-ui,sans-serif; }
+    header, nav, main, footer { max-width:1080px; margin:auto; padding:24px; }
+    header { padding-top:40px; }
+    h1 { line-height:1.25; font-size:32px; }
+    h2 { font-size:23px; margin-top:0; }
+    nav { display:flex; flex-wrap:wrap; gap:16px; padding-top:0; }
+    a { color:var(--accent); overflow-wrap:anywhere; }
+    section { background:#fff; border:1px solid var(--line); border-radius:12px; padding:24px; margin-bottom:20px; }
+    dl { display:grid; grid-template-columns:145px 1fr; gap:8px 18px; }
+    dt { font-weight:700; } dd { margin:0; }
+    table { width:100%; border-collapse:collapse; }
+    caption { text-align:left; font-weight:700; margin-bottom:8px; }
+    th, td { padding:11px; border:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { background:#f0f4fa; }
+    figure { margin:18px 0; padding:16px; border:1px solid var(--line); border-radius:8px; background:#f8fafc; }
+    pre { white-space:pre-wrap; overflow:auto; margin:0; background:#eef3f9; padding:14px; }
+    .state { color:var(--warn); font-weight:700; }
+    .callout { border-left:5px solid var(--warn); background:#fff2ef; padding:16px; }
+    fieldset { margin:18px 0; border:1px solid var(--line); border-radius:8px; padding:16px; }
+    legend { font-weight:700; }
+    .question-result[hidden] { display:none; }
+    .question-result { background:#f0f5ff; padding:12px; margin-top:12px; }
+    button { padding:8px 12px; }
+    .control-slide[hidden] { display:none; }
+    .slide-nav { display:flex; align-items:center; gap:12px; margin-top:16px; }
+    @media(max-width:650px) { header, nav, main, footer { padding:16px; } section { padding:16px; } dl { grid-template-columns:1fr; } h1 { font-size:27px; } }
+   aside{padding:16px;background:#fff7ed;border-left:4px solid #9a3412} details{margin:16px 0} summary{cursor:pointer;font-weight:700} td,th{overflow-wrap:anywhere} @media(max-width:650px){table{display:block;overflow:auto} .slide-nav{flex-wrap:wrap}} </style></head><body><header>
+<p>설계 기준선 · High-risk · 구현 완료 · 재리뷰 통과</p>
+<h1>API 자원·용량 보호 설계 — 쓰기·탈퇴 경계 재정의</h1>
+<p class="callout"><strong>설계·구현 승인됨 · 재리뷰 통과.</strong> 사용자는 “관련 사용자만 대기, 탈퇴끼리 직렬화”를 선택했고 상세 모델의 공유 이해를 확인했다. 2026-09-12 KST 사용자의 “개선 ㄱㄱ”를 이 승인 설계에 대한 구현 승인으로 기록한다. 구현·검증 증거는 연결된 구현 제어 기록에 반영했다.</p>
+<dl><dt>목적 (purpose)</dt><dd>API가 요청당 자원과 도메인 용량 상한을 예측 가능하게 지키도록 한다.</dd>
+<dt>사용자 (audience)</dt><dd>MOGAK 백엔드 개발자와 운영 담당자</dd>
+<dt>문제 (problem)</dt><dd>누락된 pagination export로 빌드가 깨지고, 과대 날짜·페이지 요청과 동시 생성이 CPU·DB·도메인 상한을 우회한다.</dd>
+<dt>핵심 흐름 (core-flow)</dt><dd>요청 검증 → 서비스 경계 재검증 → 참여 사용자 잠금 → 부모·자식·post 잠금과 재검사 → 원자 DML → 응답</dd>
+<dt>산출물 라우팅</dt><dd>위 네 목적 지문이 같은 후속 버그 수정·설계 보완이다. 기존 파일을 갱신하고 이전 승인 G1~G4 본문은 하단에 보존한다. 구현 결과는 연결된 구현 제어 기록에서 관리한다.</dd>
+<dt>강도·상태</dt><dd>High-risk · 설계 기준선 · 설계·구현 승인됨 · 재리뷰 통과</dd>
+<dt>확대 범위</dt><dd>기존 요청 상한·계층 용량 보호 + post/social/auth/users의 쓰기·탈퇴 경계와 검증 계약. 세션 교체, 프로필·동의, 타인 관계, 동시 탈퇴를 누락 없이 검토한다.</dd>
+<dt>비범위</dt><dd>배포 실행, schema migration 변경, 데이터 자동 복구, rate-limit/WAF, 스토리지 재활성화, API envelope 변경, keyset pagination 전환</dd>
+<dt>기존 승인</dt><dd>2026-09-12 G1~G4와 D1-A·D2-A. 확대안의 구현 권한으로 재사용하지 않는다.</dd>
+<dt>생성·갱신</dt><dd><time datetime="2026-09-12">2026-09-12 KST</time></dd>
+<dt>추적</dt><dd>현재 대화의 “설계를 꼼꼼히” 요청; 기준 커밋 848f639와 기존 작업 트리. 식별은 위 목적 지문을 따른다.</dd>
+<dt>구현 증거</dt><dd><a href="api-resource-concurrency-guardrails-implementation.html">구현·리뷰 제어 기록</a> — RV-004/005/006 해결과 정적·단위·PostgreSQL 통합 게이트 결과를 기록한다.</dd></dl></header><nav aria-label="설계 탐색"><a href="#revision-cause">반복 원인</a><a href="#revision-model">잠금 규약</a><a href="#revision-writers">쓰기 목록</a><a href="#revision-validation">입력 계약</a><a href="#revision-errors">실패 결과</a><a href="#revision-tests">검증</a><a href="#revision-operations">운영 전제</a><a href="#revision-contract">실행 계약</a><a href="#grilling-state">결정 기록</a><a href="#design-control-state">이해 점검</a><a href="#approval">승인</a></nav><main><article><section id="revision-cause"><h2>왜 리뷰할 때마다 문제가 추가됐는가</h2>
+<p>이번 재설계의 완료 조건은 모든 오류가 사라졌다는 선언이 아니라, 변경의 영향을 받는 경로를 빠짐없이 식별하고 각 경로의 불변식과 실패 결과를 검증 가능하게 고정하는 것이다.</p>
+<table><caption>진단 근거와 설계의 누락</caption><thead><tr><th>누락</th><th>확인한 근거</th><th>이번 설계의 보완</th></tr></thead><tbody>
+<tr><td>명시적 잠금만 추적</td><td>기존 G4는 modarat→mogak→jogak만 다뤘다. 게시글·댓글은 FK 검사로 다른 부모도 잠근다. RV-005의 PostgreSQL 교착 재현은 이전 구현 기록에 있다.</td><td>연산의 행 잠금, FK, unique 경합, 여러 사용자, 탈퇴 삭제 집합을 하나의 자원 그래프로 정리한다.</td></tr>
+<tr><td>조회 결과를 쓰기 시점까지 유효하다고 가정</td><td>서비스의 대상 조회와 repository transaction 사이에 삭제·수정이 가능하다.</td><td>사전 조회는 참여자 발견·빠른 거부용이다. 잠금 후 존재·소유·일정·용량·중복을 재확인한다.</td></tr>
+<tr><td>검증기가 예외를 던지지 않는다는 가정</td><td>실제 core 날짜 함수와 현재와 동일한 Zod 조합으로 bad/2026-02-30을 전달하면 safeParse가 RangeError를 던진다. 단일 날짜 HTTP 테스트와 날짜 범위 정상 테스트만 있어 조합 오류를 놓쳤다.</td><td>비예외 predicate→schema→pipe→HTTP 경계를 각각 검사한다. 예상하지 못한 버그까지 400으로 바꾸는 포괄 catch는 추가하지 않는다.</td></tr>
+<tr><td>예상한 오류 하나만 금지</td><td>expectNoDeadlock은 40P01 외의 모든 rejection을 허용한다. 현재 두 교차 테스트는 생성부터 대기시킨다.</td><td>두 실행 순서, 정확한 대기 대상, 허용 결과만의 단언, 최종 데이터와 rollback을 함께 검증한다.</td></tr>
+<tr><td>게이트 통과와 설계 완결성 혼동</td><td>이전 59 suites/280 tests 및 DB 5 suites/28 tests의 통과는 당시 시나리오의 증거다. 기존 테스트 DB는 migration journal 공백이 있었다.</td><td>새 설계의 미검증 항목은 통과로 승계하지 않는다. 새 전용 테스트 DB에서 migration부터 반복 가능해야 한다. catalog의 FK/unique도 확인한다. 기존 migration chain이 실패하면 테스트 환경 선행 문제로 분리하고, 이 범위에서 임의의 migration/운영 데이터 수정을 하지 않는다.</td></tr>
+</tbody></table></section>
+<section id="revision-model"><h2>권고안 A · 계정 수명과 자원 변경을 두 단계로 보호</h2>
+<p><strong>승인 상태:</strong> 사용자가 A 방향 선택과 상세 모델 공유 이해를 완료하고 구현을 승인했다. 일반 쓰기는 관련 계정의 존속을 공유 잠금으로 보장하고, 실제 충돌하는 자원은 별도로 잠근다. 탈퇴끼리만 DB 전역의 transaction-scoped mutex로 직렬화한다. 메모리 mutex나 연결 수 1에 의존하지 않는다.</p>
+<figure><figcaption>기본 순서 · 잠금 뒤의 조회가 쓰기 판단의 기준</figcaption>
+<pre><code>일반 쓰기:
+BEGIN → 참여자 발견(읽기만) → 사용자 ID 오름차순 잠금
+      → 존재·소유 재확인 → 계층/게시글/말단 잠금
+      → 일정·용량·중복 재검사 → DML → COMMIT
+
+회원 탈퇴:
+BEGIN → 탈퇴 전용 advisory transaction lock → 본인 users FOR UPDATE
+      → 참여자·삭제 집합 사전검사 → 계층/게시글 잠금
+      → 말단부터 삭제 → 계정 삭제 → COMMIT
+
+보통 참조 사용자: FOR KEY SHARE
+users 행을 수정할 사용자: 처음부터 FOR UPDATE
+잠금 후 더 강한 사용자 잠금으로 승격: 금지</code></pre>
+<p>탈퇴 mutex는 다른 탈퇴만 막는다. 해당 사용자의 공유 잠금을 가진 일반 쓰기는 끝날 때까지 탈퇴를 기다리게 한다. 탈퇴가 먼저 사용자 잠금을 얻으면 뒤의 쓰기는 기다린 후 사라진 사용자/대상을 확인하고 종료한다. 무관한 사용자의 쓰기와 읽기는 계속 가능하다.</p></figure>
+<table><caption>공통 규약</caption><thead><tr><th>ID</th><th>불변식</th><th>이유</th></tr></thead><tbody>
+<tr><td>L1</td><td>모든 참여 사용자 ID를 중복 제거·오름차순 정렬하고, 각 사용자의 최종 잠금 모드를 미리 정한다. 한 ID씩 순서대로 잠가 planner/SQL 입력 순서에 기대지 않는다.</td><td>서로 반대 방향의 관계 요청도 같은 순서로 기다린다. KEY SHARE를 잡은 뒤 UPDATE로 올리는 교착을 피한다.</td></tr>
+<tr><td>L2</td><td>자원 잠금 또는 DML 이후 새 사용자 잠금을 추가하지 않는다. 참여자 재조회에서 새 ID가 필요하면 전체 transaction을 종료한다. 계층 삭제로 참여자가 줄어들면 기존 잠금을 유지하며 게시글과 오류 계약을 재확인한다.</td><td>서비스 사전조회 결과를 신뢰하거나 잠금을 늦게 추가하면 순서 규약이 깨진다. post.authorId, post.jogakExecutionId, execution.jogakId, jogak.mogakId, mogak.modaratId, modarat.userId는 재부모화하지 않는다는 전제를 검사한다.</td></tr>
+<tr><td>L3</td><td>자원 순서는 modarat→mogak→jogak→schedule→execution(daily_jogak)→post→말단이다. 한 계층의 여러 행은 PK 오름차순이다. 필요 없는 계층은 건너뛸 수 있지만 앞 계층으로 돌아갈 수 없다.</td><td>post는 hierarchy 삭제 뒤에도 보존되므로 삭제된 execution을 잠금의 필수 전제로 만들지 않는다.</td></tr>
+<tr><td>L4</td><td>댓글 참조는 post KEY SHARE, 좋아요 toggle은 post NO KEY UPDATE, 게시글 삭제는 처음부터 post UPDATE 후 댓글·좋아요·이미지를 지운다. 용량/일정/실행 변경은 기존 계층의 UPDATE 잠금으로 직렬화한다.</td><td>일반 댓글끼리는 병렬 유지하면서 부모 삭제와의 FK 경쟁을 막는다. INSERT의 FK나 CTE 나열 순서에 잠금 획득을 맡기지 않는다.</td></tr>
+<tr><td>L5</td><td>탈퇴는 사용자 잠금보다 먼저 동일한 advisory transaction mutex를 얻는다. 일반 쓰기는 이 mutex를 획득하지 않는다. session-scoped advisory lock과 shared→exclusive 승격은 금지한다.</td><td>상호 댓글·좋아요·팔로우 행을 지우는 두 탈퇴의 경쟁을 분리한다. commit/rollback과 함께 해제되어 pool 연결에 남지 않아야 한다.</td></tr>
+<tr><td>L6</td><td>존재·소유·일정 유효성·용량·중복은 같은 transaction, 같은 연결, 잠금 이후 재검사한다. helper는 tx만 받고 root db를 사용하지 않는다.</td><td>사전 SELECT와 실제 INSERT 사이의 삭제/수정을 처리한다. 결과만 재조회하는 것으로는 부족하다.</td></tr>
+<tr><td>L7</td><td>프로필/가입 등 users 자체를 UPDATE하는 연산은 시작부터 UPDATE 모드다. 순수 참조는 KEY SHARE다. 코드에 연산별 모드를 명시한다.</td><td>특히 unique nickname 수정은 강한 행 잠금이 필요할 수 있다. 두 공유 보유자가 동시에 승격하는 교착을 설계에서 제외한다.</td></tr>
+<tr><td>L8</td><td>잠금 안에서 외부 API·스토리지·사용자 응답·임의 지연을 기다리지 않는다. 모든 내부 병렬 SQL은 순서 보장 필요성을 먼저 검토한다.</td><td>긴 transaction이 탈퇴와 요청 처리를 붙잡지 않게 한다. 외부 효과의 rollback은 이 DB 규약이 보장하지 않는다.</td></tr>
+</tbody></table>
+<p>위 규약의 근거는 <a href="https://www.postgresql.org/docs/17/explicit-locking.html">PostgreSQL 17 행 잠금·교착·advisory lock 문서</a>다. 공유 참조 잠금과 강한 삭제 잠금의 충돌, 필요한 강한 모드의 선취득, transaction 종료 시 해제 원칙을 적용했다. 여기서 제안하는 계정 단위 프로토콜의 충분성은 아래 경로 행렬과 PostgreSQL 통합 테스트로 별도 검증한다.</p>
+</section>
+<section id="revision-writers"><h2>쓰기 경로별 참여자와 재검사</h2>
+<table><caption>적용 누락을 막기 위한 연산 목록 · 각 행이 구현 완료의 체크 항목</caption><thead><tr><th>경로</th><th>사용자 잠금</th><th>후속 경계 / 결과</th></tr></thead><tbody>
+<tr><td>MogakRepository: Modarat/Mogak/Jogak 생성·수정·삭제</td><td>계층 소유자 KEY SHARE</td><td>단일-table 부모→자식 UPDATE. 삭제·용량은 잠금 뒤 재검사. Modarat 생성도 포함한다.</td></tr>
+<tr><td>일정 수정·실행 상태 생성/갱신</td><td>계층 소유자 KEY SHARE</td><td>Jogak까지 UPDATE 후 schedule/execution. 유효 날짜·전이 재검사. 서비스 조회가 오래됐어도 잘못된 occurrence 저장 금지.</td></tr>
+<tr><td>PostRepository.createForOccurrence</td><td>행위자와 계층 소유자; 정상 데이터에서 동일. KEY SHARE</td><td>계층 잠금 후 일정·소유·현재 제목 재확인→execution→post. 외부에서 받은 title snapshot은 단독 근거가 아니다. 중복 P005 유지.</td></tr>
+<tr><td>게시글 수정/삭제</td><td>행위자·post author·연결된 실행의 현재 계층 소유자 KEY SHARE</td><td>post 소유 재검사. 삭제는 post UPDATE 선취득 후 children 삭제; 일반 수정은 필요한 post 잠금을 처음부터 결정.</td></tr>
+<tr><td>댓글 생성·수정·삭제, 좋아요 toggle</td><td>행위자·post author·연결된 실행의 현재 계층 소유자 KEY SHARE, ID 오름차순</td><td>댓글은 post KEY SHARE, toggle은 post NO KEY UPDATE 후 실행한다. 좋아요는 같은 글의 toggle이 직렬화되는 비용을 수용하고, 겹친 2/3개 요청의 순차 실행 의미를 검증한다. 댓글 소유·postId를 재검사. 타인 글 접근과 댓글 소유권 정책은 유지.</td></tr>
+<tr><td>SocialRepository.createFollow/deleteFollow</td><td>follower·following KEY SHARE, ID 오름차순</td><td>두 사용자의 존재 확인 후 관계 DML. unique(from,to)와 F001/F002 유지.</td></tr>
+<tr><td>UserRepository 프로필/가입완료</td><td>본인 users UPDATE 선취득</td><td>역할·nickname·동의·세션 조건을 같은 transaction에서 검증. metadata는 현재 읽기 전용 경로이며 운영 변경은 별도 규약 대상.</td></tr>
+<tr><td>UserRepository.replaceSession; AuthRepository/ AuthSessionsRepository의 세션 경로</td><td>기존 사용자 KEY SHARE; 역할 변경은 UPDATE 선취득</td><td>세션 delete→insert 전에 계정을 보호. 회전은 기존 hash/expiry CAS 유지. AuthRepository와 AuthSessionsRepository 모두 적용한다. refresh command/port에 검증된 userId를 전달하고 gate 취득과 기존 CAS 조건에 함께 사용한다. 미사용 경로도 조용히 누락하지 않는다.</td></tr>
+<tr><td>ConsentRepository.upsertUserConsents/updateMarketingConsents</td><td>본인 KEY SHARE; 가입 transaction에서는 이미 보유한 UPDATE를 사용</td><td>consentItemId 오름차순으로 재정렬한 뒤 (user,item) DML을 수행한다. 입력·SELECT 반환 순서에 기대지 않으며 서로 역순인 항목 목록의 경합을 검증한다.</td></tr>
+<tr><td>신규 소셜 계정 생성</td><td>아직 없는 ID를 사전 잠글 수 없음</td><td>신규 사용자와 identity가 같은 transaction에서 만들어져 commit 전 노출되지 않는 예외. 기존 identity winner 재조회 뒤 세션 생성은 기존 사용자 규약을 따른다.</td></tr>
+<tr><td>AuthRepository.deleteUser와 purge helpers</td><td>탈퇴 전용 mutex→본인 users UPDATE</td><td>다른 탈퇴와 중첩되지 않음. 계층·post 잠금 뒤 자기 글과 타인 글에 남긴 자기 관계까지 제거. 반드시 본인 user 삭제까지 하나의 transaction.</td></tr>
+<tr><td>post_image/consent 등 helper·직접 DB DML</td><td>상위 transaction의 사용자/부모 잠금을 상속</td><td>독립 writer가 새로 생기면 적용 목록·잠금 모드·교차 테스트를 먼저 추가. 현재 비활성 스토리지 구현으로 외부 저장소 안전성을 주장하지 않는다.</td></tr>
+</tbody></table>
+<aside><strong>레거시 삭제 계약 보존:</strong> 현재 통합 테스트는 A의 execution에 연결된 B 작성 게시글도 A 탈퇴에서 삭제하도록 요구한다. 따라서 불일치를 이유로 탈퇴를 차단하거나 B 글을 임의로 보존하도록 바꾸지 않는다. 모든 post 상호작용의 참여자는 행위자·post author·연결된 execution의 현재 hierarchy owner를 포함한다. hierarchy가 이미 지워진 보존 회고는 author를 기준으로 보호한다. 새 회고는 기존 권한 계약에 따라 author가 현재 hierarchy owner와 같은지 잠금 후 검사한다. 레거시 교차 소유 데이터가 있어도 기존 purge 집합을 정확히 지키는 회귀 테스트가 필요하다.</aside>
+<p>현재 계층의 강한 부모 잠금은 이번 정확성 수정에서 유지한다. 같은 tree나 Jogak의 서로 다른 날짜 쓰기까지 기다릴 수 있다. 조상 KEY SHARE와 대상 CAS로 세분화하는 최적화는 일정 변경·용량 불변식의 새 교차 검증을 갖춘 별도 변경으로 수행한다.</p>
+</section>
+<section id="revision-proof"><h2>잠금 규약의 충분성을 어떻게 검토할 것인가</h2>
+<ol><li>쓰기×탈퇴: 삭제 대상에 연결된 모든 사용자 관련 쓰기는 해당 사용자 KEY SHARE를 먼저 보유해야 하므로, 해당 users UPDATE를 보유한 탈퇴와 말단 변경이 동시에 진행하지 않는다.</li>
+<li>쓰기×쓰기: 사용자 잠금은 정렬되고, 자원 잠금은 계층 순서대로다. 사용자 자체 수정은 UPDATE를 처음부터 얻어 승격 경쟁을 만들지 않는다.</li>
+<li>탈퇴×탈퇴: 공유 관계 행을 삭제할 수 있는 두 탈퇴는 공통 mutex로 분리한다. 한 탈퇴가 자신의 사용자 잠금을 가진 상태로 다른 탈퇴의 mutex를 기다려서는 안 된다.</li>
+<li>글 삭제×댓글/좋아요: 사용자 참조 잠금이 서로 호환되어도 post UPDATE와 KEY SHARE가 충돌하므로 자식 insert/delete와 부모 삭제의 순서가 고정된다.</li>
+<li>발견한 참여자 집합이 삭제 대상의 소유자를 빠뜨리거나 하나의 writer라도 규약을 우회하면 위 논증은 성립하지 않는다. unique-index 대기·다중 행 처리·예외 helper는 목록과 테스트에서 추가 검토한다.</li></ol>
+<p><strong>증명 범위:</strong> 현재 확인한 애플리케이션 writer, 고정된 부모·작성자·execution 식별자 관계, READ COMMITTED를 전제로 한 설계 논증이다. 전체 DB에서 모든 교착이 불가능하다고 주장하지 않는다. <a href="https://www.postgresql.org/docs/17/transaction-iso.html">격리수준의 재조회 동작</a>과 <a href="https://www.postgresql.org/docs/17/queries-with.html">데이터 변경 CTE 실행 규칙</a>도 적용 전제다. CTE의 텍스트 순서만으로 잠금 순서를 증명하지 않는다.</p>
+<details><summary>읽기 전용 설계 감사의 직접 근거</summary><ul><li><a href="../../libs/modules/src/infrastructure/auth/repository/auth.repository.ts">AuthRepository</a>: deleteUser/lockWithdrawalTree, 세션 생성·회전.</li><li><a href="../../libs/modules/src/infrastructure/posts/repository/post.repository.ts">PostRepository</a>: createForOccurrence, deleteOwnedPost, toggleLike, comment writes.</li><li><a href="../../libs/modules/src/infrastructure/users/repository/consent.repository.ts">ConsentRepository</a>: 다중 동의 DML 정렬.</li><li><a href="../../test/database/posts.integration.spec.ts">게시글 통합 테스트</a>: 기존 교차 소유 회고의 탈퇴 삭제 계약 및 raw insert-only 좋아요 검사.</li><li><a href="../../test/database/mogaks.integration.spec.ts">모각 통합 테스트</a>: 경합 결과와 generic lock wait 단언.</li></ul><p>공통 protocol과 레거시 교차 소유 반례는 별도 읽기 전용 전략 감사로 교차 검토했다. 새 구현의 DB 테스트가 실행된 것은 아니다.</p></details></section>
+<section id="revision-validation"><h2>입력과 자원 상한 계약</h2>
+<ol><li><code>isValidDateRange</code>에 해당하는 순수 predicate 하나가 날짜 형식·실제 날짜·순서·양끝 포함 일수를 확인한다. 잘못된 외부 입력에서는 false를 반환하고, 날짜 변환은 형식 확인 뒤에만 한다.</li>
+<li>HTTP schema는 predicate 실패를 기존 <code>INVALID_PARAMETER → 400/Z005</code>로 바꾼다. 직접 core 호출은 기존 <code>INVALID_TARGET_DATE → 400/J017</code> 정책을 유지한다. 성공 응답과 필드 이름은 바꾸지 않는다.</li>
+<li>페이지 번호 0 이상, size 1~100, 안전한 offset 곱셈을 core의 한 정책으로 공유한다. 전송 계층은 coercion/default만 담당한다. 현재 두 offset predicate와 service의 중복 날짜 상한 계산은 같은 정책으로 수렴시킨다.</li>
+<li>날짜 범위는 양끝 포함 1~366일이다. today는 한 작업 안에서 한 번 정해 저장소의 용량 재검사와 공유한다. 배열 전개와 DB 호출 전에 검증을 끝낸다.</li></ol>
+<table><caption>반드시 검사할 입력 행렬</caption><thead><tr><th>축</th><th>입력</th><th>기대</th></tr></thead><tbody>
+<tr><td>형태</td><td>누락, 빈 문자열, 배열/객체, 공백, timestamp, 추가 필드</td><td>정의된 transport 변환 외에는 400/Z005; 서비스 호출 0회</td></tr>
+<tr><td>실제 날짜</td><td>bad, 2026-02-30, 2026-02-29, 윤년 2024-02-29; 시작/끝 각각 오류</td><td>잘못된 값은 safeParse success:false, 예외 없음; 윤년 유효값 허용</td></tr>
+<tr><td>범위</td><td>같은 날, 역순, 365/366/367일, 연말·윤년·시간대 변경</td><td>1~366일만 허용; UTC 날짜 연산의 결과 일관</td></tr>
+<tr><td>달력 저장 범위</td><td>0000-01-01, 0001-01-01, 9999-12-31</td><td>현재 parser는 0000을 허용한다. DB와 API 날짜 도메인의 교집합을 읽기 전용 SQL로 확인해야 한다. 호환성 변경이 필요하면 별도 delta로 명시하며 조용히 정책을 바꾸지 않는다.</td></tr>
+<tr><td>페이지</td><td>0/음수/소수/NaN 문자열, size 0/1/100/101, 안전 정수 곱셈 경계 전후</td><td>schema와 직접 service 호출의 허용 집합 일치; 잘못된 요청에서 repository 호출 0회</td></tr>
+</tbody></table>
+<aside><strong>보장 범위의 한계:</strong> safe integer는 수치 정확성의 상한이다. 큰 OFFSET의 DB 스캔 비용 상한이 아니다. 일정 수×날짜 수, 상세 피드 댓글 수, 이미지 수, count 집계 비용도 별도 축이다. 이번 수정으로 요청당 총 CPU·DB 비용이 고정됐다고 주장하지 않는다. keyset pagination, 총 결과 수 제한, 조회 시간 예산은 측정과 API 호환성 검토가 필요한 후속 설계다.</aside></section>
+<section id="revision-errors"><h2>오류·롤백 계약</h2>
+<table><caption>기대 가능한 경쟁과 결함을 분리</caption><thead><tr><th>조건</th><th>결과 계약</th><th>금지</th></tr></thead><tbody>
+<tr><td>쓰기 선행→탈퇴/부모 삭제 후행</td><td>쓰기 commit 후 삭제가 진행. 응답 시각에 이미 삭제됐더라도 성공 시점의 commit은 유효하다. hierarchy 삭제 뒤 회고 보존, 탈퇴 뒤 계정 관련 데이터 제거를 구분.</td><td>응답 도착 순서가 DB 실행 순서와 같다고 가정</td></tr>
+<tr><td>삭제 선행→잠금 뒤 대상 소멸</td><td>기존 코드 집합으로 명시 분류: U001(사용자), M004/J005(대상 계층), P003(글), C002(댓글). 공개 envelope 유지. 둘 이상 소멸 시 행위자→대상 부모→자식 순으로 판단하는 제안이며, 내부 port에 typed result/예외를 지정해야 한다.</td><td>알 수 없는 persistence 오류를 정상 race 결과로 인정</td></tr>
+<tr><td>인증 진입 전 세션 소멸</td><td>AccessTokenGuard의 기존 T005; refresh CAS 실패 T001, 가입 세션 교체 실패 T005를 유지. guard 통과 후 사용자 소멸의 U001과 구분.</td><td>JWT 발급만으로 세션 저장 성공을 간주</td></tr>
+<tr><td>중복·용량</td><td>J012(용량), P005(회고 중복), F001/F002(관계 중복/없음), 기존 nickname 충돌을 각 경계에서 유지.</td><td>광범위한 SQLSTATE 23505를 전부 같은 도메인 오류로 변환</td></tr>
+<tr><td>40P01/23503/55P03·알 수 없는 오류</td><td>전체 rollback, 원인 체인의 SQLSTATE와 operation을 관측. 해당 회귀 테스트는 실패. 자동 재시도는 기존 제외 결정을 유지.</td><td>500을 400/not-found로 숨김, toggle 또는 외부 효과를 무조건 재실행</td></tr>
+<tr><td>잠금 이후 새로운 참여자가 발견됨</td><td>자원 DML 전 rollback, 민감 데이터 없는 진단. 기존 계약에 없는 관계 이동은 일반 race로 숨기지 않는다. 레거시 cross-owned post 자체는 오류로 취급하지 않고 기존 purge 집합을 유지한다.</td><td>타인 데이터를 추가 삭제하거나 잠금을 역순 획득</td></tr>
+</tbody></table>
+<p>삭제 선행 결과를 포괄적인 persistence 오류에서 명시적인 not-found로 바꾸는 것은 구현 세부가 아니라 실패 계약의 보완이다. 구현 전에 서비스/port/HTTP 매핑 테스트에 확정해 새 설계 승인 범위에 포함한다.</p>
+</section>
+<section id="revision-operations"><h2>운영 전제와 잔여 위험</h2>
+<ul><li>탈퇴 처리량은 DB별 한 번에 한 건으로 제한된다. 대규모 계정 purge가 뒤의 탈퇴를 오래 기다리게 할 수 있다. 비동기 탈퇴·soft delete로 바꾸는 것은 별도 데이터/제품 설계다.</li>
+<li>인기 글의 toggle은 post NO KEY UPDATE로 직렬화된다. 일반 댓글 참조와의 병렬성은 유지하되 실제 지연은 부하 검증이 필요하다. 개선 전부터 보장하지 않던 toggle 순차 의미를 수용 기준에 추가한다.</li>
+<li>새 프로토콜을 쓰는 버전과 이전 writer 버전이 동시에 실행되면 보장되지 않는다. 배포 시 기존 쓰기 요청을 drain하고 writer 버전을 맞춰야 한다. 롤백도 같은 경계가 필요하다. 이 문서는 배포 실행 승인이 아니다.</li>
+<li>현재 Pool 생성 코드에 별도 lock_timeout/statement_timeout 설정은 없다. 서버 설정은 아직 확인하지 않았다. 임의 숫자를 운영 기본값으로 추가하지 않는다. 운영 이행 전 DB 설정·lock wait·transaction duration·pool 대기·탈퇴 크기를 측정하고 SLO에 맞춘 한도를 정해야 한다.</li>
+<li>transaction 잠금의 namespace/key를 공통 상수로 고정하고 다른 advisory 사용과 충돌 여부를 검사한다. 여러 인스턴스가 같은 DB와 키를 공유해야 한다. crash/rollback/connection 반환 뒤 해제 테스트가 필요하다.</li>
+<li>metadata/직접 SQL/배치/스토리지 외부 효과는 목록에 포함 여부를 명시한다. 현재 disabled storage의 상태는 보장 전제이며, 파일 업로드를 활성화할 때 DB rollback만으로 파일 정리가 된다고 가정하지 않는다.</li></ul>
+</section>
+<section id="revision-contract"><h2>실행 계약 · 승인 설계 반영 완료</h2>
+<dl><dt>목표</dt><dd>RV-004/005/006을 해결하고, 그 수정이 영향을 주는 전체 writer 경계의 불변식과 정확한 결과를 보장한다.</dd>
+<dt>단일 변경 책임</dt><dd>공통 lifecycle lock helper와 각 repository 적용을 하나의 규약으로 유지한다. 여러 작업자가 잠금 규칙을 별도로 구현하지 않는다.</dd>
+<dt>범위</dt><dd>requestSchema/jogaks.request, core 날짜·페이지 정책, Mogak/Post/Social/User/Consent/Auth/AuthSessions repositories, accountDeletionPurge helpers, 필요한 core port·오류 매핑과 대응 테스트.</dd>
+<dt>순서</dt><dd>① 순수 검증 정책/HTTP 실패 계약 ② tx 전용 잠금 primitive/모드·순서 검증 ③ 전체 writer와 탈퇴 적용 ④ 실제 repository 교차 테스트·rollback ⑤ 독립 읽기 전용 리뷰 ⑥ 전체 게이트와 구현 제어 문서 갱신.</dd>
+<dt>수용</dt><dd>T01~T14의 각 행에서 기대 결과·잔존 데이터·적용 경로가 증명되고, 규약 미적용 메서드가 없어야 한다. 새 DB migration부터 통합 검증이 재현되어야 한다.</dd>
+<dt>중단 조건</dt><dd>추가 writer/소유권 변경/새 참여자/잠금 승격/다른 격리수준/예상 밖 SQL 실패가 발견되면 구현을 멈추고 설계 delta를 정리한다. HTTP 의미·배포 전제가 바뀌면 재승인한다.</dd>
+<dt>금지</dt><dd>무조건 retry, FK 제거, schema 몰래 변경, 운영 데이터 수정, 기존 작업 트리 되돌리기, 테스트 약화, 문서만으로 해결 판정.</dd></dl>
+<p>최종 리뷰에서는 각 오류를 수정했는지만 보지 않고 “이 helper를 빼면 어떤 테스트가 실패하는가”, “삭제가 먼저 끝나면 어떤 정확한 결과가 나오는가”, “소유자가 두 명이면 규칙이 유지되는가”를 반례로 점검한다. 구현 코드와 테스트의 내용 해시를 리뷰 전후 대조한다.</p>
+</section>
+<section id="grilling-state"><h2>설계 의사결정 질문 (grilling)</h2>
+<dl><dt>진행</dt><dd>완료 · G5-A 선택 및 상세 모델의 “이 모델로 이해 일치” 사용자 응답 확인</dd><dt>결정 트리</dt><dd>G5 대기 범위 → L1~L8 잠금 모드·순서 → writer 목록·실패 계약 → T01~T14 → 운영 전제</dd>
+<dt>확인된 근거</dt><dd>교차 사용자 FK, 부분적인 hierarchy 규약, 잘못된 날짜 refine, 불완전한 경합 결과 단언.</dd>
+<dt>선택</dt><dd>G5-A: 관련 사용자만 대기, 탈퇴끼리 직렬화. 사용자 응답을 기록했으며 구현 승인과 분리한다.</dd>
+<dt>기각 대안</dt><dd>G5-B: 탈퇴 중 모든 쓰기 정지 — 증명은 단순하지만 무관한 사용자의 지연이 커진다. 모든 사용자 gate를 UPDATE로 직렬화하는 안은 일반 쓰기 병렬성 손실이 크다. actor-only, 인프로세스 mutex, FK 제거, 자동 retry만 추가하는 안은 불변식/배포 범위를 해결하지 못한다.</dd>
+<dt>현재 frontier</dt><dd>미해결 사용자 의사결정 없음. 실행 중 의미 있는 추가 경로가 드러나면 새 의사결정 frontier를 연다. 운영 환경 검증 공백은 아래와 같이 별도 기록한다.</dd>
+<dt>검증 필요</dt><dd>실제 DB 격리수준·제약·참여자 집합의 완전성, year 0000 지원 범위, 새 전용 DB migration. 확인 전 운영 안전성을 단정하지 않는다.</dd>
+<dt>별도 후속</dt><dd>총 조회 비용 상한, 운영 시간 예산/SLO, 비동기 탈퇴, 외부 스토리지 복구. 현재 완성 범위와 혼동하지 않는다.</dd></dl></section>
+<section id="revision-tests"><h2>검증은 결과와 상태를 함께 확인한다</h2>
+<table><caption>수용 행렬 · 구현·검증 상태는 연결된 구현 제어 기록에 반영</caption><thead><tr><th>ID</th><th>경합 또는 경계</th><th>필수 단언</th></tr></thead><tbody>
+<tr><td>T01</td><td>날짜 schema→pipe→실제 Nest HTTP</td><td>잘못된 범위 400/Z005, service 미호출; 직접 core 호출의 기존 J017도 유지</td></tr>
+<tr><td>T02</td><td>7개 상태에서 Mogak/Jogak 생성×생성</td><td>성공 정확히 1, J012 정확히 1, 최종 8개. 서로 다른 사용자의 부모에 대한 독립 진행도 확인</td></tr>
+<tr><td>T03</td><td>각 hierarchy 쓰기×상위 삭제/탈퇴</td><td>생성 선행/삭제 선행 모두 강제. 기존 보존 정책과 정확한 not-found 결과; 새로 생긴 자식 포함 잔존 0</td></tr>
+<tr><td>T04</td><td>회고 생성×hierarchy 삭제/회원 탈퇴/일정 수정</td><td>잠금 뒤 occurrence 재검증; 중복 회고 최대 1; hierarchy 삭제는 기존 회고 보존, 탈퇴는 회고 제거</td></tr>
+<tr><td>T05</td><td>A가 B 글에 댓글·좋아요 생성/수정/삭제×A 탈퇴/B 탈퇴/글 삭제</td><td>양방향 실행과 사용자 ID 대소관계, actor/author/execution owner가 모두 다른 세 사용자 fixture. 정확한 성공/not-found, FK 위반·교착·시간초과는 실패</td></tr>
+<tr><td>T06</td><td>A→B 팔로우 생성/해제×A/B 탈퇴</td><td>중복 F001/없음 F002와 삭제 후 U001 분류; 관계 누수 0</td></tr>
+<tr><td>T07</td><td>상호 댓글·좋아요·팔로우가 있는 A/B 동시 탈퇴</td><td>둘 다 정상 종료, 양쪽 관계 정리, 무관한 C 데이터 보존</td></tr>
+<tr><td>T08</td><td>가입완료/프로필/로그인·세션 생성·교체·회전·로그아웃×탈퇴</td><td>잠금 순서 적용 또는 leaf-only 예외 근거; 탈퇴 뒤 계정/세션 부활 없음; 기존 인증 오류 계약 유지</td></tr>
+<tr><td>T14</td><td>같은 사용자 동의 upsert에 역순 항목 목록</td><td>자연키 정렬로 교착 없음; 각 transaction의 값과 원자성 유지</td></tr>
+<tr><td>T09</td><td>쓰기·탈퇴 중간 강제 실패</td><td>부분 삭제/저장 없음, 다음 transaction이 같은 잠금 취득 가능; 종료된 callback의 query가 pool로 유출되지 않음</td></tr>
+<tr><td>T10</td><td>무관한 사용자·다중 DB 연결</td><td>프로세스 내부 mutex에 의존하지 않음; 무관한 사용자 쓰기 진행, 선택한 직렬화 경계 밖은 막히지 않음</td></tr>
+<tr><td>T11</td><td>요약 피드와 페이지 조회</td><td>summary 댓글 행 조회 0, commentCnt 유지, 상세 피드 회귀 없음; 정책 중복 제거 후 경계 동일</td></tr>
+<tr><td>T13</td><td>동일 (post,user)의 toggle 2개/3개, 서로 다른 actor</td><td>실제 toggleLike 호출로 순차 실행 가능한 결과·최종 parity 확인. 단순 INSERT unique 통과를 toggle 검증으로 대체하지 않는다.</td></tr>
+<tr><td>T12</td><td>레거시 교차 소유·이전 버전 쓰기·DB 구성</td><td>기존 cross-owned post 삭제/보존 계약을 그대로 검증; 규약 미적용 경로가 남으면 완료 금지; 격리수준·FK/unique·migration 재현성 확인</td></tr>
+</tbody></table>
+<p>fixture/blocker/작업 A/작업 B/관찰용 연결을 분리한다. Promise를 즉시 settle handler에 연결하고, <code>pg_blocking_pids</code>와 backend PID로 의도한 대기를 확인한 뒤 barrier를 해제한다. 임의 sleep이나 <code>wait_event_type = 'Lock'</code> 하나로 순서를 증명하지 않는다. timeout은 테스트 실패이며 성공의 대체 결과가 아니다.</p>
+<p><code>Promise.allSettled</code> 자체는 사용 가능하지만 각 결과는 연산별 허용 집합과 정확히 일치해야 한다. <code>40P01</code>, <code>23503</code>, <code>55P03</code>, 알 수 없는 SQL/runtime 오류를 묶어서 persistence 오류로 허용하지 않는다. finally에서 작업을 종료·drain하고 rollback과 연결 반환을 완료한 뒤 cleanup한다.</p>
+<pre><code>pnpm test --runInBand test/mogaks/presentation/jogaks.request.spec.ts test/mogaks/presentation/jogaks.controller.spec.ts test/common/validation/zodParameter.decorator.spec.ts
+pnpm test:integration --runInBand
+pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm test --runInBand
+pnpm build
+git diff --check</code></pre>
+<p>DB 통합 실행 전: 새 일회용 <code>_test</code> DB임을 확인하고 <code>DATABASE_URL</code>을 명시한 <code>pnpm db:migrate</code>를 실행한다. 기존 DB의 제약을 손으로 고친 결과를 재현 가능한 migration 통과로 간주하지 않는다. 운영 DB나 기존 개발 DB 초기화는 이 설계에 포함하지 않는다.</p></section>
+<section id="design-control-state"><h2>설계 이해·통제 점검</h2><p><strong>미실시 · 공유 이해 확인 후의 별도 점검.</strong> 아래 문항은 선택한 모델의 결과 예측용이다. 의사결정 질문이나 구현 승인으로 사용하지 않는다. 결과는 브라우저 안에만 존재하며 Codex로 전달되지 않는다. 제출 여부가 구현 승인을 대체하지 않는다.</p><details><summary>문항 커버리지</summary><ul><li>외부 입력: DC-1</li><li>용량·시간: DC-2</li><li>다중 사용자·권한: DC-3</li><li>잠금 승격: DC-4</li><li>삭제·보존: DC-5</li><li>검증: DC-6</li><li>운영·복구: DC-7</li><li>잔여 비용: DC-8</li><li>상태·부분 실패: DC-9</li><li>상태 변경의 의미: DC-10</li><li>외부 결제·스키마 이행: 이번 구현 비범위라 문항 면제. 저장소 외부 효과 재활성화는 새 설계 필요.</li></ul></details><div id="control-slides"><fieldset class="control-slide" data-id="DC-1" data-explanation="변환 이전의 날짜 검증과 실제 HTTP 응답을 함께 확인한다."><legend>DC-1 · 날짜가 2026-02-30이면 결과는?</legend><label><input type="radio" name="DC-1" value="a"> schema가 400/Z005로 거부하고 서비스는 호출되지 않는다.</label><br><label><input type="radio" name="DC-1" value="b"> RangeError가 500으로 나가도 malformed 입력이므로 정상이다.</label><p><button type="button" data-submit>제출</button></p><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset><fieldset class="control-slide" data-id="DC-2" data-explanation="사전 count는 빠른 실패용이며 저장 불변식은 transaction 안에서 결정한다." hidden><legend>DC-2 · Jogak이 7개인 부모에 동시에 두 개를 생성하면?</legend><label><input type="radio" name="DC-2" value="a"> 같은 기준 날짜로 잠금 후 재검사하여 성공 1개와 J012 1개가 된다.</label><br><label><input type="radio" name="DC-2" value="b"> 서비스의 count만으로 두 요청 모두 성공시킨다.</label><p><button type="button" data-submit>제출</button></p><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset><fieldset class="control-slide" data-id="DC-3" data-explanation="작성 행위자와 부모 자원의 소유자는 다를 수 있다." hidden><legend>DC-3 · A가 B의 글에 댓글을 쓸 때 보호할 계정은?</legend><label><input type="radio" name="DC-3" value="a"> A·B와 연결된 execution의 현재 소유자를 ID 순서로 보호한 뒤 post를 잠그고 재검사한다.</label><br><label><input type="radio" name="DC-3" value="b"> A만 잠그면 B의 탈퇴와도 안전하다.</label><p><button type="button" data-submit>제출</button></p><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset><fieldset class="control-slide" data-id="DC-4" data-explanation="공유 보유자 두 명이 동시에 강한 잠금으로 바꾸는 경쟁을 금지한다." hidden><legend>DC-4 · 닉네임을 바꾸는 transaction의 사용자 잠금은?</legend><label><input type="radio" name="DC-4" value="a"> 처음부터 FOR UPDATE를 취득한다.</label><br><label><input type="radio" name="DC-4" value="b"> FOR KEY SHARE로 시작해 마지막에 UPDATE로 승격한다.</label><p><button type="button" data-submit>제출</button></p><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset><fieldset class="control-slide" data-id="DC-5" data-explanation="post의 historical execution ID는 현재 schema에서 실행 FK가 아니다." hidden><legend>DC-5 · 회고 생성 뒤 hierarchy 삭제와 회원 탈퇴의 차이는?</legend><label><input type="radio" name="DC-5" value="a"> hierarchy 삭제는 기존 회고를 보존하고 탈퇴는 사용자 관련 회고·관계를 정리한다.</label><br><label><input type="radio" name="DC-5" value="b"> 두 삭제 모두 같은 회고와 관계를 전부 보존한다.</label><p><button type="button" data-submit>제출</button></p><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset><fieldset class="control-slide" data-id="DC-6" data-explanation="test timeout이나 일반 SQL 오류를 정상 실패로 허용하지 않는다." hidden><legend>DC-6 · 모든 Promise가 종료됐고 40P01이 없으면 통과인가?</legend><label><input type="radio" name="DC-6" value="a"> 아니다. 정확한 허용 결과·두 실행 순서·최종 데이터·rollback을 단언해야 한다.</label><br><label><input type="radio" name="DC-6" value="b"> 그렇다. 나머지 rejection은 정상 경쟁 결과다.</label><p><button type="button" data-submit>제출</button></p><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset><fieldset class="control-slide" data-id="DC-7" data-explanation="DB advisory lock은 참여 규약이며 모든 접근을 강제로 감싸지 않는다." hidden><legend>DC-7 · 새 버전과 구버전 writer가 같이 실행되어도 안전한가?</legend><label><input type="radio" name="DC-7" value="a"> 아니다. 모든 writer가 규약을 따라야 하며 drain과 버전 일치가 필요하다.</label><br><label><input type="radio" name="DC-7" value="b"> 새 helper가 있으면 이전 프로세스의 SQL도 자동 보호한다.</label><p><button type="button" data-submit>제출</button></p><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset><fieldset class="control-slide" data-id="DC-8" data-explanation="자원 보호의 검증 범위를 총 비용 보장과 구분한다." hidden><legend>DC-8 · size 100과 safe integer offset이면 DB 비용도 고정되는가?</legend><label><input type="radio" name="DC-8" value="a"> 아니다. 큰 OFFSET·count·댓글/이미지 fan-out 비용은 별도 한계다.</label><br><label><input type="radio" name="DC-8" value="b"> 그렇다. 반환 건수가 작으면 DB 작업도 항상 작다.</label><p><button type="button" data-submit>제출</button></p><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset><fieldset class="control-slide" data-id="DC-9" data-explanation="하나의 transaction에서 원자성을 검증해야 한다." hidden><legend>DC-9 · 탈퇴 중간 SQL 오류가 나면?</legend><label><input type="radio" name="DC-9" value="a"> 전체 rollback하고 원인을 관측하며 임의 재시도·부분 삭제를 하지 않는다.</label><br><label><input type="radio" name="DC-9" value="b"> 지워진 것만 남기고 사용자 삭제를 계속한다.</label><p><button type="button" data-submit>제출</button></p><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset><fieldset class="control-slide" data-id="DC-10" data-explanation="unique 제약은 toggle의 상태 변경 의미를 보장하지 않는다." hidden><legend>DC-10 · 같은 좋아요에 toggle 3개가 겹치면?</legend><label><input type="radio" name="DC-10" value="a"> 각 toggle이 한 번씩 순차 실행된 결과와 같아야 한다.</label><br><label><input type="radio" name="DC-10" value="b"> unique row가 1개 이하이면 제거 응답이 중복돼도 충분하다.</label><p><button type="button" data-submit>제출</button></p><div class="question-result" hidden><p data-status></p><p data-explanation></p><p data-next-action></p></div></fieldset></div><div class="slide-nav"><button type="button" data-prev>이전</button><span data-progress></span><button type="button" data-next>다음</button></div><output id="control-output" aria-live="polite">아직 제출된 답변이 없습니다.</output></section><section id="approval"><h2>승인 상태</h2><p><strong>설계·구현 승인됨 — 2026-09-12 KST.</strong> G5-A 방향 선택과 상세 모델의 공유 이해를 확인한 뒤 사용자의 “개선 ㄱㄱ”를 구현 승인으로 기록했다. 관련 사용자 잠금, 탈퇴 직렬화, 부모→자식 hierarchy 잠금, post 참여자·toggle 잠금, malformed date 경계를 구현했다.</p><p>구현 제어 기록의 정적 게이트·전체 Jest·전용 PostgreSQL 47개 테스트가 RV-004/005/006 해결을 증명한다. 운영 lock wait, migration journal 복구, raw SQL/구버전 writer, 외부 storage 효과는 별도 운영 게이트로 남긴다.</p><p>연결된 구현 제어 기록: <a href="api-resource-concurrency-guardrails-implementation.html">api-resource-concurrency-guardrails-implementation.html</a></p></section><details id="prior-baseline"><summary>이전 승인 G1~G4 원문 — 확대안과 분리해 보존</summary>
+  <section id="baseline-model">
+    <h2>실행 모델</h2>
+    <figure>
+      <figcaption>요청과 저장 경계</figcaption>
+      <pre><code>HTTP query/body
+  → Zod page/date/offset 상한
+  → core service의 직접 호출 재검증
+  → repository projection 또는 summary 전용 조회
+  → 계층 mutation은 modarat → mogak → jogak 순서로 필요한 행만 FOR UPDATE
+  → count + capacity check + insert
+  → 기존 validation/domain error envelope</code></pre>
+      <p>검증 실패는 DB 호출 전에 끝내고, 동시 생성과 계층형 삭제·탈퇴는 같은 부모→자식 잠금 순서로 직렬화한다. 요약 응답은 댓글 수 projection만 사용하며 댓글 본문을 읽지 않는다.</p>
+    </figure>
+  </section>
+  <section id="baseline-decisions">
+    <h2>확정할 설계</h2>
+    <table><caption>권고안과 선택을 포기하는 이점</caption><thead><tr><th scope="col">ID</th><th scope="col">설계</th><th scope="col">트레이드오프</th></tr></thead><tbody>
+      <tr><th scope="row">G1</th><td>날짜 범위는 최대 366일, pagination <code>size</code>는 최대 100, page/cursor × size가 안전 정수를 넘으면 validation error로 거부한다.</td><td>긴 기간·대량 페이지를 한 번에 가져오는 호출은 사용할 수 없다. 조용히 clamp하지 않아 호출자가 결과 크기를 예측할 수 있다.</td></tr>
+      <tr><th scope="row">G2</th><td>네트워크 요약 feed는 게시글 projection과 이미지 조회만 수행하고 댓글 행 조회를 생략한다. 페이스메이커 상세 feed만 댓글을 조립한다.</td><td>요약 응답에서 댓글 본문을 제공하지 않는다. 현재 응답 계약의 댓글 수 필드는 유지한다.</td></tr>
+      <tr><th scope="row">G3</th><td>Mogak 생성은 <code>modarat</code>, Jogak 생성은 <code>mogak</code> 부모 행을 transaction 안에서 잠근 뒤 용량을 다시 세고 insert한다. 서비스의 사전 count는 빠른 실패용으로 유지한다.</td><td>같은 부모에 대한 생성 요청은 잠금 대기 시간이 생긴다. schema 변경 없이 기존 8개 정책과 오류 코드를 보존한다.</td></tr>
+      <tr><th scope="row">G4</th><td>명시적 잠금이 필요한 계층형 생성·삭제·탈퇴 경로는 <code>modarat → mogak → jogak</code> 순서로 잠근다. 여러 테이블을 읽는 잠금에는 <code>FOR UPDATE OF</code>로 잠금 대상을 지정하고, 자식 잠금은 단일 테이블 조회로 이어간다.</td><td>create/delete/withdrawal 경로에 조회가 추가될 수 있지만, bare joined lock으로 인한 교착 가능성을 제거하고 잠금 순서를 코드로 검증할 수 있다.</td></tr>
+    </tbody></table>
+  </section>
+  <section id="baseline-lock-order">
+    <h2>잠금 순서 설계</h2>
+    <figure>
+      <figcaption>계층 mutation의 공통 순서</figcaption>
+      <pre><code>createMogak                  : modarat FOR UPDATE → count → insert mogak
+createJogakWithSchedule      : modarat FOR UPDATE OF → mogak FOR UPDATE → count → insert jogak
+deleteOwnedMogak              : modarat FOR UPDATE OF → mogak FOR UPDATE → delete
+deleteOwnedJogak              : modarat FOR UPDATE OF → mogak FOR UPDATE → jogak FOR UPDATE → delete
+auth withdrawal tree          : modarat FOR UPDATE → mogak FOR UPDATE → jogak FOR UPDATE</code></pre>
+      <p>joined 조회는 관계 확인에만 사용하고, 잠금 대상은 <code>OF</code>로 제한한다. 이후 각 자식 행을 단일 테이블 조회로 잠가 생성·삭제·탈퇴 경로가 부모에서 자식으로만 진행하게 한다.</p>
+    </figure>
+    <p>이번 delta에서는 PostgreSQL <code>40P01</code> 자동 재시도를 추가하지 않는다. 순서 불일치를 재시도로 가리는 대신, 공통 잠금 순서와 교차 경로 integration test로 원인을 제거한다.</p>
+  </section>
+  <section id="baseline-invariants">
+    <h2>불변식</h2>
+    <table><caption>구현과 테스트가 보장해야 하는 조건</caption><thead><tr><th scope="col">영역</th><th scope="col">조건</th><th scope="col">실패 결과</th></tr></thead><tbody>
+      <tr><th scope="row">비용</th><td>날짜 일수, page size, offset 계산은 서버 상한과 safe integer 안에 있다.</td><td>DB 호출 전 validation error</td></tr>
+      <tr><th scope="row">조회</th><td>요약 feed는 댓글 본문을 조회하지 않고 comment count만 반환한다.</td><td>댓글 조회 호출 0회</td></tr>
+      <tr><th scope="row">용량</th><td>동일 부모에 대한 동시 생성 후 Mogak/Jogak의 허용 개수를 초과하지 않는다.</td><td>초과 요청은 <code>MAX_MOGAKS</code>로 거부하고 transaction은 rollback</td></tr>
+      <tr><th scope="row">잠금</th><td>명시적 잠금이 필요한 생성·삭제·탈퇴 hierarchy mutation은 <code>modarat → mogak → jogak</code> 순서로 잠근다.</td><td>예상 가능한 lock wait 후 진행하거나 기존 persistence error로 종료; 순서 역전은 회귀로 판정</td></tr>
+      <tr><th scope="row">호환성</th><td>기존 성공·오류 envelope과 page/cursor 이름을 유지한다.</td><td>계약 테스트 실패</td></tr>
+    </tbody></table>
+  </section>
+  <section id="baseline-failure">
+    <h2>실패·복구</h2>
+    <ol>
+      <li>schema 또는 service 경계에서 과대 입력을 거부해 배열 생성과 DB 호출을 시작하지 않는다.</li>
+      <li>부모 행 잠금 뒤 삭제로 부모가 사라졌으면 기존 not-found/persistence 경계로 종료한다.</li>
+      <li>잠금 대기 중 다른 생성이 상한을 채우면 재검사 결과로 용량 오류를 반환하고 insert를 하지 않는다.</li>
+      <li>create/delete/withdrawal이 겹쳐도 공통 부모→자식 순서를 사용해 예상 가능한 대기만 발생하게 한다. 예기치 않은 <code>40P01</code>은 저장소 오류로 관측하며 이번 변경에서 무조건 재시도하지 않는다.</li>
+      <li>요약 feed에서 댓글 projection을 호출하지 않았는지 repository mock과 query-level 검증으로 확인한다.</li>
+    </ol>
+  </section>
+  <section id="baseline-verification">
+    <h2>검증 계획</h2>
+    <table><caption>수용 기준</caption><thead><tr><th scope="col">기준</th><th scope="col">검증</th></tr></thead><tbody>
+      <tr><td>누락 export가 없고 상한 schema가 동작한다.</td><td><code>pnpm typecheck</code>, request schema 경계값 테스트</td></tr>
+      <tr><td>367일, size 101, safe integer 초과 offset이 DB 전에 거부된다.</td><td>모각 controller/service 및 social/posts presentation 테스트</td></tr>
+      <tr><td>요약 feed가 댓글 조회를 하지 않는다.</td><td>SocialService 단위 테스트에서 <code>listComments</code> 호출 없음 확인</td></tr>
+      <tr><td>동시 생성이 8개 상한을 넘지 않는다.</td><td>PostgreSQL integration에서 7개 상태의 동시 Mogak/Jogak 생성 회귀 테스트</td></tr>
+      <tr><td>계층 mutation의 잠금 순서가 일관된다.</td><td>PostgreSQL integration에서 create/delete 및 create/withdrawal 교차 실행, <code>FOR UPDATE OF</code> SQL/행 잠금 대기 검증</td></tr>
+      <tr><td>품질 게이트가 회귀하지 않는다.</td><td><code>pnpm format:check</code>, <code>pnpm lint</code>, <code>pnpm typecheck</code>, <code>pnpm test --runInBand</code></td></tr>
+    </tbody></table>
+  </section>
+  <section id="baseline-grilling-state">
+    <h2>설계 delta 결정 점검</h2>
+    <p><strong>상태: 완료.</strong> 기존 G1~G3 승인은 유지되며 G4 잠금 순서와 deadlock 처리 정책을 새 설계 결정으로 확정했다.</p>
+    <table><caption>현재 결정 frontier</caption><thead><tr><th scope="col">ID</th><th scope="col">선택지</th><th scope="col">권고</th></tr></thead><tbody>
+      <tr><th scope="row">D1</th><td>A. 생성·삭제·탈퇴 경로에 부모→자식 잠금 순서를 강제하고 joined lock에는 <code>OF</code>를 명시한다.<br>B. bare joined lock을 유지하고 <code>40P01</code> 재시도를 추가한다.</td><td>A. 잠금 순서를 결정적으로 만들고 재시도에 따른 트랜잭션 지연·중복 위험을 피한다.</td></tr>
+      <tr><th scope="row">D2</th><td>A. create/delete/withdrawal 교차 integration test를 추가한다.<br>B. 기존 create/create 동시성 테스트만 유지한다.</td><td>A. 실제로 충돌하는 경계를 회귀 기준에 포함한다.</td></tr>
+    </tbody></table>
+    <p><strong>확정:</strong> D1-A와 D2-A를 채택한다. 다른 선택으로 바꾸려면 구현 승인 전에 설계 artifact와 실행 계약을 다시 맞춘다.</p>
+  </section>
+
+  <section id="baseline-approval">
+    <h2>설계 승인 상태</h2>
+    <p><strong>설계 승인됨 — 2026-09-12 KST.</strong> 기존 승인 범위는 G1~G3, 관련 request/service/repository 코드와 회귀 테스트다. 이번 갱신은 확정된 G4와 D1-A·D2-A를 추가하며, 외부 rate-limit/WAF, 이미지 저장소, schema migration, 기존 HTTP envelope 변경은 계속 제외한다.</p>
+    <p>D1-A·D2-A 결정과 설계 이해 점검 항목을 반영한 승인이다. 구현 결과와 최종 검증 증거는 연결된 구현 제어 기록에서 관리한다.</p>
+    <p>연결된 구현 제어 기록: <a href="api-resource-concurrency-guardrails-implementation.html">api-resource-concurrency-guardrails-implementation.html</a></p>
+  </section>
+</details></article></main><footer>설계 기준선 · 구현 완료 · schema migration·운영 배포·데이터 변경 없음 · RV-004/005/006 해결, 운영 게이트는 별도</footer><script>const slides=[...document.querySelectorAll('#control-slides .control-slide')];
+const previous=document.querySelector('[data-prev]'), next=document.querySelector('[data-next]');
+let current=0; const submitted=new Set();
+function render(){slides.forEach((s,i)=>s.hidden=i!==current);previous.disabled=current===0;next.disabled=current===slides.length-1;document.querySelector('[data-progress]').textContent=`${current+1} / ${slides.length} · 제출 ${submitted.size}/${slides.length}`;}
+slides.forEach(s=>s.querySelector('[data-submit]').addEventListener('click',()=>{const answer=s.querySelector('input:checked');const result=s.querySelector('.question-result');result.hidden=false;if(!answer){result.querySelector('[data-status]').textContent='상태: 미응답';result.querySelector('[data-explanation]').textContent='답을 선택한 뒤 제출하세요.';result.querySelector('[data-next-action]').textContent='다음: 선택 후 제출';return;}submitted.add(s.dataset.id);result.querySelector('[data-status]').textContent=answer.value==='a'?'상태: 선택한 모델과 일치':'상태: 재확인 필요';result.querySelector('[data-explanation]').textContent=s.dataset.explanation;result.querySelector('[data-next-action]').textContent='다음: 관련 설계와 대조. 이 제출은 구현 승인이 아닙니다.';document.querySelector('#control-output').value=`${s.dataset.id} 제출 완료. 결과는 이 브라우저에만 남습니다.`;render();}));
+previous.addEventListener('click',()=>{current--;render();});next.addEventListener('click',()=>{current++;render();});render();</script></body></html>

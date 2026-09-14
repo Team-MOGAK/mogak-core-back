@@ -1,4 +1,4 @@
-export const MAX_PAGE_SIZE = 100;
+import { MAX_PAGE_SIZE } from '../resourceLimits';
 
 /**
  * Validate an offset-based page before it reaches a database adapter.

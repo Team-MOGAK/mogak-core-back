@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool, type PoolClient } from 'pg';
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 
 import {
   jogakExecutions,
@@ -217,6 +218,102 @@ describe('게시글 PostgreSQL 통합', () => {
     await expect(postLikeRows(fixture.postId)).resolves.toHaveLength(1);
   });
 
+  it('같은 게시글의 좋아요 toggle 세 번은 실제 순차 parity를 보존한다', async () => {
+    const fixture = await createPostFixture();
+    const repository = new PostRepository(db as never, pinoLoggerStub());
+
+    const results = await Promise.all([
+      repository.toggleLike({ postId: fixture.postId, userId: fixture.userId }),
+      repository.toggleLike({ postId: fixture.postId, userId: fixture.userId }),
+      repository.toggleLike({ postId: fixture.postId, userId: fixture.userId }),
+    ]);
+
+    expect(results.filter((result) => result === 'CREATED')).toHaveLength(2);
+    expect(results.filter((result) => result === 'REMOVED')).toHaveLength(1);
+    await expect(postLikeRows(fixture.postId)).resolves.toHaveLength(1);
+  });
+
+  it.each([
+    ['post', 'write-first'],
+    ['post', 'withdrawal-first'],
+    ['comment', 'write-first'],
+    ['comment', 'withdrawal-first'],
+    ['like', 'write-first'],
+    ['like', 'withdrawal-first'],
+  ] as const)('%s 쓰기와 탈퇴가 %s로 시작해도 허용된 결과로 끝난다', async (kind, order) => {
+    const fixture = kind === 'post' ? await createExecutionFixture() : await createPostFixture();
+    const [other] = await db
+      .insert(users)
+      .values({ email: `${randomUUID()}@mogak.test`, role: 'USER' })
+      .returning({ id: users.id });
+    if (other === undefined) throw new Error('other user fixture insert did not return a row');
+    const postId = 'postId' in fixture ? fixture.postId : undefined;
+    if (kind !== 'post' && postId === undefined) {
+      throw new Error('post fixture did not return a post id');
+    }
+
+    const postRepository = new PostRepository(db as never, pinoLoggerStub());
+    const write = () =>
+      kind === 'post'
+        ? postRepository.createForOccurrence({
+            authorId: fixture.userId,
+            jogakId: fixture.jogakId,
+            scheduledDate: '2026-07-23',
+            jogakTitleSnapshot: '문제 풀이',
+            contents: '경합 회고',
+          })
+        : kind === 'comment'
+          ? postRepository.createComment({
+              postId: postId as number,
+              authorId: other.id,
+              contents: '경합 댓글',
+            })
+          : postRepository.toggleLike({ postId: postId as number, userId: other.id });
+    const withdrawal = () => new AuthRepository(db as never).deleteUser(fixture.userId);
+    const outcomes =
+      order === 'write-first'
+        ? await Promise.allSettled([write(), withdrawal()])
+        : await Promise.allSettled([withdrawal(), write()]);
+    const writeOutcome = order === 'write-first' ? outcomes[0] : outcomes[1];
+    const withdrawalOutcome = order === 'write-first' ? outcomes[1] : outcomes[0];
+
+    expect(withdrawalOutcome).toMatchObject({ status: 'fulfilled', value: true });
+    if (writeOutcome?.status === 'fulfilled') {
+      if (kind === 'post') {
+        expect(writeOutcome.value).toMatchObject({ type: 'CREATED' });
+      } else if (kind === 'comment') {
+        expect(writeOutcome.value).toMatchObject({
+          id: expect.any(Number),
+          postId,
+          authorId: other.id,
+        });
+      } else {
+        expect(['CREATED', 'REMOVED']).toContain(writeOutcome.value);
+      }
+    } else if (writeOutcome?.status === 'rejected') {
+      expect(writeOutcome.reason).toBeInstanceOf(DomainException);
+      expect([
+        DomainErrorCode.JOGAK_NOT_FOUND,
+        DomainErrorCode.POST_NOT_FOUND,
+        DomainErrorCode.USER_NOT_FOUND,
+      ]).toContain(writeOutcome.reason.code);
+    }
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected') {
+        expect(hasErrorCode(outcome.reason, '40P01')).toBe(false);
+        expect(hasErrorCode(outcome.reason, '23503')).toBe(false);
+      }
+    }
+    await expect(db.select().from(users).where(eq(users.id, fixture.userId))).resolves.toHaveLength(
+      0,
+    );
+    if (kind !== 'post') {
+      await expect(postRows(postId as number)).resolves.toHaveLength(0);
+      await expect(postCommentRows(postId as number)).resolves.toHaveLength(0);
+      await expect(postLikeRows(postId as number)).resolves.toHaveLength(0);
+    }
+  });
+
   it('탈퇴는 다른 transaction의 user row lock이 해제된 뒤에만 삭제한다', async () => {
     const fixture = await createExecutionFixture();
     const first = await pool.connect();
@@ -349,12 +446,12 @@ async function backendPid(client: PoolClient): Promise<number> {
 async function waitForLock(pid: number): Promise<void> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     const [activity] = (
-      await pool.query<{ waiting: boolean }>(
-        "select wait_event_type = 'Lock' as waiting from pg_stat_activity where pid = $1",
+      await pool.query<{ blocked: boolean }>(
+        'select cardinality(pg_blocking_pids($1)) > 0 as blocked',
         [pid],
       )
     ).rows;
-    if (activity?.waiting === true) return;
+    if (activity?.blocked === true) return;
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
   }
   throw new Error('transaction did not enter lock wait state');
@@ -366,6 +463,17 @@ async function safelyRollback(client: PoolClient): Promise<void> {
   } catch {
     // The transaction may already have completed.
   }
+}
+
+function hasErrorCode(error: unknown, code: string): boolean {
+  const seen = new Set<object>();
+  let current: unknown = error;
+  while (typeof current === 'object' && current !== null && !seen.has(current)) {
+    if ('code' in current && current.code === code) return true;
+    seen.add(current);
+    current = 'cause' in current ? current.cause : undefined;
+  }
+  return false;
 }
 
 async function createPostFixture() {

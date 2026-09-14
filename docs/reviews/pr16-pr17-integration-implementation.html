@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PR16·PR17 통합 구현 제어 기록</title>
+  <style>
+    :root { --ink:#18212f; --muted:#536174; --line:#d8dee8; --bg:#f6f8fb; --card:#fff; --warn:#9a4b00; --ok:#136b45; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.65 system-ui,-apple-system,sans-serif; }
+    header, nav, main, footer { max-width:1040px; margin:auto; padding:18px 24px; }
+    header, article { background:var(--card); border:1px solid var(--line); border-radius:10px; }
+    header { margin-top:24px; }
+    nav { display:flex; flex-wrap:wrap; gap:12px; }
+    nav a { color:#1457a6; }
+    article { padding:22px; }
+    section { margin:0 0 28px; }
+    h1,h2 { line-height:1.25; }
+    h1 { margin:0 0 6px; font-size:28px; }
+    h2 { border-bottom:1px solid var(--line); padding-bottom:8px; }
+    dl { display:grid; grid-template-columns:190px 1fr; gap:6px 18px; }
+    dt { color:var(--muted); font-weight:700; }
+    dd { margin:0; }
+    table { width:100%; border-collapse:collapse; }
+    caption { text-align:left; font-weight:700; margin:8px 0; }
+    th,td { border:1px solid var(--line); padding:9px; text-align:left; vertical-align:top; }
+    th { background:#eef2f7; }
+    figure { margin:14px 0; padding:14px; border:1px solid var(--line); border-radius:8px; background:#f9fbfd; }
+    pre { overflow:auto; padding:12px; background:#111827; color:#e5e7eb; border-radius:7px; }
+    aside { border-left:5px solid var(--warn); background:#fff4e8; padding:12px 15px; }
+    .state { color:var(--ok); font-weight:700; }
+    .muted { color:var(--muted); }
+    @media(max-width:680px) { header,nav,main,footer { padding:14px; } dl { grid-template-columns:1fr; } article { padding:15px; } }
+  </style>
+</head>
+<body>
+  <header>
+    <p>구현 제어 기록 · 승인된 설계 기준 · <span class="state">원격 CI 통과 · 순차 병합 대기</span></p>
+    <h1>PR16·PR17 통합 구현 제어 기록</h1>
+    <dl>
+      <dt>목적 (purpose)</dt><dd>승인된 PR16→PR17 stacked 설계를 코드·브랜치·PR에 반영하고 두 기능의 병합 가능성을 검증한다.</dd>
+      <dt>사용자 (audience)</dt><dd>Team-MOGAK 저장소의 구현자·리뷰어·병합 담당자</dd>
+      <dt>문제 (problem)</dt><dd>형제 브랜치가 공통 22개 파일을 수정하고 15개에서 충돌하므로 기능을 보존한 단일 증분 PR이 필요하다.</dd>
+      <dt>핵심 흐름 (core-flow)</dt><dd>원격 head 고정 → 격리 merge commit → 공통 충돌 해결 → 정적·단위·통합 검증 → PR17 증분 diff·mergeability 갱신</dd>
+      <dt>기준 설계</dt><dd><a href="pr16-pr17-integration-design.html">pr16-pr17-integration-design.html</a> · 2026-09-15 승인 · G1-A/G2-A/G3-A</dd>
+      <dt>작업 범위</dt><dd>PR17 브랜치 <code>codex/api-hardening-feature-commits</code>, PR16 브랜치 <code>codex/spring-db-production-hardening</code>, 공통 코드·테스트·PR base</dd>
+    </dl>
+  </header>
+  <nav aria-label="구현 탐색"><a href="#baseline">기준선</a><a href="#current-implementation">현재 구현</a><a href="#status">상태</a><a href="#issues">이슈</a><a href="#verification">검증</a><a href="#gaps">공백</a><a href="#risks">잔여 위험</a><a href="#understanding">구현 이해 점검</a></nav>
+  <main>
+    <article>
+      <section id="baseline">
+        <h2>승인된 기준선과 불변식</h2>
+        <ul>
+          <li>PR16을 먼저 병합하는 기반으로 두고 PR17은 PR16 위의 증분 PR로 만든다.</li>
+          <li>PR16의 `/health/ready`, legacy migration preflight/rollback, session cleanup을 삭제하지 않는다.</li>
+          <li>PR17의 page/date bound, offset overflow 방지, transaction/advisory lock과 lock ordering을 유지한다.</li>
+          <li>공통 예외·요청 schema·서비스·auth·DB provider는 두 계약을 합친 단일 구현으로 남긴다.</li>
+          <li>merge commit을 사용하고 force push하지 않는다. 운영 DB·Cloud Run은 실행하지 않는다.</li>
+        </ul>
+      </section>
+      <section id="current-implementation">
+        <h2>현재 구현</h2>
+        <p>PR17 작업 트리에 PR16을 <code>--no-ff</code>로 통합하고 15개 공통 충돌을 기능 보존 기준으로 해결했다. 결과 merge commit은 <code>a4fddeae</code>이며 PR17 원격 head에 push했다. 기준 head는 PR16 <code>518bd5e</code>, PR17 <code>df90cd8</code>, 공통 기준 <code>848f639</code>로 고정되어 있다.</p>
+        <figure><figcaption>실행한 상태 흐름</figcaption><pre><code>PR17 df90cd8
+  └─ merge --no-ff PR16 518bd5e
+       └─ 15개 공통 충돌을 기능 불변식 기준으로 해결
+            └─ 정적·단위·로컬 API 게이트 통과
+                 └─ push 완료 · PR17 base=PR16 전환 · 원격 CI 통과</code></pre></figure>
+      </section>
+      <section id="status">
+        <h2>구현 상태</h2>
+        <p><strong>원격 CI 통과 · 순차 병합 대기.</strong> PR16은 <code>main</code> 기준으로, PR17은 PR16 브랜치 기준으로 각각 <code>MERGEABLE/CLEAN</code>이다. PR16을 먼저 병합한 뒤 PR17을 병합하면 된다.</p>
+      </section>
+      <section id="issues">
+        <h2>이슈 등록부</h2>
+        <table><caption>구현 이슈와 조치</caption><thead><tr><th>ID</th><th>상태</th><th>증상·영향</th><th>조치·검증</th></tr></thead><tbody>
+          <tr><th scope="row">I-001</th><td>해결</td><td>공통 22개 파일 중 15개가 3-way 충돌</td><td>공통 예외·schema·service·auth 테스트를 양쪽 계약이 동작하는 한 구현으로 해결하고 conflict marker를 제거했다.</td></tr>
+          <tr><th scope="row">I-002</th><td>해결</td><td>PR17 현재 트리가 PR16의 readiness·migration·session 기능을 제거</td><td>G2-A에 따라 <code>/health/ready</code>, legacy migration preflight/rollback, 만료 세션 정리와 트랜잭션 동작을 보존했다.</td></tr>
+          <tr><th scope="row">I-003</th><td>해당 없음</td><td>force push·운영 DB·Cloud Run 외부 효과</td><td>G3-A와 승인된 비범위에 따라 실행하지 않음</td></tr>
+        </tbody></table>
+      </section>
+      <section id="verification">
+        <h2>검증 증거 계획</h2>
+        <table><caption>게이트와 합격 조건</caption><thead><tr><th>범위</th><th>명령·관찰</th><th>상태</th></tr></thead><tbody>
+          <tr><th scope="row">merge</th><td><code>git merge --no-ff --no-commit codex/spring-db-production-hardening</code> 후 15개 충돌 해결, <code>rg</code> conflict marker 검색</td><td>통과</td></tr>
+          <tr><th scope="row">정적</th><td><code>pnpm format:check</code> · <code>pnpm lint</code> · <code>pnpm typecheck</code> · <code>pnpm build</code></td><td>통과</td></tr>
+          <tr><th scope="row">회귀</th><td><code>pnpm test --runInBand</code> (60 suites/305 tests) · <code>pnpm test:verify-local</code> (3 tests)</td><td>통과</td></tr>
+          <tr><th scope="row">diff/PR</th><td><code>git diff --cached --check</code> 통과. PR17 head <code>a4fddeae</code> push, base=<code>codex/spring-db-production-hardening</code>, 원격 CI 9개 전부 통과, PR16/17 <code>MERGEABLE/CLEAN</code></td><td>통과</td></tr>
+        </tbody></table>
+      </section>
+      <section id="gaps">
+        <h2>검증 공백</h2>
+        <p>현재 환경에 <code>DATABASE_URL</code>/<code>APP_DB_URL</code>가 없어 PostgreSQL integration test는 실행하지 않았다. 운영 DB migration, readiness probe traffic, Cloud Run rollout, 원격 PR merge 자체는 로컬 게이트가 증명하지 않는다.</p>
+      </section>
+      <section id="risks">
+        <h2>잔여 위험</h2>
+        <aside>DB 통합 검증은 환경에 데이터베이스가 없어 남아 있다. 실제 병합 버튼 실행은 담당자가 PR16→PR17 순서로 수행해야 하며, 통합 과정에서는 force push와 운영 DB 실행을 하지 않았다.</aside>
+      </section>
+      <section id="understanding">
+        <h2>구현 이해 점검</h2>
+        <p><strong>점검 완료.</strong> PR16 first merge 결과로 readiness·migration·session cleanup을 보존했고, 공통 오류·pagination·auth 계약과 conflict marker 제거를 확인했다. 로컬 API 시나리오 3개와 원격 CI 9개가 통과했으며 PR17 base 전환도 확인했다. 실제 PR 병합은 PR16→PR17 순서로 남아 있다.</p>
+      </section>
+      <section id="implementation-control-state">
+        <h2>implementation-control-state</h2>
+        <p><strong>원격 CI 통과 · 순차 병합 대기.</strong> 설계 승인 범위, merge commit <code>a4fddeae</code>, 로컬·원격 검증 결과, PR17 base 전환을 기록했다. 남은 운영 작업은 PR16을 먼저 병합한 뒤 PR17을 병합하는 것이다.</p>
+      </section>
+    </article>
+  </main>
+  <footer class="muted">기준 설계 승인: 2026-09-15 KST · 현재 상태: 원격 CI 통과 · 순차 병합 대기</footer>
+</body>
+</html>

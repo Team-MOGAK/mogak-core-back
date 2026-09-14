@@ -1,8 +1,8 @@
 import { HttpStatus, ServiceUnavailableException } from '@nestjs/common';
 import { jest } from '@jest/globals';
 import { ThrottlerException } from '@nestjs/throttler';
-import type { PinoLogger } from 'nestjs-pino';
 import { DrizzleQueryError } from 'drizzle-orm';
+import type { PinoLogger } from 'nestjs-pino';
 import pino from 'pino';
 import { Writable } from 'node:stream';
 
@@ -469,6 +469,29 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
     resetLogger();
   });
 
+  it('Multer 2.3의 새 multipart 입력 오류를 안전한 400으로 변환한다', () => {
+    const exception = Object.assign(new Error('Field name array index too large'), {
+      code: 'LIMIT_FIELD_ARRAY_INDEX',
+      field: 'items[4294967294]',
+    });
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const warn = logger.warn;
+    const host = { switchToHttp: () => ({ getResponse: () => ({ status }) }) };
+
+    new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(json).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'BAD_REQUEST', code: 'Z002' }),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      { type: 'multipart_rejected', code: 'LIMIT_FIELD_ARRAY_INDEX' },
+      'Multipart request rejected',
+    );
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('4294967294');
+  });
+
   it('500 응답을 만들고 원인 스택을 error 로그에 남긴다', () => {
     const exception = new Error('database connection failed');
     const json = jest.fn();
@@ -523,8 +546,44 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
       },
       'Unhandled exception',
     );
-    const logged = error.mock.calls[0]?.[0] as { err?: { stack?: string } };
-    expect(logged.err?.stack).toBeUndefined();
+    expect(error.mock.calls[0]?.[0]).toEqual(
+      expect.not.objectContaining({ stack: expect.anything() }),
+    );
+  });
+
+  it('DrizzleQueryError의 SQL·파라미터·스택을 로그에서 제거하고 안전한 메타데이터만 남긴다', () => {
+    const databaseCause = Object.assign(new Error('duplicate key detail'), {
+      code: '23505',
+      constraint: 'users_nickname_unique',
+      table: 'users',
+    });
+    const exception = new DrizzleQueryError(
+      'UPDATE users SET nickname = $1 WHERE id = $2 /* query-secret */',
+      ['nickname-secret', 7],
+      databaseCause,
+    );
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const error = logger.error;
+    const host = { switchToHttp: () => ({ getResponse: () => ({ status }) }) };
+
+    new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
+
+    expect(error).toHaveBeenCalledWith(
+      {
+        event: 'unhandled_exception',
+        err: {
+          name: exception.name,
+          message: 'Database operation failed',
+          database: { code: '23505', constraint: 'users_nickname_unique', table: 'users' },
+        },
+      },
+      'Unhandled exception',
+    );
+    const serialized = JSON.stringify(error.mock.calls);
+    expect(serialized).not.toContain('query-secret');
+    expect(serialized).not.toContain('nickname-secret');
+    expect(serialized).not.toContain('duplicate key detail');
   });
 });
 

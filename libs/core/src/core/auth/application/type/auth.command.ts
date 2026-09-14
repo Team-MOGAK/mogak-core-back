@@ -10,6 +10,7 @@ export type SessionIssueCommand = Readonly<{
   sessionId: string;
 }>;
 export type SessionRotationCommand = Readonly<{
+  userId: number;
   sessionId: string;
   currentRefreshTokenHash: string;
   nextRefreshTokenHash: string;
