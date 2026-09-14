@@ -35,7 +35,7 @@
 </head>
 <body>
   <header>
-    <p>구현 제어 기록 · 승인된 설계 기준 · <span class="state">로컬 검증 완료 · 원격 반영 대기</span></p>
+    <p>구현 제어 기록 · 승인된 설계 기준 · <span class="state">원격 CI 통과 · 순차 병합 대기</span></p>
     <h1>PR16·PR17 통합 구현 제어 기록</h1>
     <dl>
       <dt>목적 (purpose)</dt><dd>승인된 PR16→PR17 stacked 설계를 코드·브랜치·PR에 반영하고 두 기능의 병합 가능성을 검증한다.</dd>
@@ -61,16 +61,16 @@
       </section>
       <section id="current-implementation">
         <h2>현재 구현</h2>
-        <p>PR17 작업 트리에 PR16을 <code>--no-ff</code>로 통합하고 15개 공통 충돌을 기능 보존 기준으로 해결했다. 기준 head는 PR16 <code>518bd5e</code>, PR17 <code>df90cd8</code>, 공통 기준 <code>848f639</code>로 고정되어 있다.</p>
+        <p>PR17 작업 트리에 PR16을 <code>--no-ff</code>로 통합하고 15개 공통 충돌을 기능 보존 기준으로 해결했다. 결과 merge commit은 <code>a4fddeae</code>이며 PR17 원격 head에 push했다. 기준 head는 PR16 <code>518bd5e</code>, PR17 <code>df90cd8</code>, 공통 기준 <code>848f639</code>로 고정되어 있다.</p>
         <figure><figcaption>실행한 상태 흐름</figcaption><pre><code>PR17 df90cd8
   └─ merge --no-ff PR16 518bd5e
        └─ 15개 공통 충돌을 기능 불변식 기준으로 해결
             └─ 정적·단위·로컬 API 게이트 통과
-                 └─ merge commit 생성 후 원격 push·PR17 base 전환 대기</code></pre></figure>
+                 └─ push 완료 · PR17 base=PR16 전환 · 원격 CI 통과</code></pre></figure>
       </section>
       <section id="status">
         <h2>구현 상태</h2>
-        <p><strong>로컬 검증 완료 · 원격 반영 대기.</strong> 병합 트리는 충돌 없이 staged 상태이며, 다음 단계는 승인된 merge commit 생성 후 PR17 브랜치 push와 base 전환이다.</p>
+        <p><strong>원격 CI 통과 · 순차 병합 대기.</strong> PR16은 <code>main</code> 기준으로, PR17은 PR16 브랜치 기준으로 각각 <code>MERGEABLE/CLEAN</code>이다. PR16을 먼저 병합한 뒤 PR17을 병합하면 된다.</p>
       </section>
       <section id="issues">
         <h2>이슈 등록부</h2>
@@ -86,7 +86,7 @@
           <tr><th scope="row">merge</th><td><code>git merge --no-ff --no-commit codex/spring-db-production-hardening</code> 후 15개 충돌 해결, <code>rg</code> conflict marker 검색</td><td>통과</td></tr>
           <tr><th scope="row">정적</th><td><code>pnpm format:check</code> · <code>pnpm lint</code> · <code>pnpm typecheck</code> · <code>pnpm build</code></td><td>통과</td></tr>
           <tr><th scope="row">회귀</th><td><code>pnpm test --runInBand</code> (60 suites/305 tests) · <code>pnpm test:verify-local</code> (3 tests)</td><td>통과</td></tr>
-          <tr><th scope="row">diff/PR</th><td><code>git diff --cached --check</code> 통과. merge commit 생성과 PR17 incremental diff/base/mergeability 확인은 원격 반영 단계에서 수행</td><td>대기</td></tr>
+          <tr><th scope="row">diff/PR</th><td><code>git diff --cached --check</code> 통과. PR17 head <code>a4fddeae</code> push, base=<code>codex/spring-db-production-hardening</code>, 원격 CI 9개 전부 통과, PR16/17 <code>MERGEABLE/CLEAN</code></td><td>통과</td></tr>
         </tbody></table>
       </section>
       <section id="gaps">
@@ -95,18 +95,18 @@
       </section>
       <section id="risks">
         <h2>잔여 위험</h2>
-        <aside>로컬 게이트는 통과했지만 DB 통합 검증과 원격 PR 상태 갱신은 남아 있다. 원격 push·PR base 변경은 merge commit 생성 뒤에 수행하고 force push는 사용하지 않는다.</aside>
+        <aside>DB 통합 검증은 환경에 데이터베이스가 없어 남아 있다. 실제 병합 버튼 실행은 담당자가 PR16→PR17 순서로 수행해야 하며, 통합 과정에서는 force push와 운영 DB 실행을 하지 않았다.</aside>
       </section>
       <section id="understanding">
         <h2>구현 이해 점검</h2>
-        <p><strong>점검 완료.</strong> PR16 first merge 결과로 readiness·migration·session cleanup을 보존했고, 공통 오류·pagination·auth 계약과 conflict marker 제거를 확인했다. 로컬 API 시나리오는 권한 확장 환경에서 3개 테스트가 통과했다. PR17 base 전환·원격 merge와 운영 비범위는 원격 반영 후 확인한다.</p>
+        <p><strong>점검 완료.</strong> PR16 first merge 결과로 readiness·migration·session cleanup을 보존했고, 공통 오류·pagination·auth 계약과 conflict marker 제거를 확인했다. 로컬 API 시나리오 3개와 원격 CI 9개가 통과했으며 PR17 base 전환도 확인했다. 실제 PR 병합은 PR16→PR17 순서로 남아 있다.</p>
       </section>
       <section id="implementation-control-state">
         <h2>implementation-control-state</h2>
-        <p><strong>로컬 검증 완료 · 원격 반영 대기.</strong> 설계 승인 범위와 검증 결과를 기록했다. merge commit 생성, push, PR17 base 전환 결과를 원격 반영 후 추가한다.</p>
+        <p><strong>원격 CI 통과 · 순차 병합 대기.</strong> 설계 승인 범위, merge commit <code>a4fddeae</code>, 로컬·원격 검증 결과, PR17 base 전환을 기록했다. 남은 운영 작업은 PR16을 먼저 병합한 뒤 PR17을 병합하는 것이다.</p>
       </section>
     </article>
   </main>
-  <footer class="muted">기준 설계 승인: 2026-09-15 KST · 현재 상태: 로컬 검증 완료 · 원격 반영 대기</footer>
+  <footer class="muted">기준 설계 승인: 2026-09-15 KST · 현재 상태: 원격 CI 통과 · 순차 병합 대기</footer>
 </body>
 </html>
