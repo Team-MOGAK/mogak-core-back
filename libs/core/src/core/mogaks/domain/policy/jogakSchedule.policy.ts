@@ -6,13 +6,10 @@ import {
   type JogakScheduleWeekdayName,
   type ValidatedJogakSchedule,
 } from '../vo/jogakSchedule.vo';
-import {
-  compareDateOnly,
-  dateRangeDays,
-  isDateOnly,
-  toUtcDate,
-  weekdayFor,
-} from '../vo/jogakScheduleDate.vo';
+import { compareDateOnly, isDateOnly, toUtcDate, weekdayFor } from '../vo/jogakScheduleDate.vo';
+
+/** Backwards-compatible domain name for the shared date-range limit. */
+export const MAX_SCHEDULE_RANGE_DAYS = MAX_DATE_RANGE_DAYS;
 
 export function createJogakSchedule(input: JogakScheduleInput): ValidatedJogakSchedule {
   const effectiveTo = input.effectiveTo ?? null;
@@ -121,13 +118,13 @@ export function deriveOccurrenceStatus(
 }
 
 export function assertDateRange(startDate: string, endDate: string): void {
-  if (
-    !isDateOnly(startDate) ||
-    !isDateOnly(endDate) ||
-    compareDateOnly(startDate, endDate) > 0 ||
-    dateRangeDays(startDate, endDate) > MAX_DATE_RANGE_DAYS
-  ) {
+  if (!isDateOnly(startDate) || !isDateOnly(endDate) || compareDateOnly(startDate, endDate) > 0) {
     throw new RangeError('invalid date range');
+  }
+  const inclusiveDays =
+    (toUtcDate(endDate).getTime() - toUtcDate(startDate).getTime()) / 86_400_000 + 1;
+  if (inclusiveDays > MAX_SCHEDULE_RANGE_DAYS) {
+    throw new RangeError('date range exceeds maximum');
   }
 }
 

@@ -94,7 +94,15 @@ describe('소셜 HTTP 계약', () => {
       .expect(400)
       .expect(({ body }) => expect(body.code).toBe('Z005'));
     await request(app.getHttpServer())
+      .get('/api/posts?size=101')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+    await request(app.getHttpServer())
       .get('/api/posts/pacemakers?cursor=not-a-number&size=10')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+    await request(app.getHttpServer())
+      .get('/api/posts/pacemakers?cursor=0&size=101')
       .expect(400)
       .expect(({ body }) => expect(body.code).toBe('Z005'));
   });

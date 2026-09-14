@@ -23,6 +23,10 @@ function createService(secret = VALID_SECRET): JwtTokenService {
   return new JwtTokenService(createConfig(secret));
 }
 
+function configFor(secret: unknown): ConfigService {
+  return createConfig(secret);
+}
+
 describe('토큰 서비스 설정 경계', () => {
   it('JWT_SECRET이 없으면 legacy JWT_SECRET_KEY를 사용한다', () => {
     expect(() => new JwtTokenService(createConfig(undefined, VALID_SECRET))).not.toThrow();
@@ -43,6 +47,20 @@ describe('토큰 서비스 설정 경계', () => {
 });
 
 describe('토큰 서비스', () => {
+  it.each([
+    ['누락', undefined],
+    ['빈 문자열', ''],
+    ['공백', '   '],
+    ['ASCII 31바이트', 'x'.repeat(31)],
+    ['UTF-8 30바이트', '가'.repeat(10)],
+  ])('JWT secret이 %s이면 기동을 거부한다', (_label, secret) => {
+    expect(() => new JwtTokenService(configFor(secret))).toThrow();
+  });
+
+  it('UTF-8 32바이트 secret은 기동을 허용한다', () => {
+    expect(() => new JwtTokenService(configFor('가'.repeat(10) + 'aa'))).not.toThrow();
+  });
+
   it('액세스 토큰에 사용자와 역할과 액세스 종류와 세션 식별자를 담는다', async () => {
     const service = createService();
 

@@ -434,6 +434,36 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
 });
 
 describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
+  it.each([
+    ['timeout', new Error('Query read timeout')],
+    ['connection reset', Object.assign(new Error('Connection terminated'), { code: 'ECONNRESET' })],
+    ['SQLSTATE', Object.assign(new Error('constraint violation'), { code: '23505' })],
+  ])('%s의 실제 Drizzle 오류는 SQL 원문 없이 최종 로그에 기록한다', (_label, cause) => {
+    let output = '';
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        output += chunk.toString();
+        callback();
+      },
+    });
+    const log = pino({}, stream);
+    const queryError = new DrizzleQueryError(
+      'SELECT $1 /* PRIVATE_SQL */',
+      ['PRIVATE_BODY'],
+      cause,
+    );
+    const wrapped = new Error('PRIVATE_WRAPPER', { cause: queryError });
+    const response = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    new GlobalExceptionFilter(log as unknown as PinoLogger).catch(wrapped, {
+      switchToHttp: () => ({ getResponse: () => response }),
+    } as never);
+    expect(output).not.toContain('PRIVATE_');
+    const record = JSON.parse(output) as { err: { message: string; stack?: string } };
+    expect(record.err.message).toBe('Database operation failed');
+    // Pino's error serializer may add an empty stack field to the safe snapshot.
+    expect(record.err.stack ?? '').toBe('');
+  });
+
   afterEach(() => {
     jest.restoreAllMocks();
     resetLogger();
@@ -460,39 +490,6 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
       'Multipart request rejected',
     );
     expect(JSON.stringify(warn.mock.calls)).not.toContain('4294967294');
-  });
-
-  it.each([
-    ['timeout', new Error('Query read timeout')],
-    ['connection reset', Object.assign(new Error('Connection terminated'), { code: 'ECONNRESET' })],
-    ['SQLSTATE', Object.assign(new Error('constraint violation'), { code: '23505' })],
-  ])('%s인 Drizzle 오류도 SQL 원문 없이 Pino 로그에 기록한다', (_label, cause) => {
-    let output = '';
-    const stream = new Writable({
-      write(chunk, _encoding, callback) {
-        output += chunk.toString();
-        callback();
-      },
-    });
-    const log = pino({}, stream);
-    const queryError = new DrizzleQueryError(
-      'SELECT $1 /* private-query */',
-      ['private-param'],
-      cause,
-    );
-    const wrapped = new Error('private-wrapper', { cause: queryError });
-    const response = { status: jest.fn().mockReturnThis(), json: jest.fn() };
-
-    new GlobalExceptionFilter(log as unknown as PinoLogger).catch(wrapped, {
-      switchToHttp: () => ({ getResponse: () => response }),
-    } as never);
-
-    expect(output).not.toContain('private-query');
-    expect(output).not.toContain('private-param');
-    expect(output).not.toContain('private-wrapper');
-    const record = JSON.parse(output) as { err: { message: string; stack?: string } };
-    expect(record.err.message).toBe('Database operation failed');
-    expect(record.err.stack ?? '').toBe('');
   });
 
   it('500 응답을 만들고 원인 스택을 error 로그에 남긴다', () => {

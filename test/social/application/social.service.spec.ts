@@ -144,6 +144,24 @@ describe('소셜 팔로우 서비스', () => {
     expect(social.listComments).not.toHaveBeenCalled();
   });
 
+  it('페이지 크기와 page*size overflow를 저장소 호출 전에 거부한다', async () => {
+    const social = repository();
+    const service = new SocialService(social);
+
+    await expect(service.listNetworkPosts(7, 0, 101, 'createdAt')).rejects.toEqual(
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
+    );
+    await expect(
+      service.listNetworkPosts(7, Number.MAX_SAFE_INTEGER, 2, 'createdAt'),
+    ).rejects.toEqual(new DomainException(DomainErrorCode.INVALID_PARAMETER));
+    await expect(service.listPacemakerPosts(7, 0, 101)).rejects.toEqual(
+      new DomainException(DomainErrorCode.INVALID_PARAMETER),
+    );
+    expect(social.findAddressName).not.toHaveBeenCalled();
+    expect(social.listNetworkPosts).not.toHaveBeenCalled();
+    expect(social.listPacemakerPosts).not.toHaveBeenCalled();
+  });
+
   it('게시글을 조회하기 전에 지원하지 않는 네트워크 정렬을 거부한다', async () => {
     const social = repository();
     const service = new SocialService(social);

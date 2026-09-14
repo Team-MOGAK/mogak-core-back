@@ -1,5 +1,5 @@
-import { isSafePageOffset } from '../../../common/resourceLimits';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
+import { pageOffset } from '@core/common/validation/pagination';
 import type { StoragePort } from '@core/storage/application/storage.port';
 import { isSelfFollow } from '../../domain/policy/follow.policy';
 import type { SocialRepositoryPort } from '../port/social.repository.port';
@@ -54,11 +54,9 @@ export class SocialService {
   }
 
   async listPacemakerPosts(userId: number, cursor: number, size: number) {
-    if (!isSafePageOffset(cursor, size)) {
-      throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
-    }
+    const offset = safePageOffset(cursor, size);
     return this.toFeed(
-      await this.repository.listPacemakerPosts({ userId, limit: size, offset: cursor * size }),
+      await this.repository.listPacemakerPosts({ userId, limit: size, offset }),
       false,
     );
   }
@@ -70,9 +68,7 @@ export class SocialService {
     sort: string,
     address?: string,
   ) {
-    if (!isSafePageOffset(page, size)) {
-      throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
-    }
+    const offset = safePageOffset(page, size);
     if (sort !== 'createdAt' && sort !== 'likeCnt') {
       throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
     }
@@ -84,7 +80,7 @@ export class SocialService {
       address: selectedAddress,
       sort,
       limit: size + 1,
-      offset: page * size,
+      offset,
     });
     const content = await this.toFeed(rows.slice(0, size), true);
     return {
@@ -175,5 +171,13 @@ export class SocialService {
     return storageKey === null || this.storage === undefined
       ? null
       : this.storage.resolvePublicUrl(storageKey);
+  }
+}
+
+function safePageOffset(page: number, size: number): number {
+  try {
+    return pageOffset(page, size);
+  } catch {
+    throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
   }
 }

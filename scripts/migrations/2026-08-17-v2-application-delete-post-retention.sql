@@ -1,6 +1,134 @@
 -- Migration: 2026-08-17 v2
 -- Applies after: legacy Spring schema is present. Supersedes v1; run v2 only.
 -- Purpose: remove DB delete cascades from the Jogak hierarchy while preserving post rows.
+-- Weekday policy: source all DISTINCT period.days values through jogak_period. The default mode
+-- stops on any existing target mismatch. Existing schedules are never overwritten.
+DO $$
+DECLARE
+  period_key text;
+  has_orphan_jogak boolean;
+  has_orphan_period boolean;
+BEGIN
+  IF to_regclass('jogak') IS NULL THEN
+    RAISE EXCEPTION 'Legacy table jogak is required before compatibility migration';
+  END IF;
+  IF to_regclass('jogak_period') IS NULL OR to_regclass('period') IS NULL THEN
+    RAISE EXCEPTION 'Legacy tables jogak_period and period are required for weekday backfill';
+  END IF;
+  IF to_regclass('auth_sessions') IS NULL THEN
+    RAISE EXCEPTION 'auth_sessions is required before compatibility migration';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'jogak'
+      AND column_name IN ('jogak_id', 'is_routine', 'start_at', 'end_at')
+    GROUP BY table_name HAVING count(*) = 4
+  ) THEN
+    RAISE EXCEPTION 'Legacy jogak columns jogak_id/is_routine/start_at/end_at are required';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'jogak_period'
+      AND column_name IN ('jogak_id', 'period_id')
+    GROUP BY table_name HAVING count(*) = 2
+  ) THEN
+    RAISE EXCEPTION 'Legacy jogak_period columns jogak_id/period_id are required';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'period'
+      AND column_name = 'days'
+  ) THEN
+    RAISE EXCEPTION 'Legacy period.days is required for weekday backfill';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = current_schema() AND table_name = 'auth_sessions'
+      AND column_name = 'expires_at'
+  ) THEN
+    RAISE EXCEPTION 'auth_sessions.expires_at is required for session retention';
+  END IF;
+
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = 'period' AND column_name = 'period_id'
+    ) THEN 'period_id'
+    WHEN EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = 'period' AND column_name = 'id'
+    ) THEN 'id'
+    ELSE NULL
+  END INTO period_key;
+  IF period_key IS NULL THEN
+    RAISE EXCEPTION 'Legacy period primary key period_id or id is required';
+  END IF;
+
+  EXECUTE format($query$
+    SELECT EXISTS (
+      SELECT 1 FROM jogak_period jp
+      LEFT JOIN jogak j ON j.jogak_id = jp.jogak_id
+      WHERE j.jogak_id IS NULL
+    )
+  $query$) INTO has_orphan_jogak;
+  IF has_orphan_jogak THEN
+    RAISE EXCEPTION 'Legacy jogak_period contains orphan jogak_id rows';
+  END IF;
+  EXECUTE format($query$
+    SELECT EXISTS (
+      SELECT 1 FROM jogak_period jp
+      LEFT JOIN period p ON p.%I = jp.period_id
+      WHERE p.%I IS NULL
+    )
+  $query$, period_key, period_key) INTO has_orphan_period;
+  IF has_orphan_period THEN
+    RAISE EXCEPTION 'Legacy jogak_period contains orphan period_id rows';
+  END IF;
+
+  EXECUTE format($query$
+    CREATE TEMP TABLE _legacy_weekday_source ON COMMIT DROP AS
+    SELECT jp.jogak_id::bigint AS jogak_id,
+           NULLIF(p.days::text, '') AS weekday,
+           count(*)::bigint AS relation_count
+    FROM jogak_period jp
+    JOIN period p ON p.%I = jp.period_id
+    GROUP BY jp.jogak_id, NULLIF(p.days::text, '')
+  $query$, period_key);
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM jogak WHERE is_routine IS NULL) THEN
+    RAISE EXCEPTION 'Legacy jogak.is_routine must not be NULL';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM _legacy_weekday_source
+    WHERE weekday IS NULL OR weekday NOT IN
+      ('SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY')
+  ) THEN
+    RAISE EXCEPTION 'Legacy period.days contains an unsupported weekday value';
+  END IF;
+  IF EXISTS (SELECT 1 FROM _legacy_weekday_source WHERE relation_count > 1) THEN
+    RAISE EXCEPTION 'Legacy jogak_period contains duplicate jogak_id + period.days rows';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM jogak j
+    LEFT JOIN _legacy_weekday_source s ON s.jogak_id = j.jogak_id
+    WHERE j.is_routine = true
+    GROUP BY j.jogak_id
+    HAVING count(s.weekday) = 0
+  ) THEN
+    RAISE EXCEPTION 'A routine Jogak has no valid legacy period.days row';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM jogak j
+    JOIN _legacy_weekday_source s ON s.jogak_id = j.jogak_id
+    WHERE j.is_routine = false
+  ) THEN
+    RAISE EXCEPTION 'A non-routine Jogak has legacy weekday rows';
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS jogak_schedules (
   id bigint PRIMARY KEY GENERATED BY DEFAULT AS IDENTITY,
   jogak_id bigint NOT NULL REFERENCES jogak(jogak_id),
@@ -14,6 +142,7 @@ CREATE TABLE IF NOT EXISTS jogak_schedule_weekdays (
   schedule_id bigint NOT NULL REFERENCES jogak_schedules(id),
   weekday varchar(16) NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions (expires_at);
 CREATE OR REPLACE FUNCTION ensure_no_action_fk(child_table regclass, child_column text, parent_table regclass, parent_column text, constraint_name text) RETURNS void AS $$
 DECLARE existing record;
 BEGIN
@@ -66,5 +195,131 @@ ALTER TABLE post ALTER COLUMN comment_cnt SET DEFAULT 0;
 ALTER TABLE post ALTER COLUMN like_cnt SET DEFAULT 0;
 ALTER TABLE post ALTER COLUMN view_cnt SET DEFAULT 0;
 CREATE OR REPLACE VIEW mogak_categories AS SELECT mogak_category_id AS id, CASE name WHEN '자격증' THEN 'CERTIFICATION' WHEN '대외활동' THEN 'EXTERNAL_ACTIVITY' WHEN '운동' THEN 'EXERCISE' WHEN '인사이트' THEN 'INSIGHT' WHEN '공모전' THEN 'CONTEST' WHEN '직무공부' THEN 'JOB_STUDY' WHEN '산업분석' THEN 'INDUSTRY_ANALYSIS' WHEN '어학' THEN 'LANGUAGE' WHEN '강연,강의' THEN 'LECTURE' WHEN '프로젝트' THEN 'PROJECT' WHEN '스터디' THEN 'STUDY' ELSE 'OTHER' END AS code, name, true AS active, NULL::timestamp with time zone AS created_at, NULL::timestamp with time zone AS updated_at FROM mogak_category;
-INSERT INTO jogak_schedules (jogak_id, schedule_type, effective_from, effective_to) SELECT j.jogak_id, CASE WHEN j.is_routine THEN 'WEEKLY' ELSE 'ONCE' END, COALESCE(j.start_at, CURRENT_DATE), CASE WHEN j.is_routine THEN j.end_at ELSE NULL END FROM jogak j WHERE NOT EXISTS (SELECT 1 FROM jogak_schedules s WHERE s.jogak_id = j.jogak_id);
-INSERT INTO jogak_schedule_weekdays (schedule_id, weekday) SELECT s.id, CASE EXTRACT(DOW FROM s.effective_from) WHEN 0 THEN 'SUNDAY' WHEN 1 THEN 'MONDAY' WHEN 2 THEN 'TUESDAY' WHEN 3 THEN 'WEDNESDAY' WHEN 4 THEN 'THURSDAY' WHEN 5 THEN 'FRIDAY' ELSE 'SATURDAY' END FROM jogak_schedules s WHERE s.schedule_type = 'WEEKLY' AND NOT EXISTS (SELECT 1 FROM jogak_schedule_weekdays w WHERE w.schedule_id = s.id);
+
+CREATE TEMP TABLE _legacy_target_conflicts (
+  jogak_id bigint PRIMARY KEY,
+  reason text NOT NULL,
+  source_weekdays text[] NOT NULL,
+  target_weekdays text[] NOT NULL
+) ON COMMIT DROP;
+
+WITH source_sets AS (
+  SELECT jogak_id, array_agg(weekday ORDER BY weekday)::text[] AS weekdays
+  FROM _legacy_weekday_source
+  GROUP BY jogak_id
+), target_sets AS (
+  SELECT
+    j.jogak_id,
+    count(s.id)::integer AS schedule_count,
+    min(s.schedule_type)::text AS schedule_type,
+    ARRAY(
+      SELECT DISTINCT w.weekday::text
+      FROM jogak_schedules s2
+      JOIN jogak_schedule_weekdays w ON w.schedule_id = s2.id
+      WHERE s2.jogak_id = j.jogak_id
+      ORDER BY w.weekday::text
+    )::text[] AS weekdays
+  FROM jogak j
+  LEFT JOIN jogak_schedules s ON s.jogak_id = j.jogak_id
+  GROUP BY j.jogak_id
+)
+INSERT INTO _legacy_target_conflicts (
+  jogak_id,
+  reason,
+  source_weekdays,
+  target_weekdays
+)
+SELECT
+  j.jogak_id,
+  CASE
+    WHEN t.schedule_count <> 1 THEN 'multiple_target_schedules'
+    WHEN j.is_routine AND t.schedule_type <> 'WEEKLY' THEN 'routine_target_type_mismatch'
+    WHEN j.is_routine AND t.weekdays IS DISTINCT FROM COALESCE(src.weekdays, ARRAY[]::text[]) THEN 'routine_weekday_set_mismatch'
+    WHEN NOT j.is_routine AND t.schedule_type <> 'ONCE' THEN 'once_target_type_mismatch'
+    WHEN NOT j.is_routine AND cardinality(t.weekdays) <> 0 THEN 'once_has_weekdays'
+    ELSE 'unknown_target_mismatch'
+  END,
+  COALESCE(src.weekdays, ARRAY[]::text[]),
+  COALESCE(t.weekdays, ARRAY[]::text[])
+FROM jogak j
+JOIN target_sets t ON t.jogak_id = j.jogak_id
+LEFT JOIN source_sets src ON src.jogak_id = j.jogak_id
+WHERE t.schedule_count > 0
+  AND (
+    t.schedule_count <> 1
+    OR (j.is_routine AND (t.schedule_type <> 'WEEKLY' OR t.weekdays IS DISTINCT FROM COALESCE(src.weekdays, ARRAY[]::text[])))
+    OR (NOT j.is_routine AND (t.schedule_type <> 'ONCE' OR cardinality(t.weekdays) <> 0))
+  );
+
+DO $$
+DECLARE conflict record;
+BEGIN
+  FOR conflict IN
+    SELECT jogak_id, reason, source_weekdays, target_weekdays
+    FROM _legacy_target_conflicts
+    ORDER BY jogak_id
+  LOOP
+    RAISE NOTICE 'Legacy schedule conflict jogak_id=% reason=% source_weekdays=% target_weekdays=%',
+      conflict.jogak_id,
+      conflict.reason,
+      conflict.source_weekdays,
+      conflict.target_weekdays;
+  END LOOP;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM _legacy_target_conflicts) THEN
+    RAISE EXCEPTION 'Existing target schedule conflicts detected; review the reported differences before migration';
+  END IF;
+END $$;
+
+INSERT INTO jogak_schedules (jogak_id, schedule_type, effective_from, effective_to)
+SELECT j.jogak_id,
+       CASE WHEN j.is_routine THEN 'WEEKLY' ELSE 'ONCE' END,
+       COALESCE(j.start_at, CURRENT_DATE),
+       CASE WHEN j.is_routine THEN j.end_at ELSE NULL END
+FROM jogak j
+WHERE NOT EXISTS (SELECT 1 FROM jogak_schedules s WHERE s.jogak_id = j.jogak_id);
+
+INSERT INTO jogak_schedule_weekdays (schedule_id, weekday)
+SELECT s.id, source.weekday
+FROM jogak_schedules s
+JOIN _legacy_weekday_source source ON source.jogak_id = s.jogak_id
+WHERE s.schedule_type = 'WEEKLY'
+ON CONFLICT (schedule_id, weekday) DO NOTHING;
+
+DO $$
+DECLARE mismatch_count bigint;
+BEGIN
+  WITH source_sets AS (
+    SELECT jogak_id, array_agg(weekday ORDER BY weekday)::text[] AS weekdays
+    FROM _legacy_weekday_source
+    GROUP BY jogak_id
+  ), target_sets AS (
+    SELECT
+      j.jogak_id,
+      count(s.id)::integer AS schedule_count,
+      min(s.schedule_type)::text AS schedule_type,
+      ARRAY(
+        SELECT DISTINCT w.weekday::text
+        FROM jogak_schedules s2
+        JOIN jogak_schedule_weekdays w ON w.schedule_id = s2.id
+        WHERE s2.jogak_id = j.jogak_id
+        ORDER BY w.weekday::text
+      )::text[] AS weekdays
+    FROM jogak j
+    LEFT JOIN jogak_schedules s ON s.jogak_id = j.jogak_id
+    GROUP BY j.jogak_id
+  )
+  SELECT count(*) INTO mismatch_count
+  FROM jogak j
+  JOIN target_sets t ON t.jogak_id = j.jogak_id
+  LEFT JOIN source_sets source ON source.jogak_id = j.jogak_id
+  WHERE t.schedule_count <> 1
+    OR (j.is_routine AND (t.schedule_type <> 'WEEKLY' OR t.weekdays IS DISTINCT FROM COALESCE(source.weekdays, ARRAY[]::text[])))
+    OR (NOT j.is_routine AND (t.schedule_type <> 'ONCE' OR cardinality(t.weekdays) <> 0));
+  IF mismatch_count > 0 THEN
+    RAISE EXCEPTION 'Post-backfill weekday or schedule validation failed for % Jogak rows', mismatch_count;
+  END IF;
+END $$;

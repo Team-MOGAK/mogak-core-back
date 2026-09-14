@@ -124,6 +124,14 @@ describe('게시글 HTTP 계약', () => {
     expect(posts.listMogakPosts).toHaveBeenCalledWith(7, 3, 0, 10);
   });
 
+  it('모각 게시글 페이지 size 상한을 초과하면 Z005로 거부한다', async () => {
+    await request(app.getHttpServer())
+      .get('/api/mogaks/3/posts?size=101')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('Z005'));
+    expect(posts.listMogakPosts).not.toHaveBeenCalled();
+  });
+
   it('유지된 조각과 targetDate 경로로 게시글을 조회한다', async () => {
     posts.getPostByJogakAndDate.mockResolvedValue({
       postId: 31,

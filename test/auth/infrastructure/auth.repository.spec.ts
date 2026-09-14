@@ -29,6 +29,16 @@ function lockedUserSelect(result: readonly unknown[] = [{ id: 7 }]) {
   return testMock().mockReturnValue(query);
 }
 
+function sessionTransaction(insert: ReturnType<typeof testMock>) {
+  const deleteWhere = testMock().mockResolvedValue([]);
+  const deleteQuery = testMock().mockReturnValue({ where: deleteWhere });
+  const select = lockedUserSelect();
+  const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
+    callback({ delete: deleteQuery, insert, select }),
+  );
+  return { transaction, deleteQuery, deleteWhere };
+}
+
 describe('인증 저장소', () => {
   it('소셜 식별자 고유성 위반을 DuplicateSocialAccountException으로 변환한다', async () => {
     const transaction = testMock().mockRejectedValue({
@@ -91,9 +101,7 @@ describe('인증 저장소', () => {
     const failure = new Error('database unavailable');
     const values = testMock().mockRejectedValue(failure);
     const insert = testMock().mockReturnValue({ values });
-    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
-      callback({ select: lockedUserSelect(), insert }),
-    );
+    const { transaction } = sessionTransaction(insert);
     const repository = new AuthRepository({ transaction } as unknown as Database);
 
     await expect(
@@ -114,9 +122,7 @@ describe('인증 저장소', () => {
     const failure = new AuthPersistenceException('session insert invariant failed');
     const values = testMock().mockRejectedValue(failure);
     const insert = testMock().mockReturnValue({ values });
-    const transaction = testMock().mockImplementation((callback: (tx: unknown) => unknown) =>
-      callback({ select: lockedUserSelect(), insert }),
-    );
+    const { transaction } = sessionTransaction(insert);
     const repository = new AuthRepository({ transaction } as unknown as Database);
 
     await expect(
@@ -126,6 +132,29 @@ describe('인증 저장소', () => {
         expiresAt: new Date('2026-08-23T00:00:00.000Z'),
       }),
     ).rejects.toBe(failure);
+  });
+
+  it('새 세션을 만들 때 만료 세션 정리만 수행한다', async () => {
+    const values = testMock().mockResolvedValue(undefined);
+    const insert = testMock().mockReturnValue({ values });
+    const { transaction, deleteQuery } = sessionTransaction(insert);
+    const repository = new AuthRepository({ transaction } as unknown as Database);
+
+    await expect(
+      repository.createSession(7, {
+        id: 'session-new',
+        refreshTokenHash: 'refresh-token-hash',
+        expiresAt: new Date('2026-08-23T00:00:00.000Z'),
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(deleteQuery).toHaveBeenCalledTimes(1);
+    expect(values).toHaveBeenCalledWith({
+      id: 'session-new',
+      refreshTokenHash: 'refresh-token-hash',
+      expiresAt: new Date('2026-08-23T00:00:00.000Z'),
+      userId: 7,
+    });
   });
 
   it('사용자 삽입 결과가 없으면 AuthPersistenceException을 던진다', async () => {

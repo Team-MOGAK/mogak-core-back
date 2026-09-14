@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, lte } from 'drizzle-orm';
 
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import {
@@ -149,6 +149,11 @@ export class AuthRepository implements AuthPersistencePort {
       await this.db.transaction(async (tx) => {
         const locked = await lockUsers(tx, [userId]);
         if (locked.length !== 1) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
+        const now = new Date();
+        await tx
+          .delete(authSessions)
+          .where(and(eq(authSessions.userId, userId), lte(authSessions.expiresAt, now)));
+
         await tx.insert(authSessions).values({ ...session, userId });
       });
     } catch (error: unknown) {
@@ -296,9 +301,10 @@ function asUserRole(value: string | null): UserRole | null {
 }
 
 function isUniqueConstraint(error: unknown, ...constraints: readonly string[]): boolean {
-  const seen = new Set<object>();
+  const seen = new WeakSet<object>();
   let current: unknown = error;
   while (isRecord(current) && !seen.has(current)) {
+    seen.add(current);
     if (
       current.code === '23505' &&
       typeof current.constraint === 'string' &&
@@ -306,7 +312,6 @@ function isUniqueConstraint(error: unknown, ...constraints: readonly string[]): 
     ) {
       return true;
     }
-    seen.add(current);
     current = current.cause;
   }
   return false;

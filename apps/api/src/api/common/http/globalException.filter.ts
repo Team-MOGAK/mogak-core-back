@@ -111,11 +111,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 }
 
-type DatabaseErrorDetails = Readonly<{
+type DatabaseErrorDetails = {
   code?: string | undefined;
   constraint?: string | undefined;
   table?: string | undefined;
-}>;
+};
 
 type ExceptionDetails = Readonly<{
   name: string;
@@ -128,11 +128,11 @@ function databaseErrorDetails(exception: unknown): DatabaseErrorDetails | undefi
   const seen = new WeakSet<object>();
   let current: unknown = exception;
   let isDatabaseError = false;
-  const details: { code?: string; constraint?: string; table?: string } = {};
+  const details: DatabaseErrorDetails = {};
 
   while (isErrorLike(current) && !seen.has(current)) {
     seen.add(current);
-    if (current instanceof DrizzleError || current instanceof DrizzleQueryError) {
+    if (current instanceof DrizzleQueryError || current instanceof DrizzleError) {
       isDatabaseError = true;
     }
 
@@ -146,7 +146,6 @@ function databaseErrorDetails(exception: unknown): DatabaseErrorDetails | undefi
 
     current = current.cause;
   }
-
   return isDatabaseError || Object.values(details).some((value) => value !== undefined)
     ? details
     : undefined;
@@ -158,6 +157,10 @@ function safeDatabaseCode(value: unknown): string | undefined {
 
 function safeDatabaseIdentifier(value: unknown): string | undefined {
   return typeof value === 'string' && /^[A-Za-z0-9_]{1,128}$/.test(value) ? value : undefined;
+}
+
+function isErrorLike(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function unhandledExceptionLog(exception: unknown): {
@@ -276,10 +279,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null) return false;
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
-}
-
-function isErrorLike(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 function isMultipartInputError(exception: unknown): exception is { code: string } {

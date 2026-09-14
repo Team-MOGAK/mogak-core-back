@@ -15,6 +15,6 @@ class DatabaseLifecycle implements OnModuleDestroy {
 
 @Module({
   providers: [...databaseProviders, DatabaseLifecycle],
-  exports: [DATABASE],
+  exports: [DATABASE, PG_POOL],
 })
 export class DatabaseModule {}

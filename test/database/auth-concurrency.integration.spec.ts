@@ -36,6 +36,65 @@ afterAll(async () => {
 });
 
 describe('인증·세션 PostgreSQL 동시성 통합', () => {
+  it('11개 이상 활성 세션과 다른 사용자의 행은 보존하고 해당 사용자의 만료 행만 정리한다', async () => {
+    const [user, other] = await db
+      .insert(users)
+      .values([
+        { email: `${randomUUID()}@mogak.test`, role: 'PENDING' },
+        { email: `${randomUUID()}@mogak.test`, role: 'PENDING' },
+      ])
+      .returning({ id: users.id });
+    if (user === undefined || other === undefined) throw new Error('missing fixture users');
+    const activeIds = Array.from({ length: 11 }, () => randomUUID());
+    const expiredId = randomUUID();
+    const otherId = randomUUID();
+    const expiresAt = new Date(Date.now() + 86_400_000);
+    await db.insert(authSessions).values([
+      ...activeIds.map((id) => ({
+        id,
+        userId: user.id,
+        refreshTokenHash: tokenHash(),
+        expiresAt,
+      })),
+      { id: expiredId, userId: user.id, refreshTokenHash: tokenHash(), expiresAt: new Date(0) },
+      { id: otherId, userId: other.id, refreshTokenHash: tokenHash(), expiresAt: new Date(0) },
+    ]);
+    const newId = randomUUID();
+    await new AuthRepository(db as never).createSession(user.id, {
+      id: newId,
+      refreshTokenHash: tokenHash(),
+      expiresAt,
+    });
+    const rows = await db.select({ id: authSessions.id }).from(authSessions);
+    expect(rows.map(({ id }) => id).sort()).toEqual([...activeIds, otherId, newId].sort());
+  });
+
+  it('세션 삽입이 실패하면 앞선 만료 행 정리도 rollback한다', async () => {
+    const [user] = await db
+      .insert(users)
+      .values({
+        email: `${randomUUID()}@mogak.test`,
+        role: 'PENDING',
+      })
+      .returning({ id: users.id });
+    if (user === undefined) throw new Error('missing fixture user');
+    const id = randomUUID();
+    await db.insert(authSessions).values({
+      id,
+      userId: user.id,
+      refreshTokenHash: tokenHash(),
+      expiresAt: new Date(0),
+    });
+    await expect(
+      new AuthRepository(db as never).createSession(user.id, {
+        id: 'not-a-uuid',
+        refreshTokenHash: tokenHash(),
+        expiresAt: new Date(Date.now() + 86_400_000),
+      }),
+    ).rejects.toThrow();
+    expect(await db.select({ id: authSessions.id }).from(authSessions)).toEqual([{ id }]);
+  });
+
   it('같은 social identity의 동시 로그인은 한 사용자와 두 세션으로 수렴한다', async () => {
     const identity = {
       provider: SocialProvider.GOOGLE,

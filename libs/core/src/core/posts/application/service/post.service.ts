@@ -1,5 +1,5 @@
-import { isSafePageOffset } from '../../../common/resourceLimits';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
+import { pageOffset } from '@core/common/validation/pagination';
 import type { OwnedMogakPort } from '@core/mogaks/application/port/ownedMogak.port';
 import type { OwnedOccurrencePort } from '@core/mogaks/application/port/ownedOccurrence.port';
 import type { StoragePort } from '@core/storage/application/storage.port';
@@ -88,15 +88,13 @@ export class PostService {
   }
 
   async listMogakPosts(userId: number, mogakId: number, page: number, size: number) {
-    if (!isSafePageOffset(page, size)) {
-      throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
-    }
+    const offset = safePageOffset(page, size);
     await this.mogaks.resolveOwnedMogak(userId, mogakId);
     const posts = await this.repository.listOwnedMogakPosts({
       userId,
       mogakId,
       limit: size + 1,
-      offset: page * size,
+      offset,
     });
     const visiblePosts = posts.slice(0, size);
     const images = await this.repository.listImagesForPosts(visiblePosts.map((post) => post.id));
@@ -213,6 +211,14 @@ export class PostService {
 
   private async resolveThumbnail(storageKey: string | null): Promise<string | null> {
     return storageKey === null ? null : this.storage.resolvePublicUrl(storageKey);
+  }
+}
+
+function safePageOffset(page: number, size: number): number {
+  try {
+    return pageOffset(page, size);
+  } catch {
+    throw new DomainException(DomainErrorCode.INVALID_PARAMETER);
   }
 }
 
