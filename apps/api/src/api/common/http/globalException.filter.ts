@@ -9,6 +9,7 @@ import { ThrottlerException } from '@nestjs/throttler';
 import { InjectPinoLogger } from 'nestjs-pino';
 import type { PinoLogger } from 'nestjs-pino';
 import type { Response } from 'express';
+import { DrizzleError, DrizzleQueryError } from 'drizzle-orm';
 
 import { DomainException } from '@core/common/error/domainException';
 import { AppErrorCode, type AppErrorCode as AppErrorDefinition } from './appErrorCode';
@@ -96,11 +97,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 }
 
-type DatabaseErrorDetails = Readonly<{
+type DatabaseErrorDetails = {
   code?: string | undefined;
   constraint?: string | undefined;
   table?: string | undefined;
-}>;
+};
 
 type ExceptionDetails = Readonly<{
   name: string;
@@ -110,20 +111,40 @@ type ExceptionDetails = Readonly<{
 }>;
 
 function databaseErrorDetails(exception: unknown): DatabaseErrorDetails | undefined {
-  const cause = exception instanceof Error ? exception.cause : undefined;
-  if (!isRecord(cause)) return undefined;
+  const seen = new WeakSet<object>();
+  let current: unknown = exception;
+  const details: DatabaseErrorDetails = {};
+  let isDatabaseError = false;
+  while (isErrorLike(current) && !seen.has(current)) {
+    seen.add(current);
+    if (current instanceof DrizzleQueryError || current instanceof DrizzleError) {
+      isDatabaseError = true;
+    }
+    const code = safeDatabaseCode(current.code);
+    const constraint = safeDatabaseIdentifier(current.constraint);
+    const table = safeDatabaseIdentifier(current.table);
+    if (details.code === undefined && code !== undefined) details.code = code;
+    if (details.constraint === undefined && constraint !== undefined)
+      details.constraint = constraint;
+    if (details.table === undefined && table !== undefined) details.table = table;
+    current = current.cause;
+  }
 
-  const details = {
-    code: stringOrUndefined(cause.code),
-    constraint: stringOrUndefined(cause.constraint),
-    table: stringOrUndefined(cause.table),
-  } satisfies DatabaseErrorDetails;
-
-  return Object.values(details).some((value) => value !== undefined) ? details : undefined;
+  return isDatabaseError || Object.values(details).some((value) => value !== undefined)
+    ? details
+    : undefined;
 }
 
-function stringOrUndefined(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined;
+function safeDatabaseCode(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[0-9A-Z]{5}$/.test(value) ? value : undefined;
+}
+
+function safeDatabaseIdentifier(value: unknown): string | undefined {
+  return typeof value === 'string' && /^[A-Za-z0-9_]{1,128}$/.test(value) ? value : undefined;
+}
+
+function isErrorLike(value: unknown): value is Record<string, unknown> {
+  return value instanceof Error || isRecord(value);
 }
 
 function unhandledExceptionLog(exception: unknown): {
@@ -135,11 +156,18 @@ function unhandledExceptionLog(exception: unknown): {
 }
 
 function exceptionDetails(error: Error): ExceptionDetails {
+  const database = databaseErrorDetails(error);
+  if (database !== undefined) {
+    return {
+      name: error.name,
+      message: 'Database operation failed',
+      database,
+    };
+  }
   return {
     name: error.name,
     message: error.message,
     stack: error.stack,
-    database: databaseErrorDetails(error),
   };
 }
 

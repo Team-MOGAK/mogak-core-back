@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import {
   calendarDateSchema,
+  pageSizeSchema,
   positiveIdSchema,
   requiredTextSchema,
 } from '@api/common/validation/requestSchema';
@@ -29,7 +30,7 @@ export type LikePostRequest = z.infer<typeof likePostRequestSchema>;
 export const postDateQuerySchema = z.object({ targetDate: calendarDateSchema }).strict();
 export type PostDateQuery = z.infer<typeof postDateQuerySchema>;
 export const postPageQuerySchema = z
-  .object({ page: z.coerce.number().int().min(0).default(0), size: positiveIdSchema })
+  .object({ page: z.coerce.number().int().min(0).default(0), size: pageSizeSchema })
   .strict();
 export type PostPageQuery = z.infer<typeof postPageQuerySchema>;
 export const jogakIdParamsSchema = z.object({ jogakId: positiveIdSchema }).strict();
