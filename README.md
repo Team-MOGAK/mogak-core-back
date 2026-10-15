@@ -116,7 +116,7 @@ pnpm test:integration --runInBand
 
 ## 운영 로그와 Discord 오류 알림
 
-API 로그는 JSON으로 출력하며 HTTP 4xx는 `warn`, 5xx와 인프라 실패는 `error`로 분류합니다. Discord 전달은 독립 패키지 `@mogak/error-log-relay`가 담당합니다.
+API 로그는 JSON으로 출력하며 HTTP 4xx는 `warn`, 5xx와 인프라 실패는 `error`로 분류합니다. Discord 전달은 독립 패키지 `@mogak/alerting`이 담당합니다. 배포 리소스와 운영 설정은 기존 `error-log-relay` 이름을 유지합니다.
 
 ```bash
 pnpm build:relay

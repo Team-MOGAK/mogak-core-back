@@ -1,6 +1,6 @@
 # Error log Discord relay runbook
 
-This runbook operates the independent `@mogak/error-log-relay` service. It
+This runbook operates the independent `@mogak/alerting` service. It
 does not send a webhook from the API process. The API writes structured JSON to
 Cloud Run stdout; a narrowly filtered Cloud Logging sink copies eligible
 production `ERROR` records to Pub/Sub; the relay validates and forwards an
@@ -159,8 +159,8 @@ After the database exists, rerun the plan and closed preflight. Do not use the
 Install dependencies only in the workspace that owns the relay package:
 
 ```sh
-pnpm install --filter @mogak/error-log-relay --frozen-lockfile
-pnpm --filter @mogak/error-log-relay build
+pnpm install --filter @mogak/alerting --frozen-lockfile
+pnpm --filter @mogak/alerting build
 ```
 
 Build and push through the manual Cloud Build config. Supply the repository,
@@ -191,7 +191,10 @@ gcloud artifacts docker images describe \
 ```
 
 Do not deploy a mutable tag. The image was built from the root lockfile and
-workspace by `apps/error-log-relay/Dockerfile`; the runtime image is Node 24.
+workspace by `apps/alerting/Dockerfile`; the runtime image is Node 24. The
+package and source directory use the `alerting` name; the Docker image, Cloud
+Build file, infra directory, and `relay.*` configuration keys retain their
+established `error-log-relay` names for operational compatibility.
 
 ## Channel state operations
 
