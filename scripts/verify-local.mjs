@@ -25,9 +25,13 @@ const plan = [
   [pnpm, ['format:check']],
   [pnpm, ['lint']],
   [pnpm, ['typecheck']],
+  [pnpm, ['typecheck:relay']],
   [pnpm, ['build']],
+  [pnpm, ['build:relay']],
   [pnpm, ['db:migrate'], 'mogak_test'],
   [pnpm, ['test', '--runInBand']],
+  [pnpm, ['test:relay']],
+  [pnpm, ['test:relay-infra']],
   [pnpm, ['test:e2e', '--runInBand']],
   [pnpm, ['test:integration', '--runInBand']],
   ['node', ['dist/main.js']],
@@ -54,9 +58,13 @@ await run('docker', ['compose', 'up', '-d', '--wait', 'postgres'], environment);
 await run(pnpm, ['format:check'], environment);
 await run(pnpm, ['lint'], environment);
 await run(pnpm, ['typecheck'], environment);
+await run(pnpm, ['typecheck:relay'], environment);
 await run(pnpm, ['build'], environment);
+await run(pnpm, ['build:relay'], environment);
 await run(pnpm, ['db:migrate'], testEnvironment);
 await run(pnpm, ['test', '--runInBand'], testEnvironment);
+await run(pnpm, ['test:relay'], environment);
+await run(pnpm, ['test:relay-infra'], environment);
 await run(pnpm, ['test:e2e', '--runInBand'], testEnvironment);
 await run(pnpm, ['test:integration', '--runInBand'], testEnvironment);
 await verifyApiScenario(testEnvironment);

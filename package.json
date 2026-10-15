@@ -20,9 +20,9 @@
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint apps/api/src libs test scripts '*.ts'",
-    "format": "prettier --write \"{apps/api/src,libs,test,scripts}/**/*.{ts,js,mjs}\" \"*.{json,mjs,ts}\" \".github/**/*.{yml,yaml}\"",
-    "format:check": "prettier --check \"{apps/api/src,libs,test,scripts}/**/*.{ts,js,mjs}\" \"*.{json,mjs,ts}\" \".github/**/*.{yml,yaml}\"",
+    "lint": "eslint apps/api/src apps/error-log-relay/src apps/error-log-relay/test libs test scripts infra/error-log-relay '*.ts'",
+    "format": "prettier --write \"{apps/api/src,apps/error-log-relay/src,apps/error-log-relay/test,libs,test,scripts}/**/*.{ts,js,mjs}\" \"apps/error-log-relay/*.{json,mjs}\" \"*.{json,mjs,ts}\" \".github/**/*.{yml,yaml}\" \"pnpm-workspace.yaml\" \"infra/error-log-relay/**/*.{mjs,json}\" \"cloudbuild.error-log-relay.yaml\"",
+    "format:check": "prettier --check \"{apps/api/src,apps/error-log-relay/src,apps/error-log-relay/test,libs,test,scripts}/**/*.{ts,js,mjs}\" \"apps/error-log-relay/*.{json,mjs}\" \"*.{json,mjs,ts}\" \".github/**/*.{yml,yaml}\" \"pnpm-workspace.yaml\" \"infra/error-log-relay/**/*.{mjs,json}\" \"cloudbuild.error-log-relay.yaml\"",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
     "test:e2e": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.config.ts test",
     "test:integration": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.db.config.ts",
@@ -31,7 +31,11 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:legacy-compat": "node scripts/migrateLegacySchemaCompatibility.mjs",
-    "auth:sessions:cleanup": "node scripts/cleanupExpiredSessions.mjs"
+    "auth:sessions:cleanup": "node scripts/cleanupExpiredSessions.mjs",
+    "build:relay": "pnpm --filter @mogak/error-log-relay build",
+    "test:relay": "pnpm --filter @mogak/error-log-relay test",
+    "typecheck:relay": "pnpm --filter @mogak/error-log-relay typecheck",
+    "test:relay-infra": "node --test infra/error-log-relay/*.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

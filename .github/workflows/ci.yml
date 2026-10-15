@@ -77,7 +77,9 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Run typecheck
-        run: pnpm typecheck
+        run: |
+          pnpm typecheck
+          pnpm typecheck:relay
 
   test:
     name: Test
@@ -94,7 +96,9 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Run non-database tests
-        run: pnpm test --runInBand
+        run: |
+          pnpm test --runInBand
+          pnpm test:relay
 
   scripts:
     name: Script tests
@@ -111,7 +115,9 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Run database-free script tests
-        run: pnpm test:verify-local
+        run: |
+          pnpm test:verify-local
+          pnpm test:relay-infra
 
   build:
     name: Application build
@@ -128,7 +134,9 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Build application
-        run: pnpm build
+        run: |
+          pnpm build
+          pnpm build:relay
 
   workflow-lint:
     name: Workflow lint
@@ -225,7 +233,9 @@ jobs:
           persist-credentials: false
 
       - name: Build runtime image (no push)
-        run: docker build --pull --target runtime --tag mogak-core-back:ci .
+        run: |
+          docker build --pull --target runtime --tag mogak-core-back:ci .
+          docker build --pull --file apps/error-log-relay/Dockerfile --target runtime --tag mogak-error-log-relay:ci .
 
   ci-required:
     name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'CI Required' || 'CI Manual' }}

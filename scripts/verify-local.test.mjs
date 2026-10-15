@@ -12,6 +12,10 @@ test('로컬 검증 계획은 PostgreSQL 준비부터 인증된 실제 API 시�
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /docker compose up -d --wait postgres/);
   assert.match(result.stdout, /pnpm format:check/);
+  assert.match(result.stdout, /pnpm typecheck:relay/);
+  assert.match(result.stdout, /pnpm build:relay/);
+  assert.match(result.stdout, /pnpm test:relay/);
+  assert.match(result.stdout, /pnpm test:relay-infra/);
   assert.match(result.stdout, /pnpm db:migrate \(mogak_test\)/);
   assert.match(result.stdout, /pnpm test:e2e --runInBand/);
   assert.match(result.stdout, /pnpm test:integration --runInBand/);
