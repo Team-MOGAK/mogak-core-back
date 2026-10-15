@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <title>운영 알림 기능 경계 구현 기록</title>
+    <style>
+      body {
+        font: 16px/1.65 system-ui;
+        max-width: 1050px;
+        margin: 36px auto;
+        padding: 0 24px;
+        color: #162337;
+      }
+      h1,
+      h2 {
+        line-height: 1.3;
+      }
+      section {
+        margin: 32px 0;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #bbc5d2;
+        text-align: left;
+        padding: 10px;
+      }
+      pre {
+        background: #eef2f6;
+        padding: 18px;
+        overflow: auto;
+      }
+      label {
+        display: block;
+        margin: 8px;
+      }
+      button {
+        margin: 10px;
+        padding: 8px 16px;
+      }
+      .result,
+      aside {
+        background: #eef2f6;
+        padding: 16px;
+      }
+      [hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>운영 알림 기능 경계 구현 기록</h1>
+      <p>
+        구현 기록 · Standard · 구현 준비 · 생성 <time datetime="2026-10-16">2026-10-16</time> · 갱신
+        <time datetime="2026-10-16">2026-10-16</time> · 추적: GitHub #18 / PR #19
+      </p>
+      <dl>
+        <dt>목적</dt>
+        <dd>운영 오류 알림 구현의 책임·의존 경계를 정리한다.</dd>
+        <dt>사용자</dt>
+        <dd>백엔드 개발자·리뷰어·운영자</dd>
+        <dt>문제</dt>
+        <dd>입력 wire, 정책, HTTP, SDK, 저장 schema가 error-log-relay에 혼재한다.</dd>
+        <dt>핵심 흐름</dt>
+        <dd>
+          원본 로그 검증 → 안전한 알림 투영 → 채널 claim → 전송 → fenced finalize·격리 → ACK 결정
+        </dd>
+      </dl>
+      <p><a href="operational-alert-boundaries-design.html">승인 설계</a></p>
+    </header>
+    <main>
+      <article>
+        <section id="baseline-reference">
+          <h2>승인 기준</h2>
+          <p>
+            2026-10-16 사용자 명시 승인: alerting 기능 모듈·domain 없음·책임별 커밋·기존 계약 보존.
+          </p>
+        </section>
+        <section id="implementation-control-state">
+          <h2>구현 상태</h2>
+          <p>
+            구현 준비. 범위: apps/error-log-relay → apps/alerting,
+            application·presentation·infrastructure 및 빌드·운영 참조. 개발자 이해 점검: 미실시.
+          </p>
+        </section>
+        <section id="issue-register">
+          <h2>이슈 기록</h2>
+          <p>
+            열린 이슈 없음. 기존 운영 검증 제한: 실제 IAM·staging·Discord 전달 미검증. 새 코드
+            테스트 추가·실행은 요청되지 않아 제외.
+          </p>
+        </section>
+        <section id="design-delta">
+          <h2>설계 차이</h2>
+          <p>없음. 기존 동작·wire·상태·리소스 유지.</p>
+        </section>
+        <section id="evidence">
+          <h2>검증 증거</h2>
+          <p>예정: format/lint/typecheck/build 및 독립 정적 리뷰.</p>
+        </section>
+      </article>
+    </main>
+  </body>
+</html>

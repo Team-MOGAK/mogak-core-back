@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>운영 알림 기능 경계 설계</title>
+    <style>
+      body {
+        font: 16px/1.65 system-ui;
+        max-width: 1050px;
+        margin: 36px auto;
+        padding: 0 24px;
+        color: #162337;
+      }
+      h1,
+      h2 {
+        line-height: 1.3;
+      }
+      section {
+        margin: 32px 0;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #bbc5d2;
+        text-align: left;
+        padding: 10px;
+      }
+      pre {
+        background: #eef2f6;
+        padding: 18px;
+        overflow: auto;
+      }
+      label {
+        display: block;
+        margin: 8px;
+      }
+      button {
+        margin: 10px;
+        padding: 8px 16px;
+      }
+      .result,
+      aside {
+        background: #eef2f6;
+        padding: 16px;
+      }
+      [hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>운영 알림 기능의 책임·의존 경계</h1>
+      <p>
+        설계 기준 · Standard · 설계 승인됨 · 생성 <time datetime="2026-10-16">2026-10-16</time> ·
+        갱신 <time datetime="2026-10-16">2026-10-16</time> · 추적: GitHub #18 / PR #19
+      </p>
+      <dl>
+        <dt>목적</dt>
+        <dd>운영 오류 알림 구현의 책임·의존 경계를 정리한다.</dd>
+        <dt>사용자</dt>
+        <dd>백엔드 개발자·리뷰어·운영자</dd>
+        <dt>문제</dt>
+        <dd>입력 wire, 정책, HTTP, SDK, 저장 schema가 error-log-relay에 혼재한다.</dd>
+        <dt>핵심 흐름</dt>
+        <dd>
+          원본 로그 검증 → 안전한 알림 투영 → 채널 claim → 전송 → fenced finalize·격리 → ACK 결정
+        </dd>
+      </dl>
+    </header>
+    <nav>
+      <a href="#decision">결정</a> · <a href="#boundaries">경계</a> ·
+      <a href="#invariants">불변식</a> · <a href="#verification">검증</a> ·
+      <a href="#design-control-state">자기점검</a>
+    </nav>
+    <main>
+      <article>
+        <section id="goal">
+          <h2>목표·범위</h2>
+          <p>기존 ERROR 전송 동작을 보존하며 기능 내부의 책임과 의존 방향을 명확히 한다.</p>
+        </section>
+        <section id="non-goals">
+          <h2>범위 밖</h2>
+          <p>제품 알림, 신규 provider, incident lifecycle, 공용 library 추출, cloud apply.</p>
+        </section>
+        <section id="decision">
+          <h2>확정 설계</h2>
+          <p>
+            사용자 승인: “alerting은 기능 모듈로 두고 domain 계층 없이 가자. 그 기준으로 설계
+            정리하고 구현 ㄱ. 커밋도 책임 단위로 나눠”. 이 명시적 지시를 현재 설계의 구현 승인으로
+            기록한다.
+          </p>
+          <p>
+            apps/alerting, private @mogak/alerting으로 기능과 실행체를 표현한다.
+            application·presentation·infrastructure를 분리하고 domain 계층·Entity·Aggregate를 만들지
+            않는다. API와 SDK·ESM·이미지 격리를 유지한다. 제품 core/modules나 공용 라이브러리로
+            추출하지 않는다.
+          </p>
+          <p>
+            기존 <a href="error-log-discord-webhook-design.html">ERROR 웹훅 동작 설계</a>는 전달
+            계약의 기준으로 유지한다. 이 문서는 책임 경계의 후속 기준이다. 초기 domain 포함 제안은
+            철회됐다.
+          </p>
+        </section>
+        <section id="boundaries">
+          <h2>구조와 의존</h2>
+          <pre><code>apps/alerting/src/
+  application/       안전한 알림 계약·허용 목록·요약, 전달 유스케이스, 포트
+  presentation/      HTTP/PubSub envelope, Cloud Logging 신뢰·형식 검증과 변환
+  infrastructure/    Discord 표현·HTTP, Firestore schema/transaction, PubSub publish
+  config.ts          실행체 설정 검증
+  main.ts            SDK·adapter 조립과 서버 실행
+apps/alerting/test/support/  메모리 test double</code></pre>
+          <figure>
+            <pre>
+Cloud Logging → Pub/Sub → presentation → application → sender port → Discord adapter
+                                          ↓ state port → Firestore adapter
+                                          ↓ quarantine port → Pub/Sub adapter</pre>
+            <figcaption>
+              입력과 출력 어댑터는 application 소유 계약에 의존한다. application은 provider 또는
+              입력 계층을 import하지 않는다. main만 구체 구현을 조립한다.
+            </figcaption>
+          </figure>
+          <table>
+            <caption>
+              소유 책임
+            </caption>
+            <thead>
+              <tr>
+                <th>경계</th>
+                <th>포함</th>
+                <th>제외</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>application</th>
+                <td>
+                  안전한 DTO·고정 요약·route 허용 목록, claim/send/finalize 순서, provider 중립
+                  sender 결과·상태 저장·격리 포트, 일반 source reference
+                </td>
+                <td>HTTP/Buffer, Google SDK, Discord wire, Firestore record, 실행체 전체 설정</td>
+              </tr>
+              <tr>
+                <th>presentation</th>
+                <td>
+                  body 크기·deadline, envelope/base64, source project/service/log/ERROR50/자격 검증,
+                  안전한 조회 링크와 입력 변환, 결과의 HTTP 매핑
+                </td>
+                <td>구체 SDK 조립, Discord wire, 상태 저장 schema</td>
+              </tr>
+              <tr>
+                <th>infrastructure</th>
+                <td>
+                  Discord content·mentions·응답 검증, Firestore 저장 record·transaction/fence,
+                  Pub/Sub 격리 직렬화
+                </td>
+                <td>역방향 입력 어댑터 import, 원본 로그의 임의 전달</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+        <section id="failure-recovery">
+          <h2>실패·복구</h2>
+          <p>
+            성공은 fenced finalize 뒤 ACK. 일시 실패·429·상태 저장 장애·격리 발행 실패는 재시도.
+            영구 거부는 허용 필드로 격리 후 ACK하며 채널 영구 오류는 disable. 기존 lease·cooldown 및
+            bounded deadline을 유지한다.
+          </p>
+        </section>
+        <section id="rejected-alternatives">
+          <h2>채택하지 않은 대안</h2>
+          <p>
+            domain 계층: 현재 모델 근거 부족. generic notification/external: 기능 책임이 흐려짐.
+            shared core 추출: 단일 consumer 및 SDK/module format 경계 비용.
+          </p>
+        </section>
+        <section id="invariants">
+          <h2>보존할 계약</h2>
+          <ul>
+            <li>
+              production API stdout / ERROR / level=50 / alertEligible=true 검증과
+              malformed·filtered 구분.
+            </li>
+            <li>
+              Discord와 quarantine 허용 필드 및 고정 요약. raw message·stack·request·SQL·실제 path
+              ID·webhook URL 제외.
+            </li>
+            <li>
+              기존 204 ACK / 503 retry / deadline, 429 cooldown, disable, stale fence,
+              secretVersion, fail-closed 의미와 로그 event·reason 보존.
+            </li>
+            <li>
+              외부 HTTP는 transaction 밖. at-least-once 중복 가능성과 native DLQ 원본 보존 유지.
+            </li>
+            <li>
+              GCP resource ID·설정값·Firestore schema·큐 상태·producer 식별자 유지. 소스 이름으로
+              운영 리소스를 재생성하지 않음.
+            </li>
+            <li>독립 manifest/ESM/SDK/이미지 격리. API runtime에 Google SDK 추가 없음.</li>
+          </ul>
+          <aside>
+            실제 GCP apply, IAM 변경, 배포, Discord 전송은 승인 범위에 포함하지 않는다. 이번 변경은
+            기능·실패 계약을 보존하는 구조 리팩터링이다.
+          </aside>
+        </section>
+        <section id="grilling-state">
+          <h2>설계 의사결정 상태</h2>
+          <p>
+            완료. 기능명 alerting과 기술 계층 infrastructure를 구분하고 domain 계층 생성을
+            거부한다는 사용자 결정이 확정됐다. 단일 consumer이므로 공용 추출·범용 notification은
+            제외한다. 미해결 material frontier 없음. 알림 규칙·사건 상태·담당자·에스컬레이션은 이번
+            범위 밖이며 실제 요구가 생길 때 별도 판단한다.
+          </p>
+        </section>
+        <section id="verification">
+          <h2>실행·검증·커밋 계획</h2>
+          <ol>
+            <li>승인 설계를 먼저 기록한다.</li>
+            <li>
+              현재 경로에서 application 계약·안전한 투영·유스케이스와 provider/input 어댑터를
+              분리한다. 기존 테스트 import와 test double 위치를 함께 이관한다.
+            </li>
+            <li>
+              apps/alerting과 @mogak/alerting으로 전환하고 workspace·lockfile·Docker·Cloud
+              Build·CI·scripts 참조를 연결한다.
+            </li>
+            <li>README·runbook에 새 구조와 기존 운영 이름의 보존 이유를 기록한다.</li>
+            <li>정적 검증과 독립 no-write 리뷰를 수행하고 구현 기록을 별도 유지한다.</li>
+          </ol>
+          <p>
+            각 단계는 책임별 커밋으로 분리한다. 코드와 관련 기존 테스트 이관은 같은 커밋에 둔다.
+            기존 PR 커밋을 다시 squash하거나 force rewrite하지 않는다.
+          </p>
+          <p>
+            실행할 검증: pnpm format:check, pnpm lint, pnpm typecheck, pnpm build, pnpm --filter
+            @mogak/alerting typecheck, pnpm --filter @mogak/alerting build, git diff --check. 새
+            테스트 추가·실행은 요청되지 않아 제외한다. 빌드 통과는 실제 IAM/Discord 전달을 보증하지
+            않는다.
+          </p>
+        </section>
+        <section id="design-control-state">
+          <h2>설계 이해 자기점검</h2>
+          <p>
+            미실시 · 비차단. 결과는 로컬 브라우저에만 남고 Codex에 자동 전달되지 않는다. 구현 승인은
+            위 직접 지시로 별도 기록됐다.
+          </p>
+          <p>
+            검토 범위: 책임(Q1), 신뢰·개인정보(Q2), 상태·복구(Q3), 의존·표현(Q4), 운영·외부효과(Q5),
+            검증·잔여 위험(Q6).
+          </p>
+          <output id="progress" aria-live="polite">질문 1 / 6 · 제출 0 / 6</output>
+          <section class="question">
+            <fieldset>
+              <legend>Q1 · 기능·책임 — alerting은 어떤 경계인가?</legend>
+              <label
+                ><input type="radio" name="q0" value="0" />독립 비즈니스 도메인과 Aggregate</label
+              ><label
+                ><input type="radio" name="q0" value="1" />운영 오류 알림 기능과 별도 실행체</label
+              ><button type="button" data-question="0">제출</button>
+            </fieldset>
+            <div class="result" hidden>
+              <strong class="status"></strong>
+              <p class="explanation"></p>
+              <p class="next-action"></p>
+            </div>
+          </section>
+          <section class="question">
+            <fieldset>
+              <legend>Q2 · 입력·개인정보 — 원본 Cloud Logging 로그는 어디까지 전달하는가?</legend>
+              <label
+                ><input type="radio" name="q1" value="0" />입력 어댑터가 신뢰·형식을 검증하고
+                application의 허용 필드로 투영한다</label
+              ><label
+                ><input type="radio" name="q1" value="1" />Discord sender까지 원본 전체를
+                전달한다</label
+              ><button type="button" data-question="1">제출</button>
+            </fieldset>
+            <div class="result" hidden>
+              <strong class="status"></strong>
+              <p class="explanation"></p>
+              <p class="next-action"></p>
+            </div>
+          </section>
+          <section class="question">
+            <fieldset>
+              <legend>
+                Q3 · 상태·복구 — Discord 호출은 Firestore transaction 안에서 수행하는가?
+              </legend>
+              <label
+                ><input type="radio" name="q2" value="0" />아니다. claim 이후 transaction 밖에서
+                전송하고 fenced finalize한다</label
+              ><label
+                ><input type="radio" name="q2" value="1" />그렇다. 원자적으로 HTTP까지 묶는다</label
+              ><button type="button" data-question="2">제출</button>
+            </fieldset>
+            <div class="result" hidden>
+              <strong class="status"></strong>
+              <p class="explanation"></p>
+              <p class="next-action"></p>
+            </div>
+          </section>
+          <section class="question">
+            <fieldset>
+              <legend>
+                Q4 · 의존·표현 — application은 Discord payload나 Google SDK를 import하는가?
+              </legend>
+              <label
+                ><input type="radio" name="q3" value="0" />아니다. 자신이 소유한
+                sender/state/quarantine 포트와 안전한 DTO만 사용한다</label
+              ><label
+                ><input type="radio" name="q3" value="1" />그렇다. provider 타입을 직접
+                재사용한다</label
+              ><button type="button" data-question="3">제출</button>
+            </fieldset>
+            <div class="result" hidden>
+              <strong class="status"></strong>
+              <p class="explanation"></p>
+              <p class="next-action"></p>
+            </div>
+          </section>
+          <section class="question">
+            <fieldset>
+              <legend>
+                Q5 · 운영·이관 — 소스 이름 변경으로 기존 GCP 리소스와 상태를 변경하는가?
+              </legend>
+              <label><input type="radio" name="q4" value="0" />기존 리소스를 재생성한다</label
+              ><label
+                ><input type="radio" name="q4" value="1" />기존 리소스
+                ID·설정·schema·producer·reason을 유지한다</label
+              ><button type="button" data-question="4">제출</button>
+            </fieldset>
+            <div class="result" hidden>
+              <strong class="status"></strong>
+              <p class="explanation"></p>
+              <p class="next-action"></p>
+            </div>
+          </section>
+          <section class="question">
+            <fieldset>
+              <legend>
+                Q6 · 검증·한계 — 타입·빌드 검사 통과가 실서비스 전달 성공을 증명하는가?
+              </legend>
+              <label><input type="radio" name="q5" value="0" />그렇다</label
+              ><label
+                ><input type="radio" name="q5" value="1" />아니다. staging·실제 IAM·Discord 전달은
+                별도 운영 검증이다</label
+              ><button type="button" data-question="5">제출</button>
+            </fieldset>
+            <div class="result" hidden>
+              <strong class="status"></strong>
+              <p class="explanation"></p>
+              <p class="next-action"></p>
+            </div>
+          </section>
+          <button type="button" id="prev">이전</button><button type="button" id="next">다음</button>
+        </section>
+        <section id="approval-state">
+          <h2>승인 범위</h2>
+          <p>
+            설계 승인됨: alerting 기능 모듈 / domain 없음 / application·입력·infrastructure 분리 /
+            기존 동작과 운영 자원 보존 / 책임별 커밋. 승인 근거: 2026-10-16 사용자 명시적 구현 지시.
+            자기점검은 미실시이며 승인과 독립적이다.
+          </p>
+          <p><a href="operational-alert-boundaries-implementation.html">구현·검증 기록</a></p>
+        </section>
+      </article>
+    </main>
+    <script>
+      const questions = [
+        {
+          answer: 1,
+          why: '현재 요구는 고정된 오류 전달 유스케이스다. domain 계층을 만들지 않는다.',
+        },
+        {
+          answer: 0,
+          why: '원본 message, stack, request, SQL 등은 application command와 전송 payload에서 제외한다.',
+        },
+        { answer: 0, why: 'lease·cooldown·stale·fail-closed·at-least-once 의미를 유지한다.' },
+        { answer: 0, why: 'Discord 형식과 Firestore record, Pub/Sub wire는 각 어댑터의 책임이다.' },
+        {
+          answer: 1,
+          why: '빌드 경로와 private manifest 이름만 바꾼다. 실제 배포나 웹훅 호출은 수행하지 않는다.',
+        },
+        {
+          answer: 1,
+          why: '이번에는 format/lint/typecheck/build와 독립 정적 리뷰를 수행한다. 새 테스트 추가·실행은 요청되지 않았다.',
+        },
+      ];
+      const slides = [...document.querySelectorAll('.question')],
+        answered = new Set();
+      let index = 0;
+      function show() {
+        slides.forEach((s, i) => (s.hidden = i !== index));
+        document.querySelector('#progress').textContent =
+          `질문 ${index + 1} / ${slides.length} · 제출 ${answered.size} / ${slides.length}`;
+        document.querySelector('#prev').disabled = index === 0;
+        document.querySelector('#next').disabled = index === slides.length - 1;
+      }
+      document.querySelector('#prev').onclick = () => {
+        index--;
+        show();
+      };
+      document.querySelector('#next').onclick = () => {
+        index++;
+        show();
+      };
+      document.querySelectorAll('[data-question]').forEach(
+        (b) =>
+          (b.onclick = () => {
+            const i = Number(b.dataset.question),
+              s = slides[i],
+              input = s.querySelector('input:checked'),
+              r = s.querySelector('.result');
+            r.hidden = false;
+            const ok = input && Number(input.value) === questions[i].answer;
+            r.querySelector('.status').textContent = input ? (ok ? '확립' : '보류') : '미실시';
+            r.querySelector('.explanation').textContent = input
+              ? questions[i].why
+              : '답을 선택하세요.';
+            r.querySelector('.next-action').textContent = ok
+              ? '다음 행동: 다음 항목 확인'
+              : '다음 행동: 본문 경계와 불변식 확인';
+            if (input) answered.add(i);
+            show();
+          }),
+      );
+      show();
+    </script>
+  </body>
+</html>
