@@ -163,10 +163,7 @@ export function parsePushEnvelope(
   };
 }
 
-export function classifyLogEntry(
-  value: unknown,
-  config: PresentationConfig,
-): ClassificationResult {
+export function classifyLogEntry(value: unknown, config: PresentationConfig): ClassificationResult {
   if (config.sourceEnvironment !== SOURCE_ENVIRONMENT) {
     return { kind: 'ignore', reason: 'wrong_environment' };
   }

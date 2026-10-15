@@ -30,7 +30,7 @@ export type QuarantineWireRecord = Readonly<{
   appCode?: 'Z006' | 'Z500';
 }>;
 
-export interface QuarantinePublisher extends QuarantinePort {}
+export type QuarantinePublisher = QuarantinePort;
 
 export class PubSubQuarantinePublisher implements QuarantinePublisher {
   private readonly topic: Topic;

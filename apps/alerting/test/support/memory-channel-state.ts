@@ -1,9 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import {
-  LEASE_TTL_MS,
-  MAX_RATE_LIMIT_MS,
-} from '../../src/infrastructure/config.js';
+import { LEASE_TTL_MS, MAX_RATE_LIMIT_MS } from '../../src/infrastructure/config.js';
 import {
   type ChannelStateDocument,
   type ChannelStateStore,

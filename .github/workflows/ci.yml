@@ -235,7 +235,7 @@ jobs:
       - name: Build runtime image (no push)
         run: |
           docker build --pull --target runtime --tag mogak-core-back:ci .
-          docker build --pull --file apps/error-log-relay/Dockerfile --target runtime --tag mogak-error-log-relay:ci .
+          docker build --pull --file apps/alerting/Dockerfile --target runtime --tag mogak-error-log-relay:ci .
 
   ci-required:
     name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'CI Required' || 'CI Manual' }}

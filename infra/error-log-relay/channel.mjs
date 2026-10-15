@@ -10,7 +10,7 @@ import { dirname, resolve } from 'node:path';
 const SCRIPT_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = resolve(SCRIPT_DIRECTORY, 'config.example.json');
 const requireRelayDependency = createRequire(
-  new URL('../../apps/error-log-relay/package.json', import.meta.url),
+  new URL('../../apps/alerting/package.json', import.meta.url),
 );
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const NUMERIC_VERSION = /^[1-9][0-9]*$/;

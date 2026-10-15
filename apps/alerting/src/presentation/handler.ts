@@ -127,9 +127,7 @@ async function quarantineOutcome(
   dependencies: RelayDependencies,
 ): Promise<RelayOutcome> {
   try {
-    await dependencies.quarantine.publish(
-      createQuarantineRecord(reason),
-    );
+    await dependencies.quarantine.publish(createQuarantineRecord(reason));
     return acknowledged('quarantined');
   } catch {
     dependencies.logger?.error?.(
@@ -157,9 +155,7 @@ function isMalformedClassification(reason: ClassificationIgnoreReason): boolean 
   );
 }
 
-function createDeliveryDependencies(
-  dependencies: RelayDependencies,
-): DeliveryDependencies {
+function createDeliveryDependencies(dependencies: RelayDependencies): DeliveryDependencies {
   return {
     state: dependencies.state,
     sender: dependencies.sender,

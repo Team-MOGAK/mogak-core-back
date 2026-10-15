@@ -46,10 +46,7 @@ export async function deliverAlert(
 
   const lease = claim.lease;
   const beforeSend = clock();
-  if (
-    (deadline !== undefined && beforeSend >= deadline) ||
-    beforeSend >= lease.leaseExpiresAt
-  ) {
+  if ((deadline !== undefined && beforeSend >= deadline) || beforeSend >= lease.leaseExpiresAt) {
     await releaseQuietly(dependencies, lease);
     return transient('request_deadline_before_discord');
   }
@@ -128,9 +125,7 @@ async function handleSenderResult(
         ? 'discord_channel_disabled'
         : 'discord_payload_rejected';
       try {
-        await dependencies.quarantine.publish(
-          createQuarantineRecord(reason, alert),
-        );
+        await dependencies.quarantine.publish(createQuarantineRecord(reason, alert));
       } catch {
         dependencies.logger?.error?.(
           { event: 'quarantine_publish_failed' },

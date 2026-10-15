@@ -1,7 +1,4 @@
-import type {
-  QuarantinePort,
-  QuarantineRecord,
-} from '../../src/application/ports.js';
+import type { QuarantinePort, QuarantineRecord } from '../../src/application/ports.js';
 
 export class MemoryQuarantinePublisher implements QuarantinePort {
   readonly records: QuarantineRecord[] = [];

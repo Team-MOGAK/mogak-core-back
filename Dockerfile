@@ -4,7 +4,7 @@ WORKDIR /app
 RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/error-log-relay/package.json ./apps/error-log-relay/package.json
+COPY apps/alerting/package.json ./apps/alerting/package.json
 RUN pnpm install --filter mogak-core-back --frozen-lockfile
 
 COPY . ./
@@ -17,7 +17,7 @@ ENV NODE_ENV=production
 RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY apps/error-log-relay/package.json ./apps/error-log-relay/package.json
+COPY apps/alerting/package.json ./apps/alerting/package.json
 RUN pnpm install --filter mogak-core-back --frozen-lockfile --prod
 COPY --from=build /app/dist ./dist
 

@@ -1,5 +1,5 @@
 {
-  "name": "@mogak/error-log-relay",
+  "name": "@mogak/alerting",
   "version": "0.1.0",
   "private": true,
   "type": "module",

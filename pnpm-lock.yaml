@@ -130,7 +130,7 @@ importers:
         specifier: ^8.65.0
         version: 8.65.0(eslint@10.7.0)(typescript@5.9.3)
 
-  apps/error-log-relay:
+  apps/alerting:
     dependencies:
       '@google-cloud/firestore':
         specifier: 9.3.1

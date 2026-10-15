@@ -21,7 +21,7 @@ export type ChannelLease = ApplicationChannelLease;
 export type ClaimResult = ApplicationClaimResult;
 export type FencedWriteResult = ApplicationFencedWriteResult;
 
-export interface ChannelStateStore extends ChannelStatePort {}
+export type ChannelStateStore = ChannelStatePort;
 
 type ChannelStateConfig = Readonly<{
   channelDocumentPath: string;

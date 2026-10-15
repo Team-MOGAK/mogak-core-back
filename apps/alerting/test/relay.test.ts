@@ -7,10 +7,7 @@ import {
   type ChannelStateStore,
 } from '../src/infrastructure/channelState.js';
 import { InMemoryChannelStateStore } from './support/memory-channel-state.js';
-import {
-  MAX_HTTP_BODY_BYTES,
-  MAX_PUBSUB_DATA_BYTES,
-} from '../src/presentation/constants.js';
+import { MAX_HTTP_BODY_BYTES, MAX_PUBSUB_DATA_BYTES } from '../src/presentation/constants.js';
 import type { RelayConfig } from '../src/config.js';
 import { validateDiscordWebhookUrl } from '../src/infrastructure/config.js';
 import type { AlertSummary } from '../src/application/contracts.js';

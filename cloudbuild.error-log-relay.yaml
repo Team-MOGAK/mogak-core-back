@@ -3,7 +3,7 @@ steps:
     args:
       - build
       - --file
-      - apps/error-log-relay/Dockerfile
+      - apps/alerting/Dockerfile
       - --tag
       - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
       - .

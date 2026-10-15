@@ -41,4 +41,3 @@ export function buildDiscordPayload(summary: AlertSummary): DiscordPayload {
     allowed_mentions: { parse: [] },
   };
 }
-
