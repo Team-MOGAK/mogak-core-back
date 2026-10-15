@@ -1,19 +1,17 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import {
-  MAX_HTTP_BODY_BYTES,
-  RATE_LIMIT_FALLBACK_MS,
-  REQUEST_BUDGET_MS,
-  type RelayConfig,
-} from './config.js';
+import { MAX_HTTP_BODY_BYTES, REQUEST_BUDGET_MS, type RelayConfig } from './config.js';
 import {
   classifyLogEntry,
   parsePushEnvelope,
   type ClassificationIgnoreReason,
 } from './contracts.js';
-import type { ChannelLease, ChannelStateStore } from './channelState.js';
-import type { DiscordClient, DiscordSendResult } from './discordClient.js';
-import { buildDiscordPayload } from './message.js';
+import type { ChannelStateStore } from './channelState.js';
+import type { DiscordClient } from './discordClient.js';
+import { createDeliveryUseCase } from './application/delivery.js';
+import type { Alert, SourceReference } from './application/contracts.js';
+import type { AlertLogger, DeliveryDependencies } from './application/ports.js';
+import { buildDiscordPayload, loggingLink } from './message.js';
 import {
   createQuarantineRecord,
   type QuarantinePublisher,
@@ -115,134 +113,18 @@ export async function processPushBody(
     return acknowledged('filtered');
   }
 
-  const now = clock();
-  if (now >= deadline) return transient('request_deadline_before_claim');
-
-  let claim;
-  try {
-    claim = await dependencies.stateStore.claim(now);
-  } catch {
-    dependencies.logger?.error?.(
-      { event: 'channel_state_claim_failed' },
-      'Channel state claim failed',
-    );
-    return transient('state_claim_failed');
-  }
-
-  if (claim.kind === 'disabled') return transient('channel_disabled');
-  if (claim.kind === 'cooldown') return transient('channel_cooldown');
-  if (claim.kind === 'busy') return transient('channel_lease_busy');
-
-  const lease = claim.lease;
-  const beforeSend = clock();
-  if (beforeSend >= deadline || beforeSend >= lease.leaseExpiresAt) {
-    await releaseQuietly(dependencies, lease);
-    return transient('request_deadline_before_discord');
-  }
-
-  let discordResult: DiscordSendResult;
-  try {
-    discordResult = await dependencies.discordClient.send(
-      buildDiscordPayload(classified.entry, dependencies.config),
-      { deadline },
-    );
-  } catch {
-    discordResult = { kind: 'transient_failure', reason: 'network' };
-  }
-
-  return handleDiscordResult(discordResult, classified.entry, lease, dependencies);
+  const alert = toAlert(classified.entry, dependencies.config);
+  const outcome = await createDeliveryUseCase(createDeliveryDependencies(dependencies)).deliver(
+    alert,
+    { deadline },
+  );
+  return {
+    statusCode: outcome.acknowledged ? 204 : 503,
+    ...outcome,
+  };
 }
 
 export const handlePush = processPushBody;
-
-async function handleDiscordResult(
-  result: DiscordSendResult,
-  entry: Parameters<typeof buildDiscordPayload>[0],
-  lease: ChannelLease,
-  dependencies: RelayDependencies,
-): Promise<RelayOutcome> {
-  switch (result.kind) {
-    case 'success': {
-      try {
-        const finalized = await dependencies.stateStore.release(lease);
-        if (finalized === 'stale') return transient('stale_lease_on_success');
-      } catch {
-        dependencies.logger?.error?.(
-          { event: 'channel_state_release_failed' },
-          'Channel state release failed',
-        );
-        return transient('state_release_failed');
-      }
-      dependencies.logger?.info?.(
-        {
-          event: 'discord_delivery_succeeded',
-          status: result.status,
-          messageId: result.messageId,
-          errorId: entry.errorId,
-        },
-        'Discord delivery succeeded',
-      );
-      return acknowledged('delivered');
-    }
-    case 'rate_limited': {
-      const retryAfter = boundedRetryAfter(result.retryAfterMs);
-      const receivedAt = dependencies.clock?.() ?? Date.now();
-      const nextAllowedAt = receivedAt + retryAfter;
-      try {
-        await dependencies.stateStore.recordRateLimit(lease, nextAllowedAt, receivedAt);
-      } catch {
-        dependencies.logger?.error?.(
-          { event: 'channel_state_rate_limit_failed' },
-          'Channel state rate limit update failed',
-        );
-        return transient('state_rate_limit_failed');
-      }
-      return transient('discord_rate_limited');
-    }
-    case 'transient_failure': {
-      try {
-        await dependencies.stateStore.release(lease);
-      } catch {
-        dependencies.logger?.error?.(
-          { event: 'channel_state_release_failed' },
-          'Channel state release failed',
-        );
-        return transient('state_release_failed');
-      }
-      return transient(`discord_${result.reason}`);
-    }
-    case 'permanent_failure': {
-      const reason: QuarantineReason = result.disableChannel
-        ? 'discord_channel_disabled'
-        : 'discord_payload_rejected';
-      try {
-        await dependencies.quarantine.publish(
-          createQuarantineRecord(reason, dependencies.config, entry),
-        );
-      } catch {
-        dependencies.logger?.error?.(
-          { event: 'quarantine_publish_failed' },
-          'Quarantine publish failed',
-        );
-        return transient('quarantine_failed');
-      }
-
-      try {
-        const finalized = result.disableChannel
-          ? await dependencies.stateStore.disable(lease)
-          : await dependencies.stateStore.release(lease);
-        if (finalized === 'stale') return transient('stale_lease_on_finalize');
-      } catch {
-        dependencies.logger?.error?.(
-          { event: 'channel_state_finalize_failed' },
-          'Channel state finalize failed',
-        );
-        return transient('state_finalize_failed');
-      }
-      return acknowledged(result.disableChannel ? 'channel_disabled' : 'discord_payload_rejected');
-    }
-  }
-}
 
 async function quarantineOutcome(
   reason: QuarantineReason,
@@ -277,21 +159,59 @@ function isMalformedClassification(reason: ClassificationIgnoreReason): boolean 
   );
 }
 
-function boundedRetryAfter(value: number): number {
-  return Number.isFinite(value) && value > 0 && value <= 24 * 60 * 60 * 1_000
-    ? value
-    : RATE_LIMIT_FALLBACK_MS;
+function toAlert(
+  entry: {
+    timestamp?: string;
+    revision?: string;
+    errorId: string;
+    event: Alert['event'];
+    appCode?: Alert['appCode'];
+    statusCode?: number;
+    method?: Alert['method'];
+    route?: string;
+    service: string;
+    environment: 'production';
+    projectId: string;
+  },
+  config: Pick<RelayConfig, 'gcpProjectId'>,
+): Alert {
+  const source: SourceReference = {
+    label: 'Logs',
+    href: loggingLink(config.gcpProjectId, entry.errorId),
+  };
+  return {
+    ...(entry.timestamp === undefined ? {} : { timestamp: entry.timestamp }),
+    ...(entry.revision === undefined ? {} : { revision: entry.revision }),
+    errorId: entry.errorId,
+    event: entry.event,
+    ...(entry.appCode === undefined ? {} : { appCode: entry.appCode }),
+    ...(entry.statusCode === undefined ? {} : { statusCode: entry.statusCode }),
+    ...(entry.method === undefined ? {} : { method: entry.method }),
+    ...(entry.route === undefined ? {} : { route: entry.route }),
+    service: entry.service,
+    environment: entry.environment,
+    source,
+  };
 }
 
-async function releaseQuietly(dependencies: RelayDependencies, lease: ChannelLease): Promise<void> {
-  try {
-    await dependencies.stateStore.release(lease);
-  } catch {
-    dependencies.logger?.error?.(
-      { event: 'channel_state_release_failed' },
-      'Channel state release failed',
-    );
-  }
+function createDeliveryDependencies(
+  dependencies: RelayDependencies,
+): DeliveryDependencies {
+  return {
+    state: dependencies.stateStore,
+    sender: {
+      send: (summary, options) =>
+        dependencies.discordClient.send(buildDiscordPayload(summary), options),
+    },
+    quarantine: dependencies.quarantine,
+    context: {
+      sourceProjectId: dependencies.config.gcpProjectId,
+      sourceService: dependencies.config.sourceApiService,
+      sourceEnvironment: dependencies.config.sourceEnvironment,
+    },
+    ...(dependencies.clock === undefined ? {} : { clock: dependencies.clock }),
+    ...(dependencies.logger === undefined ? {} : { logger: dependencies.logger as AlertLogger }),
+  };
 }
 
 type ReadBodyResult =
