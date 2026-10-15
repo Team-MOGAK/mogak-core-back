@@ -1,34 +1,30 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import { MAX_HTTP_BODY_BYTES, REQUEST_BUDGET_MS, type RelayConfig } from './config.js';
+import { MAX_HTTP_BODY_BYTES, REQUEST_BUDGET_MS } from './constants.js';
+import type { PresentationConfig } from './types.js';
 import {
   classifyLogEntry,
   parsePushEnvelope,
+  toAlert,
   type ClassificationIgnoreReason,
-} from './contracts.js';
-import type { ChannelStateStore } from './channelState.js';
-import type { DiscordClient } from './discordClient.js';
-import { createDeliveryUseCase } from './application/delivery.js';
-import type { Alert, SourceReference } from './application/contracts.js';
-import type { AlertLogger, DeliveryDependencies } from './application/ports.js';
-import { buildDiscordPayload, loggingLink } from './message.js';
-import {
-  createQuarantineRecord,
-  type QuarantinePublisher,
-  type QuarantineReason,
-} from './quarantine.js';
+} from './input.js';
+import { createDeliveryUseCase, createQuarantineRecord } from '../application/delivery.js';
+import type {
+  AlertLogger,
+  AlertSender,
+  ChannelStatePort,
+  DeliveryDependencies,
+  QuarantinePort,
+  QuarantineReason,
+} from '../application/ports.js';
 
-export type RelayLogger = Readonly<{
-  info?(object: Record<string, unknown>, message?: string): void;
-  warn?(object: Record<string, unknown>, message?: string): void;
-  error?(object: Record<string, unknown>, message?: string): void;
-}>;
+export type RelayLogger = AlertLogger;
 
 export type RelayDependencies = Readonly<{
-  config: RelayConfig;
-  stateStore: ChannelStateStore;
-  discordClient: Pick<DiscordClient, 'send'>;
-  quarantine: QuarantinePublisher;
+  config: PresentationConfig;
+  state: ChannelStatePort;
+  sender: AlertSender;
+  quarantine: QuarantinePort;
   clock?: () => number;
   requestBudgetMs?: number;
   logger?: RelayLogger;
@@ -113,7 +109,7 @@ export async function processPushBody(
     return acknowledged('filtered');
   }
 
-  const alert = toAlert(classified.entry, dependencies.config);
+  const alert = toAlert(classified.entry, dependencies.config.gcpProjectId);
   const outcome = await createDeliveryUseCase(createDeliveryDependencies(dependencies)).deliver(
     alert,
     { deadline },
@@ -131,7 +127,9 @@ async function quarantineOutcome(
   dependencies: RelayDependencies,
 ): Promise<RelayOutcome> {
   try {
-    await dependencies.quarantine.publish(createQuarantineRecord(reason, dependencies.config));
+    await dependencies.quarantine.publish(
+      createQuarantineRecord(reason),
+    );
     return acknowledged('quarantined');
   } catch {
     dependencies.logger?.error?.(
@@ -159,58 +157,15 @@ function isMalformedClassification(reason: ClassificationIgnoreReason): boolean 
   );
 }
 
-function toAlert(
-  entry: {
-    timestamp?: string;
-    revision?: string;
-    errorId: string;
-    event: Alert['event'];
-    appCode?: Alert['appCode'];
-    statusCode?: number;
-    method?: Alert['method'];
-    route?: string;
-    service: string;
-    environment: 'production';
-    projectId: string;
-  },
-  config: Pick<RelayConfig, 'gcpProjectId'>,
-): Alert {
-  const source: SourceReference = {
-    label: 'Logs',
-    href: loggingLink(config.gcpProjectId, entry.errorId),
-  };
-  return {
-    ...(entry.timestamp === undefined ? {} : { timestamp: entry.timestamp }),
-    ...(entry.revision === undefined ? {} : { revision: entry.revision }),
-    errorId: entry.errorId,
-    event: entry.event,
-    ...(entry.appCode === undefined ? {} : { appCode: entry.appCode }),
-    ...(entry.statusCode === undefined ? {} : { statusCode: entry.statusCode }),
-    ...(entry.method === undefined ? {} : { method: entry.method }),
-    ...(entry.route === undefined ? {} : { route: entry.route }),
-    service: entry.service,
-    environment: entry.environment,
-    source,
-  };
-}
-
 function createDeliveryDependencies(
   dependencies: RelayDependencies,
 ): DeliveryDependencies {
   return {
-    state: dependencies.stateStore,
-    sender: {
-      send: (summary, options) =>
-        dependencies.discordClient.send(buildDiscordPayload(summary), options),
-    },
+    state: dependencies.state,
+    sender: dependencies.sender,
     quarantine: dependencies.quarantine,
-    context: {
-      sourceProjectId: dependencies.config.gcpProjectId,
-      sourceService: dependencies.config.sourceApiService,
-      sourceEnvironment: dependencies.config.sourceEnvironment,
-    },
     ...(dependencies.clock === undefined ? {} : { clock: dependencies.clock }),
-    ...(dependencies.logger === undefined ? {} : { logger: dependencies.logger as AlertLogger }),
+    ...(dependencies.logger === undefined ? {} : { logger: dependencies.logger }),
   };
 }
 

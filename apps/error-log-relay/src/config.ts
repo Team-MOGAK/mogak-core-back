@@ -1,13 +1,8 @@
 import { URL } from 'node:url';
 
-export const SOURCE_ENVIRONMENT = 'production' as const;
-export const MAX_HTTP_BODY_BYTES = 512 * 1024;
-export const MAX_PUBSUB_DATA_BYTES = 256 * 1024;
-export const DISCORD_TIMEOUT_MS = 5_000;
-export const REQUEST_BUDGET_MS = 15_000;
-export const LEASE_TTL_MS = 30_000;
-export const RATE_LIMIT_FALLBACK_MS = 60_000;
-export const MAX_RATE_LIMIT_MS = 24 * 60 * 60 * 1_000;
+import { SOURCE_ENVIRONMENT } from './presentation/constants.js';
+
+export { SOURCE_ENVIRONMENT } from './presentation/constants.js';
 
 export type RelayConfig = Readonly<{
   gcpProjectId: string;

@@ -5,11 +5,11 @@ import { Firestore } from '@google-cloud/firestore';
 import { PubSub } from '@google-cloud/pubsub';
 import pino from 'pino';
 
-import { FirestoreChannelStateStore } from './channelState.js';
+import { FirestoreChannelStateStore } from './infrastructure/channelState.js';
+import { DiscordClient } from './infrastructure/discordClient.js';
+import { PubSubQuarantinePublisher } from './infrastructure/quarantine.js';
 import { loadConfig } from './config.js';
-import { DiscordClient } from './discordClient.js';
-import { createRelayHandler } from './handler.js';
-import { PubSubQuarantinePublisher } from './quarantine.js';
+import { createRelayHandler } from './presentation/handler.js';
 
 export function start(): ReturnType<typeof createServer> {
   const config = loadConfig();
@@ -37,11 +37,16 @@ export function start(): ReturnType<typeof createServer> {
     firestore as unknown as ConstructorParameters<typeof FirestoreChannelStateStore>[1],
   );
   const discordClient = new DiscordClient(config.discordWebhookUrl);
-  const quarantine = new PubSubQuarantinePublisher(pubsub, config);
+  const quarantine = new PubSubQuarantinePublisher(pubsub, {
+    quarantineTopic: config.quarantineTopic,
+    sourceProjectId: config.gcpProjectId,
+    sourceService: config.sourceApiService,
+    sourceEnvironment: config.sourceEnvironment,
+  });
   const handler = createRelayHandler({
     config,
-    stateStore,
-    discordClient,
+    state: stateStore,
+    sender: discordClient,
     quarantine,
     logger,
   });

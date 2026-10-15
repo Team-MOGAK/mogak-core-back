@@ -59,11 +59,7 @@ export const QUARANTINE_REASONS = [
 export type QuarantineReason = (typeof QUARANTINE_REASONS)[number];
 
 export type QuarantineRecord = Readonly<{
-  schemaVersion: 1;
   reason: QuarantineReason;
-  sourceProjectId: string;
-  sourceService: string;
-  sourceEnvironment: 'production';
   receivedAt: string;
   errorId?: string;
   statusCode?: number;
@@ -80,17 +76,10 @@ export type AlertLogger = Readonly<{
   error?(object: Record<string, unknown>, message?: string): void;
 }>;
 
-export type DeliveryContext = Readonly<{
-  sourceProjectId: string;
-  sourceService: string;
-  sourceEnvironment: 'production';
-}>;
-
 export type DeliveryDependencies = Readonly<{
   sender: AlertSender;
   state: ChannelStatePort;
   quarantine: QuarantinePort;
-  context: DeliveryContext;
   clock?: () => number;
   logger?: AlertLogger;
 }>;

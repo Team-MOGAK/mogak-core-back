@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
-import { LEASE_TTL_MS, MAX_RATE_LIMIT_MS, type RelayConfig } from './config.js';
-import { isUuid } from './contracts.js';
+import { LEASE_TTL_MS, MAX_RATE_LIMIT_MS } from './config.js';
+import type {
+  ChannelLease as ApplicationChannelLease,
+  ChannelStatePort,
+  ClaimResult as ApplicationClaimResult,
+  FencedWriteResult as ApplicationFencedWriteResult,
+} from '../application/ports.js';
 
 export type ChannelStateDocument = Readonly<{
   schemaVersion: 1;
@@ -12,30 +17,16 @@ export type ChannelStateDocument = Readonly<{
   leaseExpiresAt: number;
 }>;
 
-export type ChannelLease = Readonly<{
-  token: string;
-  leaseExpiresAt: number;
+export type ChannelLease = ApplicationChannelLease;
+export type ClaimResult = ApplicationClaimResult;
+export type FencedWriteResult = ApplicationFencedWriteResult;
+
+export interface ChannelStateStore extends ChannelStatePort {}
+
+type ChannelStateConfig = Readonly<{
+  channelDocumentPath: string;
   secretVersion: number;
 }>;
-
-export type ClaimResult =
-  | Readonly<{ kind: 'claimed'; lease: ChannelLease }>
-  | Readonly<{ kind: 'disabled' }>
-  | Readonly<{ kind: 'cooldown'; nextAllowedAt: number }>
-  | Readonly<{ kind: 'busy'; leaseExpiresAt: number }>;
-
-export type FencedWriteResult = 'fenced' | 'stale';
-
-export interface ChannelStateStore {
-  claim(now: number): Promise<ClaimResult>;
-  release(lease: ChannelLease): Promise<FencedWriteResult>;
-  recordRateLimit(
-    lease: ChannelLease,
-    nextAllowedAt: number,
-    now?: number,
-  ): Promise<FencedWriteResult>;
-  disable(lease: ChannelLease): Promise<FencedWriteResult>;
-}
 
 export type DocumentReferenceLike = Readonly<Record<string, unknown>>;
 
@@ -68,7 +59,7 @@ export class FirestoreChannelStateStore implements ChannelStateStore {
   private readonly document: DocumentReferenceLike;
 
   constructor(
-    private readonly config: Pick<RelayConfig, 'channelDocumentPath' | 'secretVersion'>,
+    private readonly config: ChannelStateConfig,
     firestore: FirestoreLike,
     private readonly leaseTtlMs = LEASE_TTL_MS,
   ) {
@@ -171,93 +162,6 @@ export class FirestoreChannelStateStore implements ChannelStateStore {
   }
 }
 
-export class InMemoryChannelStateStore implements ChannelStateStore {
-  private queue = Promise.resolve();
-
-  constructor(
-    private state: ChannelStateDocument,
-    private readonly expectedSecretVersion: number,
-    private readonly leaseTtlMs = LEASE_TTL_MS,
-  ) {}
-
-  claim(now: number): Promise<ClaimResult> {
-    return this.serial(() => {
-      const state = this.checkedState();
-      if (state.disabled) return { kind: 'disabled' };
-      if (state.nextAllowedAt > now) {
-        return { kind: 'cooldown', nextAllowedAt: state.nextAllowedAt };
-      }
-      if (state.leaseToken !== null && state.leaseExpiresAt > now) {
-        return { kind: 'busy', leaseExpiresAt: state.leaseExpiresAt };
-      }
-      const token = randomUUID();
-      const leaseExpiresAt = now + this.leaseTtlMs;
-      this.state = { ...state, leaseToken: token, leaseExpiresAt };
-      return {
-        kind: 'claimed',
-        lease: { token, leaseExpiresAt, secretVersion: this.expectedSecretVersion },
-      };
-    });
-  }
-
-  release(lease: ChannelLease): Promise<FencedWriteResult> {
-    return this.serial(() => {
-      const state = this.checkedState();
-      if (!ownsLease(state, lease)) return 'stale';
-      this.state = { ...state, leaseToken: null, leaseExpiresAt: 0 };
-      return 'fenced';
-    });
-  }
-
-  recordRateLimit(
-    lease: ChannelLease,
-    nextAllowedAt: number,
-    now = Date.now(),
-  ): Promise<FencedWriteResult> {
-    return this.serial(() => {
-      assertEpoch(nextAllowedAt);
-      assertEpoch(now);
-      if (nextAllowedAt - now > MAX_RATE_LIMIT_MS) {
-        throw new ChannelStateError('invalid_state', 'Rate limit duration is too long');
-      }
-      const state = this.checkedState();
-      const fenced = ownsLease(state, lease);
-      this.state = {
-        ...state,
-        nextAllowedAt: Math.max(state.nextAllowedAt, nextAllowedAt),
-        ...(fenced ? { leaseToken: null, leaseExpiresAt: 0 } : {}),
-      };
-      return fenced ? 'fenced' : 'stale';
-    });
-  }
-
-  disable(lease: ChannelLease): Promise<FencedWriteResult> {
-    return this.serial(() => {
-      const state = this.checkedState();
-      if (!ownsLease(state, lease)) return 'stale';
-      this.state = { ...state, disabled: true, leaseToken: null, leaseExpiresAt: 0 };
-      return 'fenced';
-    });
-  }
-
-  snapshot(): ChannelStateDocument {
-    return this.checkedState();
-  }
-
-  private checkedState(): ChannelStateDocument {
-    return validateState(this.state, this.expectedSecretVersion);
-  }
-
-  private serial<T>(operation: () => T): Promise<T> {
-    const next = this.queue.then(operation);
-    this.queue = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    return next;
-  }
-}
-
 export function validateState(value: unknown, expectedSecretVersion: number): ChannelStateDocument {
   if (!Number.isSafeInteger(expectedSecretVersion) || expectedSecretVersion <= 0) {
     throw new ChannelStateError('invalid_state', 'Secret version must be a positive integer');
@@ -323,6 +227,10 @@ function isEpoch(value: unknown): value is number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
 function safeErrorMessage(error: unknown): string {

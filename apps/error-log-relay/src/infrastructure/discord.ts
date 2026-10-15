@@ -2,7 +2,7 @@ import {
   KNOWN_ROUTE_TEMPLATES,
   routeTemplate,
   type AlertSummary,
-} from './application/contracts.js';
+} from '../application/contracts.js';
 
 export type DiscordPayload = Readonly<{
   content: string;
@@ -42,9 +42,3 @@ export function buildDiscordPayload(summary: AlertSummary): DiscordPayload {
   };
 }
 
-export function loggingLink(projectId: string, errorId: string): string {
-  const query = `jsonPayload.errorId="${errorId}"`;
-  return `https://console.cloud.google.com/logs/query?project=${encodeURIComponent(
-    projectId,
-  )}&query=${encodeURIComponent(query)}`;
-}

@@ -10,11 +10,11 @@ import {
   type DocumentSnapshotLike,
   type FirestoreLike,
   type TransactionLike,
-} from '../src/channelState.js';
+} from '../src/infrastructure/channelState.js';
 import type { RelayConfig } from '../src/config.js';
-import { stdoutLogName } from '../src/contracts.js';
-import { processPushBody } from '../src/handler.js';
-import { MemoryQuarantinePublisher } from '../src/quarantine.js';
+import { stdoutLogName } from '../src/presentation/input.js';
+import { processPushBody } from '../src/presentation/handler.js';
+import { MemoryQuarantinePublisher } from './support/memory-quarantine.js';
 
 const CONFIG: RelayConfig = {
   gcpProjectId: 'test-project',
@@ -235,8 +235,8 @@ test('handler sends Discord outside the Firestore transaction', async () => {
   };
   const outcome = await processPushBody(pushEnvelope(), {
     config: CONFIG,
-    stateStore: channel,
-    discordClient: discord,
+    state: channel,
+    sender: discord,
     quarantine: new MemoryQuarantinePublisher(),
     clock: () => 1_000,
   });
@@ -262,8 +262,8 @@ test('handler returns non-ack when a stale owner loses finalization fencing', as
   };
   const outcome = await processPushBody(pushEnvelope(), {
     config: CONFIG,
-    stateStore: firstStore,
-    discordClient: discord,
+    state: firstStore,
+    sender: discord,
     quarantine: new MemoryQuarantinePublisher(),
     clock: () => now,
   });

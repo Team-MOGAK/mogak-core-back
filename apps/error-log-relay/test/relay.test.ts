@@ -3,21 +3,22 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 import {
-  InMemoryChannelStateStore,
   type ChannelStateDocument,
   type ChannelStateStore,
-} from '../src/channelState.js';
+} from '../src/infrastructure/channelState.js';
+import { InMemoryChannelStateStore } from './support/memory-channel-state.js';
 import {
   MAX_HTTP_BODY_BYTES,
   MAX_PUBSUB_DATA_BYTES,
-  validateDiscordWebhookUrl,
-  type RelayConfig,
-} from '../src/config.js';
-import { parsePushEnvelope, stdoutLogName } from '../src/contracts.js';
-import { DiscordClient } from '../src/discordClient.js';
-import { processPushBody, type RelayDependencies } from '../src/handler.js';
-import type { DiscordPayload } from '../src/message.js';
-import { MemoryQuarantinePublisher } from '../src/quarantine.js';
+} from '../src/presentation/constants.js';
+import type { RelayConfig } from '../src/config.js';
+import { validateDiscordWebhookUrl } from '../src/infrastructure/config.js';
+import type { AlertSummary } from '../src/application/contracts.js';
+import { parsePushEnvelope, stdoutLogName } from '../src/presentation/input.js';
+import { DiscordClient } from '../src/infrastructure/discordClient.js';
+import { buildDiscordPayload, type DiscordPayload } from '../src/infrastructure/discord.js';
+import { processPushBody, type RelayDependencies } from '../src/presentation/handler.js';
+import { MemoryQuarantinePublisher } from './support/memory-quarantine.js';
 
 const CONFIG: RelayConfig = {
   gcpProjectId: 'mogak-project',
@@ -35,13 +36,14 @@ const CONFIG: RelayConfig = {
 
 class FakeDiscord {
   readonly calls: DiscordPayload[] = [];
-  result: Awaited<ReturnType<RelayDependencies['discordClient']['send']>> = {
+  result: Awaited<ReturnType<RelayDependencies['sender']['send']>> = {
     kind: 'success',
     status: 204,
     messageId: '123456789012345678',
   };
 
-  async send(payload: DiscordPayload): Promise<typeof this.result> {
+  async send(summary: AlertSummary): Promise<typeof this.result> {
+    const payload = buildDiscordPayload(summary);
     this.calls.push(payload);
     return this.result;
   }
@@ -112,8 +114,8 @@ function dependencies(
 ): RelayDependencies {
   return {
     config: CONFIG,
-    stateStore: store,
-    discordClient: discord,
+    state: store,
+    sender: discord,
     quarantine,
     clock: () => now,
   };

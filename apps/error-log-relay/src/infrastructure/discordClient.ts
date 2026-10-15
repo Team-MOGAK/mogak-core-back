@@ -4,23 +4,13 @@ import {
   RATE_LIMIT_FALLBACK_MS,
   validateDiscordWebhookUrl,
 } from './config.js';
-import type { DiscordPayload } from './message.js';
+import type { AlertSummary } from '../application/contracts.js';
+import type { SenderResult } from '../application/ports.js';
+import { buildDiscordPayload, type DiscordPayload } from './discord.js';
 
 const MAX_SUCCESS_RESPONSE_BODY_BYTES = 64 * 1024;
 
-export type DiscordSendResult =
-  | Readonly<{ kind: 'success'; status: number; messageId: string }>
-  | Readonly<{ kind: 'rate_limited'; status: 429; retryAfterMs: number }>
-  | Readonly<{
-      kind: 'transient_failure';
-      status?: number;
-      reason: 'timeout' | 'network' | 'server' | 'invalid_response';
-    }>
-  | Readonly<{
-      kind: 'permanent_failure';
-      status: number;
-      disableChannel: boolean;
-    }>;
+export type DiscordSendResult = SenderResult;
 
 export type FetchLike = typeof fetch;
 
@@ -36,9 +26,18 @@ export class DiscordClient {
   }
 
   async send(
+    summary: AlertSummary,
+    options?: { deadline?: number; signal?: AbortSignal },
+  ): Promise<DiscordSendResult>;
+  async send(
     payload: DiscordPayload,
+    options?: { deadline?: number; signal?: AbortSignal },
+  ): Promise<DiscordSendResult>;
+  async send(
+    value: AlertSummary | DiscordPayload,
     options: { deadline?: number; signal?: AbortSignal } = {},
   ): Promise<DiscordSendResult> {
+    const payload = 'source' in value ? buildDiscordPayload(value) : value;
     const deadline = options.deadline ?? Date.now() + this.timeoutMs;
     const remaining = deadline - Date.now();
     if (!Number.isFinite(remaining) || remaining <= 0) {

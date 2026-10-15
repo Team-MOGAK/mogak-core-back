@@ -129,7 +129,7 @@ async function handleSenderResult(
         : 'discord_payload_rejected';
       try {
         await dependencies.quarantine.publish(
-          createQuarantineRecord(reason, dependencies, alert),
+          createQuarantineRecord(reason, alert),
         );
       } catch {
         dependencies.logger?.error?.(
@@ -156,28 +156,20 @@ async function handleSenderResult(
   }
 }
 
-function createQuarantineRecord(
+export function createQuarantineRecord(
   reason: QuarantineReason,
-  dependencies: DeliveryDependencies,
   alert?: Pick<Alert, 'errorId' | 'statusCode' | 'appCode'>,
+  clock: () => number = Date.now,
 ): {
-  schemaVersion: 1;
   reason: QuarantineReason;
-  sourceProjectId: string;
-  sourceService: string;
-  sourceEnvironment: 'production';
   receivedAt: string;
   errorId?: string;
   statusCode?: number;
   appCode?: 'Z006' | 'Z500';
 } {
-  const now = dependencies.clock?.() ?? Date.now();
+  const now = clock();
   return {
-    schemaVersion: 1,
     reason,
-    sourceProjectId: dependencies.context.sourceProjectId,
-    sourceService: dependencies.context.sourceService,
-    sourceEnvironment: dependencies.context.sourceEnvironment,
     receivedAt: new Date(now).toISOString(),
     ...(alert?.errorId === undefined ? {} : { errorId: alert.errorId }),
     ...(alert?.statusCode === undefined ? {} : { statusCode: alert.statusCode }),

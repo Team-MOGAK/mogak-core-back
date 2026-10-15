@@ -1,15 +1,13 @@
-import { MAX_PUBSUB_DATA_BYTES, SOURCE_ENVIRONMENT, type RelayConfig } from './config.js';
-
-export const KNOWN_EVENTS = [
-  'domain_exception',
-  'http_exception',
-  'unhandled_exception',
-  'http_request_failed',
-  'database_pool_error',
-] as const;
-
-export type KnownEvent = (typeof KNOWN_EVENTS)[number];
-export type NormalizedEvent = KnownEvent | 'unknown_error';
+import { MAX_PUBSUB_DATA_BYTES, SOURCE_ENVIRONMENT } from './constants.js';
+import type { PresentationConfig } from './types.js';
+import {
+  KNOWN_EVENTS,
+  type Alert,
+  type HttpMethod,
+  type KnownEvent,
+  type NormalizedEvent,
+  type SourceReference,
+} from '../application/contracts.js';
 
 export type PubSubPushEnvelope = Readonly<{
   message: Readonly<{
@@ -46,8 +44,6 @@ export type ClassifiedLogEntry = Readonly<{
   logName: string;
   projectId: string;
 }>;
-
-export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS';
 
 export type PushEnvelopeParseResult =
   | Readonly<{
@@ -169,7 +165,7 @@ export function parsePushEnvelope(
 
 export function classifyLogEntry(
   value: unknown,
-  config: Pick<RelayConfig, 'gcpProjectId' | 'sourceApiService' | 'sourceEnvironment'>,
+  config: PresentationConfig,
 ): ClassificationResult {
   if (config.sourceEnvironment !== SOURCE_ENVIRONMENT) {
     return { kind: 'ignore', reason: 'wrong_environment' };
@@ -255,6 +251,34 @@ export function classifyLogEntry(
 
 export function stdoutLogName(projectId: string): string {
   return `projects/${projectId}/logs/run.googleapis.com%2Fstdout`;
+}
+
+/** Create the application DTO only after the Cloud Logging source checks pass. */
+export function toAlert(entry: ClassifiedLogEntry, projectId: string): Alert {
+  const source: SourceReference = {
+    label: 'Logs',
+    href: loggingLink(projectId, entry.errorId),
+  };
+  return {
+    ...(entry.timestamp === undefined ? {} : { timestamp: entry.timestamp }),
+    ...(entry.revision === undefined ? {} : { revision: entry.revision }),
+    errorId: entry.errorId,
+    event: entry.event,
+    ...(entry.appCode === undefined ? {} : { appCode: entry.appCode }),
+    ...(entry.statusCode === undefined ? {} : { statusCode: entry.statusCode }),
+    ...(entry.method === undefined ? {} : { method: entry.method }),
+    ...(entry.route === undefined ? {} : { route: entry.route }),
+    service: entry.service,
+    environment: entry.environment,
+    source,
+  };
+}
+
+export function loggingLink(projectId: string, errorId: string): string {
+  const query = `jsonPayload.errorId="${errorId}"`;
+  return `https://console.cloud.google.com/logs/query?project=${encodeURIComponent(
+    projectId,
+  )}&query=${encodeURIComponent(query)}`;
 }
 
 export function isUuid(value: string): boolean {
