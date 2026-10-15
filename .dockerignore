@@ -7,3 +7,6 @@ dist
 coverage
 .worktrees
 docs
+
+apps/*/node_modules
+apps/*/dist
