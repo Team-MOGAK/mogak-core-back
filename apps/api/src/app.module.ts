@@ -36,6 +36,7 @@ import { UsersModule } from '@mogak/modules/feature-modules/users.module';
         pinoHttp: createPinoHttpOptions(
           config.get<string>('NODE_ENV'),
           config.get<string>('LOG_LEVEL'),
+          config.get<string>('K_SERVICE'),
         ),
       }),
     }),

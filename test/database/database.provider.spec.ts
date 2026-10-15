@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import type { ConfigService } from '@nestjs/config';
+import type { PinoLogger } from 'nestjs-pino';
 import type { Pool } from 'pg';
 
 import { databaseProviders } from '@infra/database/database.provider';
@@ -8,7 +9,7 @@ import { PG_POOL } from '@infra/database/database.tokens';
 const poolProvider = databaseProviders.find((provider) => provider.provide === PG_POOL);
 if (poolProvider === undefined) throw new Error('database pool provider was not registered');
 
-const createPool = poolProvider.useFactory as (config: ConfigService) => Pool;
+const createPool = poolProvider.useFactory as (config: ConfigService, logger: PinoLogger) => Pool;
 
 function configFor(values: Record<string, unknown>): ConfigService {
   return {
@@ -27,8 +28,10 @@ describe('database pool provider', () => {
   });
 
   it('DATABASE_URL 경로에 timeout과 idle error listener를 적용한다', async () => {
-    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-    const pool = createPool(configFor({ DATABASE_URL: 'postgresql://db.example/mogak' }));
+    const logError = jest.fn();
+    const child = jest.fn(() => ({ error: logError }));
+    const logger = { logger: { child } } as unknown as PinoLogger;
+    const pool = createPool(configFor({ DATABASE_URL: 'postgresql://db.example/mogak' }), logger);
 
     try {
       expect(pool.options).toMatchObject({
@@ -38,20 +41,30 @@ describe('database pool provider', () => {
         statement_timeout: 10_000,
       });
       expect(pool.listenerCount('error')).toBeGreaterThan(0);
+      expect(child).toHaveBeenCalledWith({});
 
-      const error = Object.assign(new Error('private query and params'), {
+      const poolError = Object.assign(new Error('private query and params'), {
         code: '23505',
         constraint: 'users;drop',
         table: 'users',
       });
-      expect(() => pool.emit('error', error)).not.toThrow();
-      expect(consoleError).toHaveBeenCalledWith({
-        event: 'database_pool_error',
-        code: '23505',
-        constraint: undefined,
-        table: 'users',
-      });
-      expect(JSON.stringify(consoleError.mock.calls)).not.toContain('private query and params');
+      expect(() => pool.emit('error', poolError)).not.toThrow();
+      expect(logError).toHaveBeenCalledWith(
+        {
+          event: 'database_pool_error',
+          errorId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+          alertEligible: true,
+          err: {
+            database: {
+              code: '23505',
+              constraint: undefined,
+              table: 'users',
+            },
+          },
+        },
+        'Database pool error',
+      );
+      expect(JSON.stringify(logError.mock.calls)).not.toContain('private query and params');
     } finally {
       await pool.end();
     }

@@ -12,6 +12,13 @@ import type { PinoLogger } from 'nestjs-pino';
 import type { Response } from 'express';
 
 import { DomainException } from '@core/common/error/domainException';
+import {
+  markResponseErrorLog,
+  requestErrorId,
+  requestMethod,
+  staticRoute,
+  type RequestLogContext,
+} from '@infra/logging/errorAlert.context';
 import { AppErrorCode, type AppErrorCode as AppErrorDefinition } from './appErrorCode';
 import { errorResponse } from './apiResponse';
 
@@ -27,11 +34,7 @@ function errorForStatus(status: number): AppErrorDefinition {
   return AppErrorCode.BAD_REQUEST;
 }
 
-type RequestForRateLimitLog = {
-  method: string;
-  baseUrl?: string;
-  route?: { path?: string };
-};
+type RequestForRateLimitLog = RequestLogContext;
 
 type RequestForDomainExceptionLog = RequestForRateLimitLog & {
   body?: unknown;
@@ -64,10 +67,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const http = host.switchToHttp();
     const response = http.getResponse<Response>();
     if (exception instanceof ThrottlerException) {
-      const request = http.getRequest<RequestForRateLimitLog>();
+      const request = requestFromHttp(http);
       this.logger.warn({
         event: 'rate_limit_rejected',
-        method: request.method,
+        method: requestMethod(request),
         route: staticRoute(request),
       });
       response.status(exception.getStatus()).json(throttlerResponse(exception));
@@ -85,19 +88,61 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof DomainException) {
       const error = appErrorForDomainCode(exception.code);
-      this.logger.warn({
-        type: 'domain_exception',
-        code: error.code,
-        status: HttpStatus[error.httpStatus],
-        message: error.message,
-        ...domainExceptionLog(http.getRequest<RequestForDomainExceptionLog>()),
-      });
+      const request = requestFromHttp(http);
+      if (error.httpStatus >= HttpStatus.INTERNAL_SERVER_ERROR) {
+        logCanonicalServerError(
+          this.logger,
+          response,
+          request,
+          'domain_exception',
+          error,
+          undefined,
+          'Domain exception',
+        );
+      } else {
+        this.logger.warn({
+          type: 'domain_exception',
+          code: error.code,
+          status: HttpStatus[error.httpStatus],
+          message: error.message,
+          ...domainExceptionLog(request),
+        });
+      }
     } else if (exception instanceof HttpException) {
-      if (exception.getStatus() >= HttpStatus.INTERNAL_SERVER_ERROR) {
-        this.logger.error({ err: exceptionDetails(exception) }, 'Unhandled HTTP exception');
+      const error = errorForStatus(exception.getStatus());
+      const request = requestFromHttp(http);
+      if (error.httpStatus >= HttpStatus.INTERNAL_SERVER_ERROR) {
+        logCanonicalServerError(
+          this.logger,
+          response,
+          request,
+          'http_exception',
+          error,
+          { err: exceptionDetails(exception) },
+          'Unhandled HTTP exception',
+        );
+      } else {
+        this.logger.warn(
+          {
+            event: 'http_exception',
+            statusCode: error.httpStatus,
+            method: requestMethod(request),
+            route: staticRoute(request),
+          },
+          'HTTP exception',
+        );
       }
     } else {
-      this.logger.error(unhandledExceptionLog(exception), 'Unhandled exception');
+      const request = requestFromHttp(http);
+      logCanonicalServerError(
+        this.logger,
+        response,
+        request,
+        'unhandled_exception',
+        AppErrorCode.INTERNAL_SERVER_ERROR,
+        unhandledExceptionDetails(exception),
+        'Unhandled exception',
+      );
     }
 
     const error =
@@ -108,6 +153,44 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           : AppErrorCode.INTERNAL_SERVER_ERROR;
 
     response.status(error.httpStatus).json(errorResponse(error));
+  }
+}
+
+function logCanonicalServerError(
+  logger: PinoLogger,
+  response: Response,
+  request: RequestForRateLimitLog,
+  event: 'domain_exception' | 'http_exception' | 'unhandled_exception',
+  error: AppErrorDefinition,
+  details: Record<string, unknown> | undefined,
+  message: string,
+): void {
+  const errorId = requestErrorId(request);
+  markResponseErrorLog(response, { errorId, appCode: error.code });
+  logger.error(
+    {
+      event,
+      errorId,
+      alertEligible: true,
+      statusCode: error.httpStatus,
+      code: error.code,
+      appCode: error.code,
+      method: requestMethod(request),
+      route: staticRoute(request),
+      ...(details ?? {}),
+    },
+    message,
+  );
+}
+
+function requestFromHttp(
+  http: ReturnType<ArgumentsHost['switchToHttp']>,
+): RequestForDomainExceptionLog {
+  try {
+    const request = http.getRequest<RequestForDomainExceptionLog>();
+    return isErrorLike(request) ? (request as RequestForDomainExceptionLog) : {};
+  } catch {
+    return {};
   }
 }
 
@@ -163,12 +246,11 @@ function isErrorLike(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function unhandledExceptionLog(exception: unknown): {
-  event: 'unhandled_exception';
+function unhandledExceptionDetails(exception: unknown): {
   err?: ExceptionDetails;
 } {
-  if (!(exception instanceof Error)) return { event: 'unhandled_exception' };
-  return { event: 'unhandled_exception', err: exceptionDetails(exception) };
+  if (!(exception instanceof Error)) return {};
+  return { err: exceptionDetails(exception) };
 }
 
 function exceptionDetails(error: Error): ExceptionDetails {
@@ -292,11 +374,6 @@ function isMultipartInputError(exception: unknown): exception is { code: string 
 function isSensitiveKey(key: string): boolean {
   const normalized = key.toLowerCase().replaceAll(/[^a-z0-9]/g, '');
   return SENSITIVE_KEY_PARTS.some((part) => normalized.includes(part));
-}
-
-function staticRoute(request: RequestForRateLimitLog): string {
-  const path = request.route?.path;
-  return typeof path === 'string' ? `${request.baseUrl ?? ''}${path}` : 'unknown';
 }
 
 function throttlerResponse(exception: ThrottlerException): object {
