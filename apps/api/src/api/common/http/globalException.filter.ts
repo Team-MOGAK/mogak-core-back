@@ -10,13 +10,14 @@ import { DrizzleError, DrizzleQueryError } from 'drizzle-orm';
 import { InjectPinoLogger } from 'nestjs-pino';
 import type { PinoLogger } from 'nestjs-pino';
 import type { Response } from 'express';
+import { LogEvent } from '@mogak/shared';
 
 import { DomainException } from '@core/common/error/domainException';
 import {
   markResponseErrorLog,
   requestErrorId,
   requestMethod,
-  staticRoute,
+  routeTemplate,
   type RequestLogContext,
 } from '@infra/logging/errorAlert.context';
 import { AppErrorCode, type AppErrorCode as AppErrorDefinition } from './appErrorCode';
@@ -68,10 +69,11 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const response = http.getResponse<Response>();
     if (exception instanceof ThrottlerException) {
       const request = requestFromHttp(http);
+      const route = routeTemplate(request);
       this.logger.warn({
         event: 'rate_limit_rejected',
         method: requestMethod(request),
-        route: staticRoute(request),
+        ...(route === undefined ? {} : { routeTemplate: route }),
       });
       response.status(exception.getStatus()).json(throttlerResponse(exception));
       return;
@@ -94,14 +96,14 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           this.logger,
           response,
           request,
-          'domain_exception',
+          LogEvent.DOMAIN_EXCEPTION,
           error,
           undefined,
           'Domain exception',
         );
       } else {
         this.logger.warn({
-          type: 'domain_exception',
+          event: LogEvent.DOMAIN_EXCEPTION,
           code: error.code,
           status: HttpStatus[error.httpStatus],
           message: error.message,
@@ -111,12 +113,13 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     } else if (exception instanceof HttpException) {
       const error = errorForStatus(exception.getStatus());
       const request = requestFromHttp(http);
+      const route = routeTemplate(request);
       if (error.httpStatus >= HttpStatus.INTERNAL_SERVER_ERROR) {
         logCanonicalServerError(
           this.logger,
           response,
           request,
-          'http_exception',
+          LogEvent.HTTP_EXCEPTION,
           error,
           { err: exceptionDetails(exception) },
           'Unhandled HTTP exception',
@@ -124,10 +127,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       } else {
         this.logger.warn(
           {
-            event: 'http_exception',
+            event: LogEvent.HTTP_EXCEPTION,
             statusCode: error.httpStatus,
             method: requestMethod(request),
-            route: staticRoute(request),
+            ...(route === undefined ? {} : { routeTemplate: route }),
           },
           'HTTP exception',
         );
@@ -138,7 +141,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         this.logger,
         response,
         request,
-        'unhandled_exception',
+        LogEvent.UNHANDLED_EXCEPTION,
         AppErrorCode.INTERNAL_SERVER_ERROR,
         unhandledExceptionDetails(exception),
         'Unhandled exception',
@@ -160,13 +163,17 @@ function logCanonicalServerError(
   logger: PinoLogger,
   response: Response,
   request: RequestForRateLimitLog,
-  event: 'domain_exception' | 'http_exception' | 'unhandled_exception',
+  event:
+    | typeof LogEvent.DOMAIN_EXCEPTION
+    | typeof LogEvent.HTTP_EXCEPTION
+    | typeof LogEvent.UNHANDLED_EXCEPTION,
   error: AppErrorDefinition,
   details: Record<string, unknown> | undefined,
   message: string,
 ): void {
   const errorId = requestErrorId(request);
   markResponseErrorLog(response, { errorId, appCode: error.code });
+  const route = routeTemplate(request);
   logger.error(
     {
       event,
@@ -176,7 +183,7 @@ function logCanonicalServerError(
       code: error.code,
       appCode: error.code,
       method: requestMethod(request),
-      route: staticRoute(request),
+      ...(route === undefined ? {} : { routeTemplate: route }),
       ...(details ?? {}),
     },
     message,
@@ -275,10 +282,11 @@ function domainExceptionLog(request: RequestForDomainExceptionLog) {
   const params = safelySanitizeRequestField(request, 'params');
   const query = safelySanitizeRequestField(request, 'query');
   const body = isMultipartRequest(request) ? OMIT : safelySanitizeRequestField(request, 'body');
+  const route = routeTemplate(request);
 
   return {
     method: request.method,
-    route: staticRoute(request),
+    ...(route === undefined ? {} : { routeTemplate: route }),
     request: {
       ...(params === OMIT ? {} : { params }),
       ...(query === OMIT ? {} : { query }),

@@ -88,7 +88,7 @@ describe('nestjs-pino 요청 컨텍스트', () => {
           .filter((entry) => entry.length > 0)
           .map((entry) => JSON.parse(entry) as Record<string, unknown>),
       );
-      const domainException = logs.find((log) => log.type === 'domain_exception');
+      const domainException = logs.find((log) => log.event === 'domain_exception');
       const requestCompleted = logs.find((log) => log.msg === 'request completed');
       const failedRequest = logs.find((log) => log.event === 'http_request_failed');
       const directFallbacks = logs.filter(
@@ -96,7 +96,7 @@ describe('nestjs-pino 요청 컨텍스트', () => {
           log.event === 'http_request_failed' &&
           log.alertEligible === true &&
           log.statusCode === HttpStatus.SERVICE_UNAVAILABLE &&
-          log.route === '/pino-logging-test/direct-service-unavailable',
+          log.routeTemplate === '/pino-logging-test/direct-service-unavailable',
       );
 
       expect(directFallbacks).toHaveLength(1);
@@ -109,14 +109,14 @@ describe('nestjs-pino 요청 컨텍스트', () => {
           alertEligible: true,
           statusCode: HttpStatus.SERVICE_UNAVAILABLE,
           method: 'GET',
-          route: '/pino-logging-test/direct-service-unavailable',
+          routeTemplate: '/pino-logging-test/direct-service-unavailable',
         }),
       );
 
       expect(domainException).toEqual(
         expect.objectContaining({
           req: expect.objectContaining({ id: expect.any(String) }),
-          type: 'domain_exception',
+          event: 'domain_exception',
         }),
       );
       expect(requestCompleted).toEqual(

@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Options as PinoHttpOptions } from 'pino-http';
+import { LogEvent } from '@mogak/shared';
 
 import {
   requestErrorId,
   requestMethod,
   responseErrorLogContext,
-  staticRoute,
+  routeTemplate,
   type RequestLogContext,
 } from './errorAlert.context';
 
@@ -157,14 +158,15 @@ function completedRequestObject(
   const marker = responseErrorLogContext(response);
   const errorId = marker?.errorId ?? requestErrorId(request);
   const appCode = marker?.appCode;
+  const route = routeTemplate(request);
 
   return {
     ...value,
-    event: 'http_request_failed',
+    event: LogEvent.HTTP_REQUEST_FAILED,
     errorId,
     statusCode,
     method: requestMethod(request),
-    route: staticRoute(request),
+    ...(route === undefined ? {} : { routeTemplate: route }),
     alertEligible: marker === undefined,
     ...(appCode === undefined ? {} : { code: appCode, appCode }),
   };

@@ -11,6 +11,9 @@ importers:
 
   .:
     dependencies:
+      '@mogak/shared':
+        specifier: workspace:*
+        version: link:libs/shared
       '@nestjs/common':
         specifier: ^11.1.28
         version: 11.1.28(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -147,6 +150,12 @@ importers:
         version: 26.1.1
       typescript:
         specifier: 5.9.3
+        version: 5.9.3
+
+  libs/shared:
+    devDependencies:
+      typescript:
+        specifier: ~5.9.3
         version: 5.9.3
 
 packages:

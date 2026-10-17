@@ -9,6 +9,8 @@ const sourceRoots = [
   resolve(process.cwd(), 'apps/api/src'),
   resolve(process.cwd(), 'libs/core/src'),
   resolve(process.cwd(), 'libs/modules/src'),
+  resolve(process.cwd(), 'libs/shared/src'),
+  resolve(process.cwd(), 'apps/alerting/src'),
 ];
 const forbiddenDomainPackages = [
   /^@nestjs(?:\/|$)/,
@@ -44,6 +46,51 @@ describe('layer boundaries', () => {
     expect(
       readFileSync('libs/core/src/core/users/application/service/user.service.ts', 'utf8'),
     ).not.toMatch(/23505|users_nickname_unique/);
+  });
+
+  it('checks shared purity and alerting boundaries using the existing module scanner', () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'mogak-alerting-boundaries-'));
+    try {
+      writeFixture(root, 'shared/src/index.ts', `import type { Pool } from 'pg';`);
+      writeFixture(
+        root,
+        'alerting/application/service/nested/bad.ts',
+        `
+        import type { PubSub } from '@google-cloud/pubsub';
+        type Input = import('../../../presentation/input.js').Input;
+        void import('../../../infrastructure/discordClient.js');
+        process.env.SECRET;
+        Buffer.from('raw');
+      `,
+      );
+      writeFixture(
+        root,
+        'alerting/application/service/good.ts',
+        `
+        import metadata from '@mogak/shared';
+        import type { Sender } from '../port/sender.port.js';
+        export class DeliveryService { constructor(private readonly sender: Sender) {} }
+        void metadata;
+      `,
+      );
+      const violations = formatViolations(collectLayerBoundaryViolations(root));
+      expect(violations).toEqual(
+        expect.arrayContaining([
+          expect.stringContaining("shared must not import external or application code 'pg'"),
+          expect.stringContaining(
+            "alerting application must not import provider or transport '@google-cloud/pubsub'",
+          ),
+          expect.stringContaining('application must not import presentation'),
+          expect.stringContaining('application must not import infrastructure'),
+          expect.stringContaining(
+            'alerting application must not use runtime globals or dynamic loading',
+          ),
+        ]),
+      );
+      expect(violations.some((violation) => violation.includes('good.ts'))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('rejects dynamic module references and generic type-contract bypasses', () => {
@@ -179,6 +226,51 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
     const projectPath = relative(root, file);
     const segments = projectPath.split(sep);
     const imports = collectModuleSpecifiers(sourceFile);
+    const absoluteSegments = file.split(sep);
+    const alertingApplication =
+      absoluteSegments.includes('alerting') && segments.includes('application');
+
+    if (absoluteSegments.includes('shared')) {
+      for (const moduleSpecifier of imports) {
+        if (
+          !moduleSpecifier.startsWith('.') ||
+          !resolve(dirname(file), moduleSpecifier).split(sep).includes('shared')
+        ) {
+          violations.push({
+            file: projectPath,
+            message: `shared must not import external or application code '${moduleSpecifier}'`,
+          });
+        }
+      }
+    }
+
+    if (alertingApplication) {
+      for (const moduleSpecifier of imports) {
+        if (
+          /^(?:node:|@google-cloud(?:\/|$)|@nestjs(?:\/|$)|pg(?:\/|$)|pino(?:\/|$)|drizzle-orm(?:\/|$)|https?(?:\/|$)|express(?:\/|$))/.test(
+            moduleSpecifier,
+          )
+        ) {
+          violations.push({
+            file: projectPath,
+            message: `alerting application must not import provider or transport '${moduleSpecifier}'`,
+          });
+        }
+      }
+      const inspectRuntime = (node: ts.Node): void => {
+        if (
+          (ts.isIdentifier(node) && ['Buffer', 'process', 'require'].includes(node.text)) ||
+          (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword)
+        ) {
+          violations.push({
+            file: projectPath,
+            message: 'alerting application must not use runtime globals or dynamic loading',
+          });
+        }
+        ts.forEachChild(node, inspectRuntime);
+      };
+      inspectRuntime(sourceFile);
+    }
 
     if (segments.includes('core')) {
       for (const moduleSpecifier of imports) {

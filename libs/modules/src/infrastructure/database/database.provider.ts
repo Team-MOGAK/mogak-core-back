@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { PinoLogger } from 'nestjs-pino';
 import { Pool } from 'pg';
+import { LogEvent } from '@mogak/shared';
 
 import * as schema from './schema';
 import { DATABASE, PG_POOL } from './database.tokens';
@@ -61,7 +62,7 @@ function createPool(connectionString: string, pinoLogger: PinoLogger): Pool {
     // Keep only allowlisted PostgreSQL identifiers in the application log.
     poolLogger.error(
       {
-        event: 'database_pool_error',
+        event: LogEvent.DATABASE_POOL_ERROR,
         errorId: randomUUID(),
         alertEligible: true,
         err: {

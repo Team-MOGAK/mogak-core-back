@@ -5,7 +5,8 @@ RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/alerting/package.json ./apps/alerting/package.json
-RUN pnpm install --filter mogak-core-back --frozen-lockfile
+COPY libs/shared/package.json ./libs/shared/package.json
+RUN pnpm install --filter mogak-core-back... --frozen-lockfile
 
 COPY . ./
 RUN pnpm build
@@ -18,7 +19,9 @@ RUN corepack enable
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/alerting/package.json ./apps/alerting/package.json
-RUN pnpm install --filter mogak-core-back --frozen-lockfile --prod
+COPY libs/shared/package.json ./libs/shared/package.json
+RUN pnpm install --filter mogak-core-back... --frozen-lockfile --prod
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/libs/shared/dist ./libs/shared/dist
 
 CMD ["node", "dist/main.js"]

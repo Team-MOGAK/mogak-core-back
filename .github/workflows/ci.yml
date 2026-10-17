@@ -79,7 +79,7 @@ jobs:
       - name: Run typecheck
         run: |
           pnpm typecheck
-          pnpm typecheck:relay
+          pnpm typecheck:alerting
 
   test:
     name: Test
@@ -98,7 +98,7 @@ jobs:
       - name: Run non-database tests
         run: |
           pnpm test --runInBand
-          pnpm test:relay
+          pnpm test:alerting
 
   scripts:
     name: Script tests
@@ -117,7 +117,7 @@ jobs:
       - name: Run database-free script tests
         run: |
           pnpm test:verify-local
-          pnpm test:relay-infra
+          pnpm test:alerting:ops
 
   build:
     name: Application build
@@ -136,7 +136,7 @@ jobs:
       - name: Build application
         run: |
           pnpm build
-          pnpm build:relay
+          pnpm build:alerting
 
   workflow-lint:
     name: Workflow lint

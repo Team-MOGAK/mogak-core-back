@@ -57,7 +57,7 @@ describe('GlobalExceptionFilter의 rate limit 처리', () => {
     expect(warn).toHaveBeenCalledWith({
       event: 'rate_limit_rejected',
       method: 'POST',
-      route: '/api/auth/login',
+      routeTemplate: '/login',
     });
     expect(JSON.stringify(warn.mock.calls)).not.toContain('203.0.113.10');
     expect(JSON.stringify(warn.mock.calls)).not.toContain('access-secret');
@@ -121,12 +121,12 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     );
 
     expect(warn).toHaveBeenCalledWith({
-      type: 'domain_exception',
+      event: 'domain_exception',
       code: 'U001',
       status: 'NOT_FOUND',
       message: '존재하지 않는 사용자입니다',
       method: 'GET',
-      route: '/api/users/:id',
+      routeTemplate: '/users/:id',
       request: {
         params: { id: 'wrong' },
         query: { include: 'profile' },
@@ -156,12 +156,12 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     );
 
     expect(warn).toHaveBeenCalledWith({
-      type: 'domain_exception',
+      event: 'domain_exception',
       code: 'T004',
       status: 'FORBIDDEN',
       message: '권한이 부여되지 않았습니다',
       method: 'DELETE',
-      route: '/posts/:id',
+      routeTemplate: '/posts/:id',
       request: { params: { id: 'missing' } },
     });
   });
@@ -227,12 +227,12 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     );
 
     expect(warn).toHaveBeenCalledWith({
-      type: 'domain_exception',
+      event: 'domain_exception',
       code: 'Z005',
       status: 'BAD_REQUEST',
       message: '입력값이 유효하지 않습니다',
       method: 'POST',
-      route: '/api/posts/:postId',
+      routeTemplate: '/:postId',
       request: {
         params: { postId: 'wrong' },
         query: { page: 'wrong' },
@@ -394,12 +394,12 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
       }),
     );
     expect(warn).toHaveBeenCalledWith({
-      type: 'domain_exception',
+      event: 'domain_exception',
       code: 'U001',
       status: 'NOT_FOUND',
       message: '존재하지 않는 사용자입니다',
       method: 'GET',
-      route: '/users/:id',
+      routeTemplate: '/users/:id',
       request: { params: { id: '42' } },
     });
   });
@@ -464,7 +464,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
         code: 'Z006',
         appCode: 'Z006',
         method: 'POST',
-        route: '/api/posts',
+        routeTemplate: '/posts',
         alertEligible: true,
       }),
       'Domain exception',
@@ -501,7 +501,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
         event: 'http_exception',
         statusCode: HttpStatus.BAD_REQUEST,
         method: 'GET',
-        route: '/api/users/:id',
+        routeTemplate: '/users/:id',
       },
       'HTTP exception',
     );

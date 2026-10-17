@@ -23,6 +23,7 @@
     }
   },
   "compilerOptions": {
-    "webpack": true
+    "webpack": true,
+    "webpackConfigPath": "webpack.config.cjs"
   }
 }

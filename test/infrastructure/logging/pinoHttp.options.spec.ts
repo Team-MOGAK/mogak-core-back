@@ -116,11 +116,12 @@ describe('Pino HTTP logger 설정', () => {
         alertEligible: false,
         statusCode: 503,
         method: 'GET',
-        route: '/api/health/ready',
+        routeTemplate: '/health/ready',
         code: 'Z006',
         appCode: 'Z006',
       }),
     );
+    expect(result).not.toHaveProperty('route');
   });
 
   it('대표 오류 marker가 없으면 완료 5xx가 UUID fallback eligible 오류가 된다', () => {
