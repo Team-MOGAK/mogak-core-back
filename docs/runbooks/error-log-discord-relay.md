@@ -12,6 +12,19 @@ only a process-local cooldown after a Discord 429; it resets on restart and is
 independent per Cloud Run instance. There is no database or shared delivery
 lock in this path.
 
+The handler has a 12-second budget; `relay.timeoutSeconds` must be exactly 15
+to leave time for the response. The publisher is initialized before the HTTP
+server listens. Quarantine uses one direct Publish RPC with no SDK retry and a
+timeout of at most two seconds, reduced to the remaining request budget.
+Disconnects prevent subsequent calls and abort Discord fetches. An already
+started Publish RPC cannot be forcibly cancelled through the public SDK; it
+may still be accepted remotely before its deadline. A local failure is not
+acknowledged, so quarantine records may also be duplicated on redelivery.
+
+Both successful and 429 Discord response bodies are limited to 64KiB. An
+oversized or malformed 429 body uses a valid Retry-After header or the existing
+fallback cooldown and remains unacknowledged.
+
 ## Plan first
 
 The deployment helper is JSON driven and plan first:

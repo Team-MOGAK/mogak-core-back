@@ -277,6 +277,15 @@ test('config rejects an unsupported source environment and latest secret version
   assert.throws(() => validateConfig(wrongProducer), /trusted mogak-core-api producer/);
 });
 
+test('config reserves response time above the 12-second handler budget', () => {
+  for (const timeoutSeconds of [1, 12, 14, 16, '15', undefined]) {
+    const config = configFixture();
+    config.relay.timeoutSeconds = timeoutSeconds;
+    assert.throws(() => validateConfig(config), /exactly 15 seconds/);
+  }
+  validateConfig(configFixture());
+});
+
 test('plan keeps sink disabled, pins the webhook secret, and does not add channel state', () => {
   const config = loadConfig(CONFIG_PATH);
   const plan = buildDeploymentPlan(config);

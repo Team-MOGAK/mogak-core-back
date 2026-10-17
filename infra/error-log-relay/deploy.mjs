@@ -64,8 +64,7 @@ export function validateConfig(config) {
   assertNonEmpty(config.relay.image, 'config.relay.image');
   assertMatch(config.relay.serviceAccount, SERVICE_ACCOUNT, 'config.relay.serviceAccount');
   assertMatch(config.relay.pushServiceAccount, SERVICE_ACCOUNT, 'config.relay.pushServiceAccount');
-  assertPositiveInteger(config.relay.timeoutSeconds, 'config.relay.timeoutSeconds');
-  assert(config.relay.timeoutSeconds <= 15, 'relay.timeoutSeconds must be at most 15 seconds');
+  assert(config.relay.timeoutSeconds === 15, 'relay.timeoutSeconds must be exactly 15 seconds');
   assert(config.relay.concurrency === 1, 'relay.concurrency must be 1');
   assert(config.relay.minInstances === 0, 'relay.minInstances must be 0');
   assertPositiveInteger(config.relay.maxInstances, 'config.relay.maxInstances');
