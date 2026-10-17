@@ -299,14 +299,27 @@ test('topic and subscription identifiers are unique within their own resource ki
   topicAlias.topics.quarantine = topicAlias.topics.source;
   assert.throws(() => validateConfig(topicAlias), /config\.topics.*distinct/);
 
+  const quarantineDeadLetterTopicAlias = configFixture();
+  quarantineDeadLetterTopicAlias.topics.deadLetter =
+    quarantineDeadLetterTopicAlias.topics.quarantine;
+  assert.throws(() => validateConfig(quarantineDeadLetterTopicAlias), /config\.topics.*distinct/);
+
   const subscriptionAlias = configFixture();
   subscriptionAlias.subscriptions.quarantine = subscriptionAlias.subscriptions.source;
   assert.throws(() => validateConfig(subscriptionAlias), /config\.subscriptions.*distinct/);
+
+  const quarantineDeadLetterSubscriptionAlias = configFixture();
+  quarantineDeadLetterSubscriptionAlias.subscriptions.deadLetter =
+    quarantineDeadLetterSubscriptionAlias.subscriptions.quarantine;
+  assert.throws(
+    () => validateConfig(quarantineDeadLetterSubscriptionAlias),
+    /config\.subscriptions.*distinct/,
+  );
 });
 
-test('apply rejects a missing-resource subscription alias before invoking gcloud', async () => {
+test('apply rejects a quarantine/dead-letter subscription alias before invoking gcloud', async () => {
   const config = digestConfig();
-  config.subscriptions.quarantine = config.subscriptions.source;
+  config.subscriptions.deadLetter = config.subscriptions.quarantine;
   const calls = [];
 
   await assert.rejects(
