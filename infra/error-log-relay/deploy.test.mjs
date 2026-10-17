@@ -277,6 +277,51 @@ test('config rejects an unsupported source environment and latest secret version
   assert.throws(() => validateConfig(wrongProducer), /trusted mogak-core-api producer/);
 });
 
+test('config requires project-local and distinct service accounts', () => {
+  for (const account of ['serviceAccount', 'pushServiceAccount']) {
+    const foreign = configFixture();
+    foreign.relay[account] = 'foreign-relay@foreign-project.iam.gserviceaccount.com';
+    assert.throws(() => validateConfig(foreign), /belong to config\.gcp\.projectId/);
+  }
+
+  const shared = configFixture();
+  shared.relay.pushServiceAccount = shared.relay.serviceAccount;
+  assert.throws(() => validateConfig(shared), /serviceAccount.*distinct/);
+});
+
+test('topic and subscription identifiers are unique within their own resource kind', () => {
+  const crossKindAlias = configFixture();
+  crossKindAlias.subscriptions.source = crossKindAlias.topics.source;
+  crossKindAlias.expectedSubscription = `projects/${crossKindAlias.gcp.projectId}/subscriptions/${crossKindAlias.subscriptions.source}`;
+  assert.doesNotThrow(() => validateConfig(crossKindAlias));
+
+  const topicAlias = configFixture();
+  topicAlias.topics.quarantine = topicAlias.topics.source;
+  assert.throws(() => validateConfig(topicAlias), /config\.topics.*distinct/);
+
+  const subscriptionAlias = configFixture();
+  subscriptionAlias.subscriptions.quarantine = subscriptionAlias.subscriptions.source;
+  assert.throws(() => validateConfig(subscriptionAlias), /config\.subscriptions.*distinct/);
+});
+
+test('apply rejects a missing-resource subscription alias before invoking gcloud', async () => {
+  const config = digestConfig();
+  config.subscriptions.quarantine = config.subscriptions.source;
+  const calls = [];
+
+  await assert.rejects(
+    () =>
+      apply(config, {
+        runner: (args) => {
+          calls.push(args);
+          return success();
+        },
+      }),
+    /config\.subscriptions.*distinct/,
+  );
+  assert.equal(calls.length, 0);
+});
+
 test('config reserves response time above the 12-second handler budget', () => {
   for (const timeoutSeconds of [1, 12, 14, 16, '15', undefined]) {
     const config = configFixture();

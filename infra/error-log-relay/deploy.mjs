@@ -64,6 +64,18 @@ export function validateConfig(config) {
   assertNonEmpty(config.relay.image, 'config.relay.image');
   assertMatch(config.relay.serviceAccount, SERVICE_ACCOUNT, 'config.relay.serviceAccount');
   assertMatch(config.relay.pushServiceAccount, SERVICE_ACCOUNT, 'config.relay.pushServiceAccount');
+  assert(
+    config.relay.serviceAccount.endsWith(`@${config.gcp.projectId}.iam.gserviceaccount.com`),
+    'config.relay.serviceAccount must belong to config.gcp.projectId',
+  );
+  assert(
+    config.relay.pushServiceAccount.endsWith(`@${config.gcp.projectId}.iam.gserviceaccount.com`),
+    'config.relay.pushServiceAccount must belong to config.gcp.projectId',
+  );
+  assert(
+    config.relay.serviceAccount !== config.relay.pushServiceAccount,
+    'relay.serviceAccount and relay.pushServiceAccount must be distinct',
+  );
   assert(config.relay.timeoutSeconds === 15, 'relay.timeoutSeconds must be exactly 15 seconds');
   assert(config.relay.concurrency === 1, 'relay.concurrency must be 1');
   assert(config.relay.minInstances === 0, 'relay.minInstances must be 0');
@@ -82,10 +94,18 @@ export function validateConfig(config) {
   for (const key of ['source', 'quarantine', 'deadLetter']) {
     assertMatch(config.topics[key], RESOURCE_ID, `config.topics.${key}`);
   }
+  assertDistinct(
+    [config.topics.source, config.topics.quarantine, config.topics.deadLetter],
+    'config.topics',
+  );
   assertObject(config.subscriptions, 'config.subscriptions');
   for (const key of ['source', 'quarantine', 'deadLetter']) {
     assertMatch(config.subscriptions[key], RESOURCE_ID, `config.subscriptions.${key}`);
   }
+  assertDistinct(
+    [config.subscriptions.source, config.subscriptions.quarantine, config.subscriptions.deadLetter],
+    'config.subscriptions',
+  );
   assertObject(config.sink, 'config.sink');
   assertMatch(config.sink.name, RESOURCE_ID, 'config.sink.name');
   assertMatch(config.sink.metricName, METRIC_ID, 'config.sink.metricName');
@@ -1210,6 +1230,10 @@ function assertNonEmpty(value, label) {
 
 function assertMatch(value, pattern, label) {
   assert(typeof value === 'string' && pattern.test(value), `${label} has an invalid value`);
+}
+
+function assertDistinct(values, label) {
+  assert(new Set(values).size === values.length, `${label} values must be distinct`);
 }
 
 function assertPositiveInteger(value, label) {
