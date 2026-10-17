@@ -18,7 +18,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/alerting/package.json ./apps/alerting/package.json
 COPY libs/shared/package.json ./libs/shared/package.json
 RUN pnpm install --filter @mogak/alerting... --frozen-lockfile --prod
-COPY --from=build /app/apps/alerting/dist ./apps/alerting/dist
+COPY --from=build /app/apps/alerting/dist/src ./apps/alerting/dist/src
 COPY --from=build /app/libs/shared/dist ./libs/shared/dist
 USER node
 CMD ["node", "apps/alerting/dist/src/main.js"]
