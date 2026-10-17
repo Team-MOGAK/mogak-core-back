@@ -14,19 +14,15 @@ export type ErrorDefinition = Readonly<{
   message: string;
 }>;
 
-// Keep the domain registry check at the API boundary without copying the
-// registry. Shared uses numeric HTTP literals so it remains framework-free.
-type ApiErrorRegistry = {
-  readonly [Key in keyof typeof SharedAppErrorCode]: Readonly<{
-    httpStatus: HttpStatus;
-    code: (typeof SharedAppErrorCode)[Key]['code'];
-    message: (typeof SharedAppErrorCode)[Key]['message'];
-  }>;
-};
-
-export const AppErrorCode: ApiErrorRegistry = SharedAppErrorCode satisfies Record<
+export const AppErrorCode = SharedAppErrorCode satisfies Record<
   DomainErrorCode | 'UNSUPPORTED_MEDIA_TYPE',
   ErrorDefinition
 >;
 
-export type AppErrorCode = (typeof AppErrorCode)[keyof typeof AppErrorCode];
+type AppErrorCodeValue = (typeof AppErrorCode)[keyof typeof AppErrorCode];
+
+type ApiErrorDefinition<Value> = Value extends { httpStatus: HttpStatus }
+  ? Omit<Value, 'httpStatus'> & Pick<ErrorDefinition, 'httpStatus'>
+  : never;
+
+export type AppErrorCode = ApiErrorDefinition<AppErrorCodeValue>;
