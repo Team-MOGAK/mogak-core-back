@@ -16,11 +16,11 @@ lock in this path.
 
 The deployment helper is JSON driven and plan first:
 
-~~~sh
+```sh
 node infra/error-log-relay/deploy.mjs \
   --config infra/error-log-relay/config.example.json \
   --plan
-~~~
+```
 
 --plan is also the default. It prints read-only preflight checks and shell-free
 gcloud argv arrays without invoking gcloud. The example values are safe
@@ -32,34 +32,41 @@ apply. Keep that copy out of commits.
 
 infra/error-log-relay/config.example.json is the complete configuration shape.
 
-| Key | Contract |
-| --- | --- |
-| gcp.projectId | Existing project that owns the API and relay resources. |
-| gcp.region | Cloud Run, Artifact Registry, and Pub/Sub operator region. |
-| source.apiService | Existing API Cloud Run service. It must differ from the relay service. |
-| source.environment | development or production; the same value is placed in the sink filter and relay runtime. |
-| source.producer | API log producer identifier. |
-| relay.service | Separate relay Cloud Run service. |
-| relay.image | Immutable Artifact Registry image ending in @sha256:<64 hex digits>. A placeholder is accepted for a plan and rejected by --apply. |
-| relay.serviceAccount | Dedicated runtime identity used only by the relay. |
-| relay.pushServiceAccount | Dedicated Pub/Sub OIDC identity, distinct from the runtime identity. |
-| secret.name / secret.version | Existing Secret Manager secret and an enabled positive numeric version. latest is rejected. |
-| topics.* / subscriptions.* | Explicit source, quarantine, and DLQ IDs. Retained subscriptions never expire. |
-| expectedSubscription | Full source subscription name: projects/<project>/subscriptions/<id>. |
-| quarantineTopic | Full quarantine topic name: projects/<project>/topics/<id>. |
-| sink.name | Existing or newly owned sink identifier. The sink starts disabled. |
-| sink.metricName | Cloud Logging counter ID for source ERROR records with missing or invalid alertEligible. |
+Use separate development and production configuration copies. Each environment
+must have distinct relay services, sinks, topics, subscriptions, and actual
+Discord webhooks stored in separate Secret Manager secrets. Changing only
+source.environment does not isolate resources: shared IDs can reconfigure an
+existing production subscription or sink. Check all resource IDs and the secret
+before applying either environment.
+
+| Key                          | Contract                                                                                                                           |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| gcp.projectId                | Existing project that owns the API and relay resources.                                                                            |
+| gcp.region                   | Cloud Run, Artifact Registry, and Pub/Sub operator region.                                                                         |
+| source.apiService            | Existing API Cloud Run service. It must differ from the relay service.                                                             |
+| source.environment           | development or production; the same value is placed in the sink filter and relay runtime.                                          |
+| source.producer              | Must be mogak-core-api, matching the runtime's trusted API producer.                                                               |
+| relay.service                | Separate relay Cloud Run service.                                                                                                  |
+| relay.image                  | Immutable Artifact Registry image ending in @sha256:<64 hex digits>. A placeholder is accepted for a plan and rejected by --apply. |
+| relay.serviceAccount         | Dedicated runtime identity used only by the relay.                                                                                 |
+| relay.pushServiceAccount     | Dedicated Pub/Sub OIDC identity, distinct from the runtime identity.                                                               |
+| secret.name / secret.version | Existing Secret Manager secret and an enabled positive numeric version. latest is rejected.                                        |
+| topics.* / subscriptions.*   | Explicit source, quarantine, and DLQ IDs. Retained subscriptions never expire.                                                     |
+| expectedSubscription         | Full source subscription name: projects/<project>/subscriptions/<id>.                                                              |
+| quarantineTopic              | Full quarantine topic name: projects/<project>/topics/<id>.                                                                        |
+| sink.name                    | Existing or newly owned sink identifier. The sink starts disabled.                                                                 |
+| sink.metricName              | Cloud Logging counter ID for source ERROR records with missing or invalid alertEligible.                                           |
 
 The relay runtime receives these values from the deployment plan:
 
-| Environment variable | Value |
-| --- | --- |
-| GCP_PROJECT_ID | Configured project ID. |
-| SOURCE_API_SERVICE | Configured source API service. |
-| SOURCE_ENVIRONMENT | Configured development or production value. |
-| EXPECTED_SUBSCRIPTION | Full source subscription name. |
-| QUARANTINE_TOPIC | Full quarantine topic name. |
-| DISCORD_WEBHOOK_URL | Injected by Secret Manager at the selected numeric version. It is never placed in config, logs, or quarantine messages. |
+| Environment variable  | Value                                                                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| GCP_PROJECT_ID        | Configured project ID.                                                                                                  |
+| SOURCE_API_SERVICE    | Configured source API service.                                                                                          |
+| SOURCE_ENVIRONMENT    | Configured development or production value.                                                                             |
+| EXPECTED_SUBSCRIPTION | Full source subscription name.                                                                                          |
+| QUARANTINE_TOPIC      | Full quarantine topic name.                                                                                             |
+| DISCORD_WEBHOOK_URL   | Injected by Secret Manager at the selected numeric version. It is never placed in config, logs, or quarantine messages. |
 
 NODE_ENV is owned by the worker image and remains independent of the source
 log environment. Cloud Run injects the reserved PORT variable; the deploy
@@ -95,7 +102,7 @@ The current inventory target supplied for operator review is project workvoys,
 API service mogak-spring, region asia-northeast3. These are inventory inputs,
 not deployment authorization. Confirm them with read-only commands:
 
-~~~sh
+```sh
 gcloud run services describe mogak-spring \
   --project=workvoys \
   --region=asia-northeast3 \
@@ -104,7 +111,7 @@ gcloud services list \
   --project=workvoys \
   --enabled \
   --format='value(config.name)'
-~~~
+```
 
 Record the output and the owner of each existing resource. Do not infer sink,
 topic, subscription, service account, or secret identifiers from labels or
@@ -121,29 +128,29 @@ named Logging sink and Pub/Sub resources.
 
 Install dependencies and build from the workspace lockfile:
 
-~~~sh
+```sh
 pnpm install --filter @mogak/alerting --frozen-lockfile
 pnpm --filter @mogak/alerting build
-~~~
+```
 
 Build and push through the manual Cloud Build config with an explicit tag:
 
-~~~sh
+```sh
 export IMAGE_TAG="relay-20261015-01"
 gcloud builds submit . \
   --project="<GCP_PROJECT_ID>" \
   --config=cloudbuild.error-log-relay.yaml \
   --substitutions="_AR_REPOSITORY=<AR_REPOSITORY>,_REGION=<REGION>,_IMAGE_NAME=<IMAGE_NAME>,_IMAGE_TAG=<IMAGE_TAG>"
-~~~
+```
 
 Resolve the pushed tag to a digest and place the full digest in relay.image:
 
-~~~sh
+```sh
 gcloud artifacts docker images describe \
   "<REGION>-docker.pkg.dev/<GCP_PROJECT_ID>/<AR_REPOSITORY>/<IMAGE_NAME>:<IMAGE_TAG>" \
   --project="<GCP_PROJECT_ID>" \
   --format='value(image_summary.digest)'
-~~~
+```
 
 Do not deploy a mutable tag. The image is built from the root lockfile and
 workspace by apps/alerting/Dockerfile.
@@ -152,11 +159,11 @@ workspace by apps/alerting/Dockerfile.
 
 Apply the resource plan with the configured sink disabled:
 
-~~~sh
+```sh
 node infra/error-log-relay/deploy.mjs \
   --config infra/error-log-relay/config.production.json \
   --apply
-~~~
+```
 
 The command first runs the closed external-prerequisite preflight, then creates
 or updates only the named service accounts, topics, subscriptions, relay
@@ -182,13 +189,13 @@ production path and verify:
 
 After the staging check is recorded, explicitly activate the configured sink:
 
-~~~sh
+```sh
 node infra/error-log-relay/deploy.mjs \
   --config infra/error-log-relay/config.production.json \
   --apply \
   --activate-sink \
   --staging-verified
-~~~
+```
 
 Without both activation flags the sink remains disabled. The plan output shows
 the requested final sink setting and places the activation command last. An
@@ -199,7 +206,7 @@ retargeting it.
 The metric is a Cloud Logging counter only. It does not create an alert or a
 webhook. Query it and its source records with read-only commands:
 
-~~~sh
+```sh
 gcloud logging metrics describe "<MISSING_ELIGIBILITY_METRIC>" \
   --project="<GCP_PROJECT_ID>" \
   --format='yaml(name,filter,description)'
@@ -207,7 +214,7 @@ gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="mogak-spring" AND logName="projects/workvoys/logs/run.googleapis.com%2Fstdout" AND severity=ERROR AND jsonPayload.environment="production" AND jsonPayload.producer="mogak-core-api" AND NOT jsonPayload.alertEligible=true AND NOT jsonPayload.alertEligible=false' \
   --project="<GCP_PROJECT_ID>" \
   --limit=20
-~~~
+```
 
 ## IAM and owned resources
 
@@ -232,7 +239,7 @@ resolve ownership before applying.
 To stop external delivery quickly, disable the push path and then disable the
 configured sink:
 
-~~~sh
+```sh
 gcloud pubsub subscriptions modify-push-config \
   "<EXPECTED_SUBSCRIPTION>" \
   --project="<GCP_PROJECT_ID>" \
@@ -243,7 +250,7 @@ gcloud logging sinks update "<SINK_NAME>" \
   --project="<GCP_PROJECT_ID>" \
   --disabled \
   --quiet
-~~~
+```
 
 Use Cloud Logging to find the original errorId and inspect backlog and DLQ
 counts. The native Pub/Sub DLQ retains the original source Cloud Logging
@@ -254,14 +261,14 @@ can produce a duplicate Discord message because delivery is at least once.
 
 Useful read-only checks include:
 
-~~~sh
+```sh
 gcloud pubsub subscriptions describe "<EXPECTED_SUBSCRIPTION>" --project="<GCP_PROJECT_ID>"
 gcloud pubsub subscriptions describe "<DLQ_SUBSCRIPTION>" --project="<GCP_PROJECT_ID>"
 gcloud logging read \
   'resource.type="cloud_run_revision" AND resource.labels.service_name="mogak-spring" AND jsonPayload.alertEligible=true' \
   --project="<GCP_PROJECT_ID>" \
   --limit=20
-~~~
+```
 
 Keep the source log and original errorId as the audit record. Relay quarantine
 messages and Discord notifications contain only allowlisted fields. The native

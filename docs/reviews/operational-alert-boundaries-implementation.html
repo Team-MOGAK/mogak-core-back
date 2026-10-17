@@ -26,8 +26,7 @@
         padding: 10px;
       }
       pre,
-      .result,
-      aside {
+      .result {
         background: #eef2f6;
         padding: 16px;
         overflow: auto;
@@ -49,9 +48,8 @@
     <header>
       <h1>운영 알림 기능 경계 구현 기록</h1>
       <p>
-        구현 기록 · Standard · 구현 점검 중 — 변경 요청·설계 재승인 대기 · 생성
-        <time datetime="2026-10-16">2026-10-16</time> · 갱신
-        <time datetime="2026-10-17">2026-10-17</time> · 추적: GitHub #18 / PR #19
+        구현 완료 · 기술 검증 완료 / 개발자 이해 점검 미실시 ·
+        <time datetime="2026-10-17">2026-10-17</time> · GitHub #18 / PR #19
       </p>
       <dl>
         <dt>목적</dt>
@@ -59,11 +57,11 @@
         <dt>사용자</dt>
         <dd>백엔드 개발자·리뷰어·운영자</dd>
         <dt>문제</dt>
-        <dd>입력 wire, 정책, HTTP, SDK, 저장 schema가 error-log-relay에 혼재한다.</dd>
-        <dt>핵심 흐름</dt>
         <dd>
-          원본 로그 검증 → 안전한 알림 투영 → 채널 claim → 전송 → fenced finalize·격리 → ACK 결정
+          error-log-relay에 혼재했던 책임과 기존 정의 복제, 요구하지 않은 공유 상태 저장을 정리한다.
         </dd>
+        <dt>핵심 흐름</dt>
+        <dd>원본 로그 검증 → 안전한 알림 투영 → Discord 전송 → ACK·재시도·격리</dd>
       </dl>
     </header>
     <nav>
@@ -76,259 +74,250 @@
         <section id="baseline-reference">
           <h2>승인 기준</h2>
           <p>
-            <a href="operational-alert-boundaries-design.html">승인 설계</a> — 2026-10-16 사용자
-            명시 지시: alerting 기능 모듈·domain 없음·책임별 커밋·기존 계약 보존. 기존 ERROR 웹훅
-            동작 기준은 유지한다.
+            <a href="operational-alert-boundaries-design.html">현재 설계</a>를 2026-10-17 “ㅇㅇ
+            ㄱㄱ. 개선 ㄱ”로 명시 승인했다. 기존 구조·공식 정의 재사용, domain 없는 alerting 기능
+            모듈, 저장소 없는 전달, 관련 검증과 책임별 커밋이 범위다. DB 변경·실제 배포·리소스
+            삭제·웹훅 발송은 제외한다.
+          </p>
+          <p>
+            <a
+              href="https://github.com/Team-MOGAK/mogak-core-back/blob/efa05a57d7a7ecf602d7de90974f411896e5d2f2/docs/reviews/operational-alert-boundaries-implementation.html"
+              >이전 구현·검증 이력(efa05a5)</a
+            >은 당시 기록으로 보존한다. 아래 결과는 이번 수정의 fresh 증거다.
           </p>
         </section>
         <section id="implementation-status">
           <h2>기술 상태</h2>
           <p>
-            구현 준비 — 2026-10-17 사용자가 “ㅇㅇ ㄱㄱ. 개선 ㄱ”로 현재 축소안을 승인했다.
-            efa05a5를 출발점으로 기존 정의 재사용·입력 계약·저장소 없는 전달·운영 도구를
-            개선한다. 승인 범위에 관련 회귀·정적·빌드 검증과 책임별 커밋을 포함한다.
-            DB 변경·실제 배포·웹훅 호출은 수행하지 않는다. 개발자 이해 점검은 미실시다.
+            <strong>구현 완료.</strong> 테스트 350개와 정적 검사·빌드·runtime 이미지 검증 통과. 독립
+            리뷰에서 발견한 기능 문제 2건과 문서 지침 1건은 해결했다. 추가 조치가 필요한 코드 이슈는
+            없다. 실제 운영 전달은 미검증이며 개발자 이해 점검은 미실시다.
           </p>
         </section>
         <section id="current-implementation">
-          <h2>구현 경계·흐름</h2>
-          <figure>
-            <pre>
-presentation/input.ts → application/contracts.ts → application/delivery.ts
-HTTP handler: deadline·204/503                 ↓ application ports
-                                  Discord / Firestore / PubSub adapters
-main.ts: 설정·SDK·구체 어댑터 조립</pre>
-            <figcaption>
-              안쪽 application은 안전한 DTO·포트만 알고, provider 형식과 저장 schema는
-              infrastructure가 소유한다. domain 계층은 없다.
-            </figcaption>
-          </figure>
-          <table>
-            <caption>
-              책임별 변경
-            </caption>
-            <thead>
-              <tr>
-                <th>경계</th>
-                <th>구현</th>
-                <th>보존 계약</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <th>application</th>
-                <td>contracts.ts, ports.ts, delivery.ts</td>
-                <td>
-                  허용 필드·고정 요약·route 허용 목록, claim/send/finalize 및 기존 reason/event
-                </td>
-              </tr>
-              <tr>
-                <th>presentation</th>
-                <td>handler.ts, input.ts, constants.ts, types.ts</td>
-                <td>
-                  source 신뢰 검증·malformed/filtered·크기/deadline·안전한 조회 링크·405/204/503
-                </td>
-              </tr>
-              <tr>
-                <th>infrastructure</th>
-                <td>Discord HTTP/표현, Firestore record/fence, PubSub quarantine 직렬화</td>
-                <td>
-                  Discord 응답 검증·mentions·timeout·429, Firestore schema/secretVersion/cooldown,
-                  quarantine schema1
-                </td>
-              </tr>
-              <tr>
-                <th>구성·빌드</th>
-                <td>apps/alerting, @mogak/alerting, config/main, Docker/CI/workspace</td>
-                <td>API SDK 격리, legacy 운영 resource/config/script 이름</td>
-              </tr>
-              <tr>
-                <th>기존 테스트</th>
-                <td>test/support 메모리 구현과 import·주입 이관</td>
-                <td>새 case 추가·실행 없음</td>
-              </tr>
-            </tbody>
-          </table>
+          <h2>현재 구현·경계</h2>
+          <pre>
+libs/shared (기존 AppErrorCode·공식 LogEvent)
+       ↓ API producer → JSON log → presentation/input.ts
+       ↓ application/type/alert.type.ts
+       ↓ application/service/alertDelivery.service.ts
+       ↓ application/port/alertDelivery.port.ts
+       ↓ Discord / PubSub adapters → ACK·재시도·격리
+Firestore·PostgreSQL·lease·fence·영속 disabled 없음</pre>
+          <ul>
+            <li>
+              기존 AppErrorCode를 이동해 단일 원본으로 사용한다. API import
+              shim·DomainErrorCode/HttpStatus 제약·T001/Z002 alias와 HTTP 응답을 보존한다. shared는
+              Nest/Google/DB 의존성이 없다.
+            </li>
+            <li>
+              producer는 request.route.path만 routeTemplate으로 발행한다. raw URL·baseUrl
+              합성·endpoint 수동 목록을 제거했다. 기존 route만 있는 로그도 전달하며 경로 표시는
+              생략한다.
+            </li>
+            <li>
+              source
+              project/service/log/subscription/producer/schema/environment/ERROR/50/eligible를
+              검증한다. timestamp는 필수, 비HTTP status는 optional이다. Node METHODS를 사용하고
+              revision을 제거했다.
+            </li>
+            <li>
+              Discord의 유효한 2xx와 message ID 확인 후 ACK한다. 네트워크·timeout·5xx·손상된 성공
+              응답·429는 Pub/Sub 재시도다. 429 대기는 DiscordClient의 숫자 하나로만 기억하며
+              재시작·여러 실행체 사이에 공유되지 않는다.
+            </li>
+            <li>
+              영구 오류는 안전한 사유로 격리한 뒤 ACK한다. 격리 실패는 재시도다. 401/403/404는
+              event/status/errorId만 error 로그로 남기며 영속 차단을 만들지 않는다.
+            </li>
+            <li>
+              공통 정의 선행 빌드·workspace·Docker·개발 watch를 연결했다. 기존 architecture
+              scanner를 확장했고 별도 ESLint 경계 체계는 제거했다. 운영 리소스 식별자는 자동
+              재생성하지 않는다.
+            </li>
+          </ul>
         </section>
         <section id="issue-register">
           <h2>이슈 기록</h2>
+          <p>
+            담당·조치 소유자는 root. 현재 열린 코드 이슈 없음. 실제 환경 검증과 중복 가능성은 아래
+            운영 제한으로 남는다.
+          </p>
           <table>
             <caption>
-              2026-10-17 사용자 리뷰 후 열린 원인별 항목
+              관찰 원인·조치·증거
             </caption>
             <thead>
               <tr>
                 <th>ID·상태</th>
-                <th>증거·영향</th>
-                <th>수정·다음 행동</th>
+                <th>증상과 영향</th>
+                <th>조치·검증</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <th>R1 · open</th>
-                <td>
-                  contracts/input/quarantine의 Z006|Z500·이벤트·요약 map이 AppErrorCode와 중복
-                </td>
-                <td>
-                  공식 registry를 shared로 이동, API 경로 보존. 기존 승인 범위이며 저장소 변경을
-                  포함한 현재 안 승인 후 구현.
-                </td>
+                <th>R1 해결됨</th>
+                <td>AppErrorCode·이벤트·요약 복제</td>
+                <td>기존 정의를 shared로 이동. API/shared 테스트와 실제 CJS/ESM import 통과.</td>
               </tr>
               <tr>
-                <th>R2 · open</th>
-                <td>source production literal이 여러 계층과deploy에 고정</td>
+                <th>R2 해결됨</th>
+                <td>production 고정·source 설정 불일치</td>
                 <td>
-                  감시 대상 환경 주입과 sink/consumer/표시 일치. ㄱㄱ로 승인한 기존 수정 범위.
+                  SOURCE_ENVIRONMENT 필수 주입, sink/입력/표시 일치. 고정 trusted producer와 다른
+                  설정 거부.
                 </td>
               </tr>
               <tr>
-                <th>R3 · open</th>
-                <td>수동 route catalog stale 위험, source baseUrl 보간</td>
-                <td>router template 단일 원본·routeTemplate 계약. legacy route 표시는 생략.</td>
-              </tr>
-              <tr>
-                <th>R4 · open</th>
-                <td>URL validator/cooldown 정책 중복, SDK Like+이중 cast, alias/wrapper</td>
-                <td>기존 policy/service/port 관례와 SDK 타입 재사용. 실제 반복 검증은 유지.</td>
-              </tr>
-              <tr>
-                <th>R5 · open</th>
-                <td>불필요한 revision, 정상 timestamp까지 optional, 중복 DTO</td>
-                <td>필드 목적에 맞게 정리. 비HTTP status optional은 유지.</td>
-              </tr>
-              <tr>
-                <th>R6 · open</th>
-                <td>새 package는 기존 CJS/ESM·Docker·검사 경계에 영향</td>
+                <th>R3 해결됨</th>
+                <td>수동 route 목록·baseUrl 동적 값 혼입</td>
                 <td>
-                  검증 계획과 빌드 graph를 함께 승인·구현. 과거 통과를 현재 수정 결과로 주장하지
-                  않음.
+                  router template 단일 원본. legacy route·원문 개인정보 비노출 회귀 검사 통과.
                 </td>
               </tr>
               <tr>
-                <th>R7 · open / 축소안 승인 대기</th>
+                <th>R4 해결됨</th>
+                <td>URL validator·정책·SDK Like·타입 중복</td>
                 <td>
-                  Firestore는 요구하지 않은 신규 도입이었다. 사용자가 공유 상태 보장은 아직 필요
-                  없다고 지적하여 PostgreSQL 대체안도 철회했다.
+                  discord.policy의 URL 검증만 재사용. 기존 service/port/type 배치, 파생 DTO·공식 SDK
+                  타입 적용.
                 </td>
+              </tr>
+              <tr>
+                <th>R5 해결됨</th>
+                <td>불필요한 revision·optional timestamp</td>
                 <td>
-                  Firestore 상태/SDK/설정/IAM/운영 도구 제거, DB 추가 없음. 직접 전송·프로세스별 429
-                  대기·Pub/Sub 재시도·영구 오류 격리로 축소. 현재는 설계만 반영했으며 코드는 아직
-                  Firestore를 사용한다.
+                  revision 제거, timestamp 필수 검증·손상 시 격리, 비HTTP status optional 유지.
+                </td>
+              </tr>
+              <tr>
+                <th>R6 해결됨</th>
+                <td>CJS/ESM·빌드·이미지·검사 경계</td>
+                <td>선행 빌드·watch·기존 검사 연결. 실제 runtime 이미지와 재빌드 확인 통과.</td>
+              </tr>
+              <tr>
+                <th>R7 해결됨</th>
+                <td>요청하지 않은 Firestore 신규 도입</td>
+                <td>
+                  SDK/상태/설정/API/IAM/channel 도구 제거. PG 대체안도 철회. 런타임에 Firestore 없음
+                  확인.
+                </td>
+              </tr>
+              <tr>
+                <th>R8 해결됨</th>
+                <td>Docker TS5083: shared가 상속하는 루트 tsconfig 누락</td>
+                <td>build stage COPY 추가. 재빌드·네트워크 차단 runtime 검사 통과.</td>
+              </tr>
+              <tr>
+                <th>R9 해결됨</th>
+                <td>401/403/404 격리 ACK 시 error 관측 누락</td>
+                <td>
+                  안전한 event/status/errorId 로그 추가. 세 상태와 일반 400을 구분하는 회귀 검사
+                  통과.
+                </td>
+              </tr>
+              <tr>
+                <th>R10 해결됨</th>
+                <td>개발/운영 리소스 분리 지침 누락</td>
+                <td>
+                  runbook에 별도 relay/sink/topic/subscription/실제 webhook secret 명시. 교차-config
+                  자동 검사 없음.
                 </td>
               </tr>
             </tbody>
           </table>
-          <p>사용자 리뷰 후 열린 구조 개선 항목 R1–R7. 아래 이전 이관 중 해결 기록도 보존한다.</p>
-          <ul>
-            <li>
-              해결됨 — 초기 application 추출에서 quarantine receivedAt에 injected clock을 적용할
-              여지가 있었음. 기존 Date.now() 기본값으로 복원해 테스트 seam과 시간 계약을 보존했다.
-              담당: 구현자, 증거: application/delivery.ts createQuarantineRecord 정적 비교.
-            </li>
-            <li>
-              해결됨 — 설계 HTML이 이전 미승인 domain 제안으로 되돌아온 현상. 원인은 확인되지
-              않았다. /tmp/alerting-unexpected-domain-design.html에 보존한 뒤 승인 커밋0168492
-              기준을 복구했다. 구현 소스 영향 없음. 담당: root, 증거: design git diff 없음.
-            </li>
-          </ul>
         </section>
         <section id="verification-evidence">
-          <h2>Fresh 검증 증거</h2>
+          <h2>Fresh 기술 검증</h2>
           <ul>
-            <li>pnpm format:check — 통과</li>
-            <li>pnpm lint — 통과</li>
-            <li>pnpm typecheck 및 pnpm build — 통과</li>
-            <li>pnpm --filter @mogak/alerting typecheck 및 build — 통과</li>
-            <li>API runtime Docker 빌드 mogak-api:alerting-refactor — 통과</li>
-            <li>alerting runtime Docker 빌드 mogak-alerting:refactor — 통과</li>
-            <li>git diff --check — 통과</li>
-            <li>리뷰 전후 tracked/untracked 414개 파일 SHA256 snapshot 동일; no-write 확인</li>
             <li>
-              API/core/modules 코드 변경 없음. 기존 테스트 선언 11+7=18개 유지; 실행하지 않음.
+              pnpm format:check / pnpm lint / API typecheck·build / alerting typecheck·build — 통과
+            </li>
+            <li>Jest 62 suites / 319 tests + alerting 13 + ops 14 + scripts 4 = 350 — 모두 통과</li>
+            <li>
+              Node ESM의 CJS shared import와 기존 Nest build watcher의 shared artifact 변경 후
+              재빌드 — 통과
             </li>
             <li>
-              운영 config/deploy 파일 보존. 변경은 Cloud Build Dockerfile source path와 channel
-              도구의 package loader source path뿐.
+              API runtime Docker mogak-core-api:pr19-review — 빌드 및 shared 사용 가능·Google SDK
+              부재 확인 통과
+            </li>
+            <li>
+              alerting runtime Docker mogak-alerting:pr19-review — 빌드 및 ESM/shared/config/PubSub
+              사용 가능·Firestore 부재 확인 통과
+            </li>
+            <li>
+              두 이미지 runtime 확인은 --network none으로 실행했으며 API 서버·DB·Discord 요청을
+              실행하지 않았다.
+            </li>
+            <li>
+              중간 root 수정 3개 파일(Docker/서비스/테스트)을 구분한 후 독립 리뷰 전후 소스 SHA256
+              ba64dc2af413cd448ee6a02df93b9f5a710b3b0122c8fc13832260de408658e5 일치. 리뷰어는 파일을
+              수정하지 않았다.
             </li>
           </ul>
         </section>
         <section id="verification-gaps">
-          <h2>검증 공백</h2>
+          <h2>검증 공백·운영 제한</h2>
           <p>
-            이번 리팩터링 후 테스트는 실행하지 않았다. 변경 전 9c44c49의
-            API316+relay18+infra24+scripts3=361 tests 통과는 과거 증거이며 현재 회귀 결과로 주장하지
-            않는다. 실제 GCP IAM·PubSub push·Firestore·Discord 수신과 staging 검증은 수행하지
-            않았다.
+            실제 GCP IAM·인증 push·Discord 수신·staging 전달은 검증하지 않았다. DB 동작 변경이 없어
+            DB 통합 검사는 실행하지 않았다. 로컬 검사·이미지 import 확인은 운영 전달 성공을 보증하지
+            않는다.
           </p>
-        </section>
-        <section id="residual-risks">
-          <h2>남은 운영 제한</h2>
           <p>
-            Discord 성공과 PubSub ACK 사이 중복 가능성, private native DLQ 원본 보존, 운영 staging
-            미검증은 기존 제한이다. source/package 경로 변경으로 리소스를 재생성하지 않는다.
+            Discord 성공과 Pub/Sub ACK는 원자적이지 않으므로 중복 가능성이 있다. 429 대기는 재시작
+            시 사라지고 실행체 사이에 공유되지 않는다. native private DLQ에는 원본 로그가 남을 수
+            있다. 실제 배포 전에 기존 리소스와 개발/운영 분리를 확인해야 한다.
           </p>
         </section>
         <section id="design-delta">
           <h2>설계와 차이</h2>
           <p>
-            없음. quarantine source metadata/schema는 infrastructure에서 조립하고 application은
-            안전한 격리 항목만 전달한다. 일반 source reference는 검증된 입력에서 구성한다. 기존
-            producer·로그 event·외부 설정 식별자는 호환성을 위해 유지한다.
+            승인된 현재 축소안과 차이 없음. Firestore 도입·PostgreSQL 대체안은 철회했다. payload의
+            임의 메시지를 공식 요약으로 신뢰하지 않으며 실제 운영 리소스는 변경하지 않았다.
           </p>
         </section>
         <section id="review">
-          <h2>2026-10-17 사용자 리뷰 — 변경 요청</h2>
+          <h2>리뷰 결과</h2>
           <p>
-            자기 변경 리뷰 · Team-MOGAK/mogak-core-back · codex/error-log-discord-webhook · 구현
-            기준 efa05a5 · review5556787873. 리뷰21개를 확인하고 전부 개별 답변했다. 답변은 현재
-            사실·필드 목적과 미구현 수정 계획을 구분했다.
-          </p>
-          <p>
-            판단: 구조 개선 항목 있음. 기존 코드의 공식 정의·관례 재사용이 충분하지 않았다. 예전
-            독립 리뷰의 concrete finding 없음 판정은 9c44c49..fb4a1f5 동작 보존 검토 결과이며 이번
-            요청의 구조 적절성을 해결한 증거가 아니다.
-          </p>
-          <p>
-            새 구현과 회귀 검증은 아직 하지 않았다. 현재 as-built 기술 증거는 efa05a5 이전 기록이며,
-            앞선 리뷰 수정안 승인(ㄱㄱ)은 보존하며 저장소 없는 전달 축소안은 승인 대기다.
-            저장소·실제 배포 상태는 변경하지 않았다.
+            사용자 리뷰 21개에 개별 답변하고 같은 원인을 producer/consumer/운영/빌드/검사 전체에
+            적용했다. 독립 no-write 리뷰는 입력·전송·429·격리·ACK/재시도·공유 메타데이터·배포·Docker
+            사용 경로를 확인했다. 기능 문제 2건은 수정 diff와 회귀 증거까지 재검토했으며 추가 기능
+            결함을 발견하지 못했다. runbook 문서 지침도 반영했다.
           </p>
         </section>
         <section id="commits">
           <h2>책임별 커밋</h2>
           <ol>
-            <li><code>0168492 docs: approve alerting feature module boundaries</code></li>
-            <li><code>923ee2e refactor(alerting): extract application delivery boundary</code></li>
-            <li><code>9b5e3e2 refactor(alerting): separate input and provider adapters</code></li>
-            <li><code>116ca53 refactor(alerting): rename private application boundary</code></li>
-            <li>
-              <code>fb4a1f5 docs: explain alerting feature and legacy operational names</code>
-            </li>
+            <li>009300c — 현재 저장소 없는 설계 승인 기록</li>
+            <li>02b91d4 — 공통 정의·API producer·빌드/검사 연결</li>
+            <li>f7872ef — 저장소 없는 전달·입력·관련 회귀 검사</li>
+            <li>10df327 — 상태 인프라·운영 명령 제거</li>
+            <li>9d81e90 — Docker compiler 설정 보완</li>
+            <li>e809353 — webhook 인증 오류의 안전한 error 로그</li>
           </ol>
-          <p>검증·리뷰 결과 문서는 별도 후속 커밋으로 기록한다. 기존 기능 7개 커밋은 보존한다.</p>
+          <p>이전 커밋은 보존한다. 현재 문서·운영 지침·검증 기록은 별도 후속 커밋으로 남긴다.</p>
         </section>
         <section id="implementation-control-state">
           <h2>구현 이해 점검</h2>
           <p>
-            개발자 이해 상태: 미실시. 기술 구현·검증 상태와 별도다. 비차단 자기점검이며 로컬 결과는
-            Codex에 자동 전달되지 않는다.
+            미실시 · 비차단. 아래 로컬 결과는 Codex에 자동 전달되지 않는다. 기술 완료·검증과 개발자
+            이해 상태는 별도다.
           </p>
           <p>
-            검토 범위: 기능·의존(I1), 상태·복구(I2), 입력·개인정보(I3), 격리 실패(I4),
-            중복·경쟁(I5), 운영·검증 제한(I6).
+            커버리지: 정의/소유(I1), 상태/복구(I2), 입력/개인정보(I3), 격리 실패(I4), 중복(I5),
+            운영/검증 한계(I6). 각 문항이 해당 중요 축을 다루며 금전·파괴적 데이터 변경은 범위
+            밖이다.
           </p>
           <output id="progress" aria-live="polite">질문 1 / 6 · 제출 0 / 6</output>
           <section class="question">
             <fieldset>
-              <legend>
-                I1 · 기능·의존 — 새 전달 정책을 추가할 때 어떤 경계를 먼저 확인하는가?
-              </legend>
+              <legend>I1 · 공개 에러·전달 정책을 바꿀 때 먼저 확인할 경계는?</legend>
               <label
-                ><input type="radio" name="i0" value="0" />application/delivery.ts와 application
-                소유 포트</label
+                ><input type="radio" name="i0" value="0" />libs/shared 공식 정의와
+                application/service·port</label
               ><label
-                ><input type="radio" name="i0" value="1" />Firestore 저장 record에 Discord payload를
-                추가한다</label
+                ><input type="radio" name="i0" value="1" />입력 message를 새 공식 정의로 복사</label
               ><button type="button" data-question="0">제출</button>
             </fieldset>
             <div class="result" hidden>
@@ -339,12 +328,9 @@ main.ts: 설정·SDK·구체 어댑터 조립</pre>
           </section>
           <section class="question">
             <fieldset>
-              <legend>I2 · 상태·복구 — 채널이 cooldown 또는 busy이면 sender가 호출되는가?</legend>
-              <label
-                ><input type="radio" name="i1" value="0" />아니오. 전송 없이503으로
-                재시도한다</label
-              ><label
-                ><input type="radio" name="i1" value="1" />예. 현재 요청은 예외로 전송한다</label
+              <legend>I2 · 같은 프로세스의 429 대기가 남으면 HTTP를 호출하는가?</legend>
+              <label><input type="radio" name="i1" value="0" />호출 없이 503으로 재시도한다</label
+              ><label><input type="radio" name="i1" value="1" />매번 즉시 전송한다</label
               ><button type="button" data-question="1">제출</button>
             </fieldset>
             <div class="result" hidden>
@@ -356,12 +342,12 @@ main.ts: 설정·SDK·구체 어댑터 조립</pre>
           <section class="question">
             <fieldset>
               <legend>
-                I3 · 개인정보·입력 — 원본 message·stack·SQL을 Discord 진단에 추가해도 되는가?
+                I3 · ERROR라면 message·stack·SQL·실제 URL을 Discord에 추가해도 되는가?
               </legend>
-              <label><input type="radio" name="i2" value="0" />예. error 레벨이면 가능하다</label
+              <label><input type="radio" name="i2" value="0" />가능하다</label
               ><label
-                ><input type="radio" name="i2" value="1" />아니오. 안전한 계약·고정 요약·허용
-                route와 조회 링크를 사용한다</label
+                ><input type="radio" name="i2" value="1" />검증된 안전한 필드·고정
+                요약·template·조회 링크만 사용한다</label
               ><button type="button" data-question="2">제출</button>
             </fieldset>
             <div class="result" hidden>
@@ -372,11 +358,9 @@ main.ts: 설정·SDK·구체 어댑터 조립</pre>
           </section>
           <section class="question">
             <fieldset>
-              <legend>
-                I4 · 격리·실패 — 잘못된 envelope의 격리 발행에 실패하면 어떤 결과인가?
-              </legend>
+              <legend>I4 · 격리 publish가 실패하면?</legend>
               <label><input type="radio" name="i3" value="0" />204 ACK</label
-              ><label><input type="radio" name="i3" value="1" />503 non-ACK</label
+              ><label><input type="radio" name="i3" value="1" />503 재시도</label
               ><button type="button" data-question="3">제출</button>
             </fieldset>
             <div class="result" hidden>
@@ -387,13 +371,11 @@ main.ts: 설정·SDK·구체 어댑터 조립</pre>
           </section>
           <section class="question">
             <fieldset>
-              <legend>
-                I5 · 중복·경쟁 — Discord 성공 후 lease finalize가 stale이면 어떻게 되는가?
-              </legend>
+              <legend>I5 · Discord는 받았지만 응답이 유실되면?</legend>
               <label
-                ><input type="radio" name="i4" value="0" />503 재시도이며 같은 오류가 중복될 수
+                ><input type="radio" name="i4" value="0" />응답을 확인하지 못해 재시도하며 중복될 수
                 있다</label
-              ><label><input type="radio" name="i4" value="1" />전송했으니 무조건204 ACK</label
+              ><label><input type="radio" name="i4" value="1" />DB가 중복을 확실히 제거한다</label
               ><button type="button" data-question="4">제출</button>
             </fieldset>
             <div class="result" hidden>
@@ -404,15 +386,11 @@ main.ts: 설정·SDK·구체 어댑터 조립</pre>
           </section>
           <section class="question">
             <fieldset>
-              <legend>
-                I6 · 운영·검증 — 새 앱 경로와 빌드가 정상일 때 바로 production sink를 켜도 되는가?
-              </legend>
-              <label
-                ><input type="radio" name="i5" value="0" />예. 앱 이름 변경이 새 리소스 생성을
-                보장한다</label
+              <legend>I6 · source.environment만 바꾸면 개발/운영이 분리되는가?</legend>
+              <label><input type="radio" name="i5" value="0" />자동 분리된다</label
               ><label
-                ><input type="radio" name="i5" value="1" />아니오. 기존 리소스를 유지하고 실제
-                IAM·staging·Discord 전달을 별도 확인한다</label
+                ><input type="radio" name="i5" value="1" />리소스 ID·실제 webhook secret도 분리하고
+                staging 권한·수신을 확인한다</label
               ><button type="button" data-question="5">제출</button>
             </fieldset>
             <div class="result" hidden>
@@ -429,27 +407,27 @@ main.ts: 설정·SDK·구체 어댑터 조립</pre>
       const questions = [
         {
           answer: 0,
-          why: '전달 순서와 안전한 알림 정책은 application이 소유한다. wire·SDK는 어댑터에 남긴다.',
+          why: '기존 공개 정의는 shared가 단일 소유하며 전달 순서는 application/service와 port가 소유한다.',
         },
         {
           answer: 0,
-          why: 'claim 결과가 전송 허가를 주지 않으면 fail closed하며 Pub/Sub에 ACK하지 않는다.',
+          why: 'DiscordClient의 nextAllowedAt이 남으면 fetch 없이 재시도한다. 재시작 시 초기화되고 다른 실행체와 공유되지 않는다.',
         },
         {
           answer: 1,
-          why: 'presentation/input.ts가 출처를 검증하고 application/contracts.ts가 안전한 요약을 구성한다. 원본 로그 전체를 adapter로 넘기지 않는다.',
+          why: 'source·producer·환경을 검증하고 공식 고정 정의만 사용한다. 원문·webhook 비밀은 출력하지 않는다.',
         },
         {
           answer: 1,
-          why: '격리 발행 성공 뒤에만 잘못된 입력을 처리 완료로 ACK한다. PubSub 직렬화는 infrastructure/quarantine.ts가 소유한다.',
+          why: '격리 publish 성공 후에만 ACK한다. 실패는 Pub/Sub 재시도이며 원문을 fallback으로 기록하지 않는다.',
         },
         {
           answer: 0,
-          why: '성공과 ACK는 원자적이지 않다. 기존 fenced finalize와 at-least-once 의미를 유지한다.',
+          why: 'Discord 성공과 ACK는 원자적이지 않다. 공유 저장소·lease·중복 제거 보장은 현재 범위에 없다.',
         },
         {
           answer: 1,
-          why: '소스 경로 변경은 운영 상태 이전이 아니다. 이번 정적·빌드 검증과 변경 전 테스트 증거를 구분한다.',
+          why: '별도 relay·sink·topic·subscription·webhook secret이 필요하다. 로컬 통과는 실제 운영 전달 증거가 아니다.',
         },
       ];
       const slides = [...document.querySelectorAll('.question')],
@@ -463,30 +441,35 @@ main.ts: 설정·SDK·구체 어댑터 조립</pre>
         document.querySelector('#next').disabled = index === slides.length - 1;
       }
       document.querySelector('#prev').onclick = () => {
-        index--;
+        if (index > 0) index--;
         show();
       };
       document.querySelector('#next').onclick = () => {
-        index++;
+        if (index < slides.length - 1) index++;
         show();
       };
       document.querySelectorAll('[data-question]').forEach(
-        (b) =>
-          (b.onclick = () => {
-            const i = Number(b.dataset.question),
-              s = slides[i],
-              input = s.querySelector('input:checked'),
-              r = s.querySelector('.result');
-            r.hidden = false;
-            const ok = input && Number(input.value) === questions[i].answer;
-            r.querySelector('.status').textContent = input ? (ok ? '확립' : '보류') : '미실시';
-            r.querySelector('.explanation').textContent = input
-              ? questions[i].why
-              : '답을 선택하세요.';
-            r.querySelector('.next-action').textContent = ok
-              ? '다음 행동: 다음 항목 확인'
-              : '다음 행동: 관련 코드·실패 경로 확인';
-            if (input) answered.add(i);
+        (button) =>
+          (button.onclick = () => {
+            const i = Number(button.dataset.question),
+              slide = slides[i],
+              choice = slide.querySelector('input:checked'),
+              card = slide.querySelector('.result');
+            card.hidden = false;
+            if (!choice) {
+              card.querySelector('.status').textContent = '미실시';
+              card.querySelector('.explanation').textContent = '답을 선택하지 않았다.';
+              card.querySelector('.next-action').textContent =
+                '선택 후 제출할 수 있다. 구현 승인을 대신하지 않는다.';
+              return;
+            }
+            answered.add(i);
+            const correct = Number(choice.value) === questions[i].answer;
+            card.querySelector('.status').textContent = correct ? '확립' : '보류';
+            card.querySelector('.explanation').textContent = questions[i].why;
+            card.querySelector('.next-action').textContent = correct
+              ? '다음 운영 경계를 확인한다.'
+              : '해당 구현·검증 기록을 확인한다. 설계가 모호하면 별도로 논의한다.';
             show();
           }),
       );

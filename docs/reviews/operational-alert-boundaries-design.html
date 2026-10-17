@@ -56,7 +56,7 @@
     <header>
       <h1>운영 알림 기능의 책임·의존 경계 — PR 리뷰 반영안</h1>
       <p>
-        설계 기준 · High-risk(개인정보 투영·입력 계약·외부 오류 전달) · 재승인 필요 · 생성
+        설계 기준 · High-risk(개인정보 투영·입력 계약·외부 오류 전달) · 승인됨 · 생성
         <time datetime="2026-10-16">2026-10-16</time> · 갱신
         <time datetime="2026-10-17">2026-10-17</time>
       </p>
@@ -99,7 +99,7 @@
             현재 명시 승인된 경계는 alerting 기능 모듈 / domain 계층 없음이다. 2026-10-16 승인안의
             shared 추출 제외·production 고정·수동 route 목록은 리뷰 수정안에서 달라졌고 사용자가
             ㄱㄱ로 승인했다. 이후 PostgreSQL 대체안을 검토했으나 사용자가 공유 상태 보장은 아직 필요
-            없다고 명확히 했다. 현재는 저장소 없는 전달 축소안의 구현 승인 대기다.
+            없다고 명확히 했다. 저장소 없는 전달 축소안은 2026-10-17 명시 승인됐다.
             <a
               href="https://github.com/Team-MOGAK/mogak-core-back/blob/01684924d25cbeea4853cb3df6848406a1ee7a15/docs/reviews/operational-alert-boundaries-design.html"
               >이전 승인 기준</a
@@ -395,7 +395,7 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
           <h2>설계 의사결정 기록</h2>
           <p>
             진행 상태: 완료. 앞선 리뷰 수정안의 ㄱㄱ 승인은 보존한다. 사용자가 공유 상태 보장은 아직
-            필요 없다고 결정하여 Firestore/PG 상태 저장을 제외했다. 현재 축소안은 구현 승인 대기다.
+            필요 없다고 결정하여 Firestore/PG 상태 저장을 제외했다. 현재 축소안은 명시 승인됐다.
             리뷰21개 조사·답변 완료는 구현 승인을 대신하지 않는다.
           </p>
           <dl>
@@ -421,9 +421,7 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
               제거한다. 획일적으로 inline하거나 공용 util로 승격하지 않는다.
             </dd>
             <dt>현 frontier</dt>
-            <dd>
-              기술적 비교안을 위와 같이 권고로 확정했다. 남은 결정은 이 수정 범위의 구현 승인이다.
-            </dd>
+            <dd>미해결 설계 결정 없음. 사용자는 현재 축소안의 구현과 관련 검증을 명시 승인했다.</dd>
           </dl>
         </section>
         <section id="verification-plan">
@@ -451,8 +449,8 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
             producer/metadata/route privacy·환경·timestamp·ACK/격리·프로세스별 429 검사, 기존
             architecture 검사의 positive/negative 경계 사례. Firestore SDK/설정/API/IAM/channel
             명령이 배포 plan에서 제거되는지 검증한다. 429 대기 만료·재시작 후 초기화·영구 오류
-            격리·민감정보 비노출을 검사한다. DB 테스트나 schema 변경은 없다. 현재 단계에서는 구현
-            코드·테스트를 추가하거나 실행하지 않았다.
+            격리·민감정보 비노출을 검사한다. DB 테스트나 schema 변경은 없다. 이 절은 승인 시 검증
+            계획이며 실제 결과는 연결된 구현 기록에서 별도로 관리한다.
           </p>
         </section>
         <section id="sources">
@@ -634,12 +632,12 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
         <section id="approval-state">
           <h2>구현 승인</h2>
           <p>
-            <strong>설계 승인됨 — 2026-10-17.</strong> 사용자가 구현 승인 질문에
-            “ㅇㅇ ㄱㄱ. 개선 ㄱ”로 답했다. 앞선 리뷰 수정과 공유 상태·Firestore·PostgreSQL을
-            제외한 현재 전달·실패 처리 축소안 및 관련 검증을 승인 범위로 기록한다.
+            <strong>설계 승인됨 — 2026-10-17.</strong> 사용자가 구현 승인 질문에 “ㅇㅇ ㄱㄱ. 개선
+            ㄱ”로 답했다. 앞선 리뷰 수정과 공유 상태·Firestore·PostgreSQL을 제외한 현재 전달·실패
+            처리 축소안 및 관련 검증을 승인 범위로 기록한다.
           </p>
           <p>
-            승인 요청 범위: 앞서 승인한 공통 정의·기존 구조 재사용 개선 + 저장소 없는 직접
+            승인된 범위: 앞서 승인한 공통 정의·기존 구조 재사용 개선 + 저장소 없는 직접
             전달·실패/429 재시도·영구 오류 격리 + Firestore 의존/운영 도구 제거 + 관련
             회귀·정적·빌드 검증. 책임별 커밋. DB schema 변경/실제 배포/리소스 삭제/웹훅 발송 없음.
           </p>
