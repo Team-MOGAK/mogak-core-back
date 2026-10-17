@@ -6,10 +6,6 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['*.cjs'],
-    languageOptions: { sourceType: 'commonjs' },
-  },
-  {
     files: ['apps/**/src/**/*.ts', 'apps/alerting/test/**/*.ts', 'test/**/*.ts'],
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',

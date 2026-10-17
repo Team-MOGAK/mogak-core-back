@@ -124,7 +124,7 @@ pnpm test:alerting
 pnpm test:alerting:ops
 ```
 
-로그의 공개 에러·이벤트 정의는 기존 `libs` 아래의 `@mogak/shared`를 API와 alerting이 함께 사용합니다. 빌드·타입 검사·테스트 명령은 shared를 먼저 빌드하며, `pnpm start:dev`는 shared와 API 변경을 함께 감시합니다.
+로그의 공개 에러·이벤트 정의는 기존 `libs` 아래의 `@mogak/shared`를 API와 alerting이 함께 사용합니다. API는 `@mogak/shared` source alias와 Nest 빌드/watch로 shared 소스를 직접 사용하고, alerting은 ESM 실행체라 빌드·타입 검사·테스트 명령에서 shared CJS 패키지를 먼저 빌드합니다. `pnpm start:dev`는 shared와 API 변경을 함께 감시합니다.
 
 알림 전달용 DB는 사용하지 않습니다. 429 대기 시간만 프로세스 메모리에 보관하므로 재시작 시 사라지고 실행체 사이에 공유되지 않습니다. 실패는 Pub/Sub 재시도를 사용하며 중복 전달은 발생할 수 있습니다.
 
