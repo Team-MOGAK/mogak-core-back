@@ -217,6 +217,39 @@ test('quarantines permanent Discord rejection and retries when quarantine fails'
   );
 });
 
+test('webhook rejection emits only safe error metadata before quarantine ACK', async () => {
+  for (const status of [401, 403, 404, 400]) {
+    const discord = new FakeDiscord();
+    const logs: Record<string, unknown>[] = [];
+    const quarantine = new MemoryQuarantinePublisher();
+    discord.result = {
+      kind: 'permanent_failure',
+      status,
+      reason: status === 400 ? 'discord_payload_rejected' : 'discord_webhook_rejected',
+    };
+    const result = await processPushBody(
+      envelope(),
+      dependencies(discord, quarantine, 1_000, { error: (object) => logs.push(object) }),
+    );
+    assert.equal(result.statusCode, 204);
+    assert.equal(quarantine.records.length, 1);
+    assert.deepEqual(
+      logs,
+      status === 400
+        ? []
+        : [
+            {
+              event: 'discord_webhook_rejected',
+              status,
+              errorId: discord.calls[0]?.errorId,
+            },
+          ],
+    );
+    assert.equal(JSON.stringify(logs).includes('SENSITIVE'), false);
+    assert.equal(JSON.stringify(logs).includes(CONFIG.discordWebhookUrl), false);
+  }
+});
+
 test('accepts development source environment independently of NODE_ENV', async () => {
   const config = { ...CONFIG, sourceEnvironment: 'development' as const };
   const discord = new FakeDiscord();

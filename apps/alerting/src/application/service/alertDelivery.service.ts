@@ -1,5 +1,5 @@
 import { summarizeAlert, type Alert } from '../type/alert.type.js';
-import { SENDER_RESULT_KIND } from '../port/alertDelivery.port.js';
+import { PERMANENT_FAILURE_REASON, SENDER_RESULT_KIND } from '../port/alertDelivery.port.js';
 import type {
   AlertLogger,
   AlertSender,
@@ -52,6 +52,16 @@ export class DeliveryService implements DeliveryUseCase {
       case SENDER_RESULT_KIND.TRANSIENT_FAILURE:
         return transient(`discord_${result.reason}`);
       case SENDER_RESULT_KIND.PERMANENT_FAILURE:
+        if (result.reason === PERMANENT_FAILURE_REASON.WEBHOOK_REJECTED) {
+          this.logger?.error?.(
+            {
+              event: PERMANENT_FAILURE_REASON.WEBHOOK_REJECTED,
+              status: result.status,
+              errorId: alert.errorId,
+            },
+            'Discord webhook rejected',
+          );
+        }
         return this.quarantinePermanentFailure(result.reason, alert);
     }
   }
