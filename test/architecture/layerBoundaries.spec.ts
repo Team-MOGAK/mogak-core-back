@@ -1,5 +1,5 @@
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import ts from 'typescript';
 
@@ -34,7 +34,9 @@ const sourceAliases = {
 
 describe('layer boundaries', () => {
   it('keeps source imports and request contracts within the agreed architecture', () => {
-    const violations = sourceRoots.flatMap(collectLayerBoundaryViolations);
+    const violations = sourceRoots.flatMap((sourceRoot) =>
+      collectLayerBoundaryViolations(sourceRoot, process.cwd()),
+    );
 
     expect(formatViolations(violations)).toEqual([]);
   });
@@ -51,10 +53,10 @@ describe('layer boundaries', () => {
   it('checks shared purity and alerting boundaries using the existing module scanner', () => {
     const root = mkdtempSync(resolve(tmpdir(), 'mogak-alerting-boundaries-'));
     try {
-      writeFixture(root, 'shared/src/index.ts', `import type { Pool } from 'pg';`);
+      writeFixture(root, 'libs/shared/src/index.ts', `import type { Pool } from 'pg';`);
       writeFixture(
         root,
-        'alerting/application/service/nested/bad.ts',
+        'apps/alerting/src/application/service/nested/bad.ts',
         `
         import type { PubSub } from '@google-cloud/pubsub';
         type Input = import('../../../presentation/input.js').Input;
@@ -65,7 +67,7 @@ describe('layer boundaries', () => {
       );
       writeFixture(
         root,
-        'alerting/application/service/good.ts',
+        'apps/alerting/src/application/service/good.ts',
         `
         import metadata from '@mogak/shared';
         import type { Sender } from '../port/sender.port.js';
@@ -90,6 +92,33 @@ describe('layer boundaries', () => {
       expect(violations.some((violation) => violation.includes('good.ts'))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each(['shared', 'alerting'])('ignores checkout parent directory named %s', (parentName) => {
+    const temporaryRoot = mkdtempSync(resolve(tmpdir(), 'mogak-boundary-location-'));
+    const projectRoot = resolve(temporaryRoot, parentName, 'checkout');
+    try {
+      writeFixture(
+        projectRoot,
+        'apps/api/src/api/common/application/probe.ts',
+        `import pino from 'pino'; void pino;`,
+      );
+      writeFixture(projectRoot, 'libs/shared/src/index.ts', `export { value } from './value';`);
+      writeFixture(projectRoot, 'libs/shared/src/value.ts', `export const value = 1;`);
+      expect(collectLayerBoundaryViolations(projectRoot)).toEqual([]);
+
+      writeFixture(
+        projectRoot,
+        'libs/shared/src/escape.ts',
+        `import { outside } from '../outside'; void outside;`,
+      );
+      writeFixture(projectRoot, 'libs/shared/outside.ts', `export const outside = 1;`);
+      expect(formatViolations(collectLayerBoundaryViolations(projectRoot))).toEqual([
+        expect.stringContaining("shared must not import external or application code '../outside'"),
+      ]);
+    } finally {
+      rmSync(temporaryRoot, { recursive: true, force: true });
     }
   });
 
@@ -216,9 +245,11 @@ describe('layer boundaries', () => {
   });
 });
 
-function collectLayerBoundaryViolations(root: string): Violation[] {
-  const files = listTypeScriptFiles(root);
+function collectLayerBoundaryViolations(sourceRoot: string, root = sourceRoot): Violation[] {
+  const files = listTypeScriptFiles(sourceRoot);
   const violations: Violation[] = [];
+  const sharedRoot = resolve(root, 'libs/shared/src');
+  const alertingApplicationRoot = resolve(root, 'apps/alerting/src/application');
 
   for (const file of files) {
     const source = readFileSync(file, 'utf8');
@@ -226,15 +257,13 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
     const projectPath = relative(root, file);
     const segments = projectPath.split(sep);
     const imports = collectModuleSpecifiers(sourceFile);
-    const absoluteSegments = file.split(sep);
-    const alertingApplication =
-      absoluteSegments.includes('alerting') && segments.includes('application');
+    const alertingApplication = isWithinDirectory(alertingApplicationRoot, file);
 
-    if (absoluteSegments.includes('shared')) {
+    if (isWithinDirectory(sharedRoot, file)) {
       for (const moduleSpecifier of imports) {
         if (
           !moduleSpecifier.startsWith('.') ||
-          !resolve(dirname(file), moduleSpecifier).split(sep).includes('shared')
+          !isWithinDirectory(sharedRoot, resolve(dirname(file), moduleSpecifier))
         ) {
           violations.push({
             file: projectPath,
@@ -413,6 +442,11 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
   }
 
   return violations;
+}
+
+function isWithinDirectory(directory: string, file: string): boolean {
+  const path = relative(directory, file);
+  return path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path);
 }
 
 function listTypeScriptFiles(directory: string): string[] {

@@ -496,6 +496,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
     );
 
     expect(status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(logger.error).not.toHaveBeenCalled();
     expect(logger.warn).toHaveBeenCalledWith(
       {
         event: 'http_exception',

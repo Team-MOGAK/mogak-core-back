@@ -115,10 +115,13 @@ describe('nestjs-pino 요청 컨텍스트', () => {
 
       expect(domainException).toEqual(
         expect.objectContaining({
+          level: 40,
+          severity: 'WARNING',
           req: expect.objectContaining({ id: expect.any(String) }),
           event: 'domain_exception',
         }),
       );
+      expect(domainException?.alertEligible).not.toBe(true);
       expect(requestCompleted).toEqual(
         expect.objectContaining({
           req: expect.objectContaining({ id: expect.any(String) }),
@@ -164,6 +167,8 @@ describe('nestjs-pino 요청 컨텍스트', () => {
         const canonicalLog = logs.find((log) => log.event === canonicalEvent);
         expect(canonicalLog).toEqual(
           expect.objectContaining({
+            level: 50,
+            severity: 'ERROR',
             errorId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
             alertEligible: true,
           }),
