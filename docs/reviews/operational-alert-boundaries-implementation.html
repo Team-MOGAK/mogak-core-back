@@ -48,7 +48,11 @@
     <header>
       <h1>운영 알림 기능 경계 구현 기록</h1>
       <p>
-        구현 완료: AR1–AR6 해결 · 로컬 검증 통과 / 개발자 이해 점검 미실시 ·
+        현재 전체 리뷰: 자기 변경(Codex) · root·독립 runtime/ops/critical 리뷰어 ·
+        codex/error-log-discord-webhook · main 83be31c → ad4abea · FR 수정·로컬 검증 완료
+      </p>
+      <p>
+        재리뷰: FR-01–FR-06 해결 · 기존 AR1–AR6 검증 이력 유지 / 개발자 이해 점검 미실시 ·
         <time datetime="2026-10-17">2026-10-17</time> · GitHub #18 / PR #19
       </p>
       <dl>
@@ -66,14 +70,21 @@
     </header>
     <nav>
       <a href="#current-implementation">구현</a> · <a href="#issue-register">이슈</a> ·
-      <a href="#followup-evidence">현재 검증</a> · <a href="#verification-evidence">이전 검증</a> ·
-      <a href="#review">리뷰</a> ·
+      <a href="#fr-resolution">FR 조치·검증</a> · <a href="#followup-evidence">AR 검증 이력</a> ·
+      <a href="#verification-evidence">이전 검증</a> · <a href="#review">리뷰</a> ·
       <a href="#implementation-control-state">자기점검</a>
     </nav>
     <main>
       <article>
         <section id="baseline-reference">
           <h2>승인 기준</h2>
+          <p>
+            <strong>FR-01–FR-06 구현 승인 · 2026-10-17.</strong> 사용자가 기존 설계 문서의 후속 최소
+            수정안에 대한 별도 구현 승인 질문에 “ㄱㄱ”로 답했다. 기존 파일 안에서 배포·실행 설정
+            검증, 이미지 복사 범위, API 타입, 로그 레벨, 문서·도구 설정을 책임별로 수정한다. 관련
+            회귀와 형식·타입·빌드·이미지 확인, 독립 읽기 전용 리뷰가 승인 범위다. 실제 cloud
+            apply·Discord 발송·DB 변경은 제외한다. 아래 FR 조치·검증은 구현 후 갱신한 결과다.
+          </p>
           <p>
             <a href="operational-alert-boundaries-design.html">현재 설계</a>를 2026-10-17 “ㅇㅇ
             ㄱㄱ. 개선 ㄱ”로 명시 승인했다. 기존 구조·공식 정의 재사용, domain 없는 alerting 기능
@@ -90,11 +101,70 @@
         <section id="implementation-status">
           <h2>기술 상태</h2>
           <p>
-            <strong>구현 완료.</strong> 별도 승인 질문에 대한 사용자의 “ㄱㄱ”로 AR1–AR6 수정과 관련
-            검증을 승인받았다. 6건과 독립 리뷰 후속 4건을 해결했다. 최종 로컬 테스트 358개,
-            format/lint/typecheck/build 및 두 runtime 이미지 확인 통과. 열린 코드 이슈 없음. 실제
-            운영 전달은 미검증이며 개발자 이해 점검은 미실시다. 이전 350개 통과는 과거 이력으로
-            보존한다.
+            <strong>현재 기술 판정: FR-01–FR-06 해결, 로컬 검증 통과.</strong> 배포 계정·자원
+            alias와 실행 설정의 project 불일치를 시작 전에 거부한다. runtime 이미지·API 타입·Pino
+            설정·문서 잔재를 기존 구조 안에서 정리했다. 독립 읽기 전용 리뷰가 요청한 quarantine/DLQ
+            동시 alias 회귀도 별도 커밋으로 보강하고 ops 18개를 재실행했다. 이전 358개 테스트와 CI
+            9개 통과는 3745a8d의 이력이며 이번 head의 전체 테스트·CI 증거로 사용하지 않는다. 실제
+            운영 전달은 미검증이고 개발자 이해 점검은 미실시다.
+          </p>
+        </section>
+        <section id="fr-resolution">
+          <h2>FR-01–FR-06 조치와 Fresh 검증 · 코드 기준 ad4abea</h2>
+          <p>
+            FR-01: 기존 deploy.mjs의 validateConfig가 두 계정의 project·서로 다른 역할과 세 topic,
+            세 subscription의 역할별 고유성을 확인한다. 신규 자원이 없어도 잘못된 alias는 gcloud
+            runner 호출 전에 거부된다. FR-02: alerting config.ts의 project·service·full resource ID
+            검사가 배포 계약과 일치하고 resource project가 다르면 시작 전에 실패한다.
+          </p>
+          <p>
+            FR-03: Docker runtime은 dist/src만 복사하고 기존 main.js 경로를 유지한다. FR-04: shared
+            registry 값은 그대로 추론하고 API 공개 타입에 필요한 Nest HttpStatus 호환만 작은 private
+            타입으로 표현한다. FR-05: production fatal 거부는 직접 비교하며 Cloud severity 매핑은
+            유지한다. FR-06: README가 API source alias/Nest watch와 alerting의 shared 선행 빌드를
+            구분하고 미사용 CJS lint/format 설정을 제거한다.
+          </p>
+          <table>
+            <caption>
+              이번 head의 실행 결과와 한계
+            </caption>
+            <thead>
+              <tr>
+                <th>검증</th>
+                <th>결과</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>pnpm test:alerting:ops</td>
+                <td>18/18 통과. ad4abea 후 재실행.</td>
+              </tr>
+              <tr>
+                <td>pnpm test:alerting</td>
+                <td>24/24 통과. FR-02 설정 경계 포함.</td>
+              </tr>
+              <tr>
+                <td>API 에러·Pino focused Jest</td>
+                <td>17/17 통과.</td>
+              </tr>
+              <tr>
+                <td>format:check, lint, 양쪽 typecheck·build</td>
+                <td>모두 통과.</td>
+              </tr>
+              <tr>
+                <td>alerting Docker runtime</td>
+                <td>빌드·main.js 존재·dist/test 부재 확인.</td>
+              </tr>
+              <tr>
+                <td>독립 읽기 전용 리뷰</td>
+                <td>동작 blocker 없음. 발견된 DLQ 회귀 누락은 ad4abea로 보완.</td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            실제 GCP apply/IAM, Discord 웹훅 발송, 새 head의 CI 및 전체 API Jest는 이번 로컬 검증에
+            포함되지 않았다. 429 메모리 대기와 Pub/Sub 재전달 중복 가능성은 기존 승인 범위의 운영
+            한계로 남는다.
           </p>
         </section>
         <section id="current-implementation">
@@ -142,7 +212,7 @@ Firestore·PostgreSQL·lease·fence·영속 disabled 없음</pre>
           </ul>
         </section>
         <section id="followup-evidence">
-          <h2>현재 조치·Fresh 검증 · 코드 기준 b358d70</h2>
+          <h2>AR 후속 조치·당시 Fresh 검증 · 코드 기준 b358d70</h2>
           <table>
             <caption>
               승인한 AR1–AR6 구현과 검증
@@ -311,9 +381,9 @@ Firestore·PostgreSQL·lease·fence·영속 disabled 없음</pre>
         <section id="issue-register">
           <h2>이슈 기록</h2>
           <p>
-            R1–R10은 이전 조치 이력이다. AR1–AR6과 독립 후속 4건을 모두 해결했다. 조치 소유자는
-            root이며 현재 검증 절에 완료한 변경·증거를 기록했다. 실제 환경 검증과 중복 가능성은 운영
-            제한으로 남긴다.
+            R1–R10은 이전 조치 이력이다. AR1–AR6과 독립 후속 4건은 해결 상태를 유지한다.
+            FR-01–FR-06도 ad4abea까지 해결했다. 독립 리뷰의 추가 회귀 누락은 ad4abea에서 보강하고
+            ops 18개를 재실행했다. 실제 환경 검증과 중복 가능성은 운영 제한으로 남긴다.
           </p>
           <table>
             <caption>
@@ -450,7 +520,158 @@ Firestore·PostgreSQL·lease·fence·영속 disabled 없음</pre>
           </p>
         </section>
         <section id="review">
-          <h2>전체 PR 재리뷰 · 후속 조치 완료</h2>
+          <h2>전체 PR 재리뷰 · FR 조치 완료</h2>
+          <section id="full-review-current">
+            <h3>3745a8d 전체 재리뷰 · 발견 당시 근거와 현재 해결 상태</h3>
+            <dl>
+              <dt>맥락·작성자·리뷰어</dt>
+              <dd>자기 변경(Codex 구현). root와 독립 no-write runtime·ops 리뷰어.</dd>
+              <dt>범위·목적</dt>
+              <dd>
+                main 83be31c54c62d5c8959e3bd17e7206f2d6aa5046 →
+                3745a8d7598f300b2a12317f6966143ab06a7db4 전체 57파일. 기존 API·로깅·libs·빌드·검사
+                방식과 새 기능을 대조하고 불필요한 자체 정의·설정 및 실행 경계 결함을 확인.
+              </dd>
+              <dt>확인 방법</dt>
+              <dd>
+                전체 diff, 실제 호출자, 배포 validation→preflight→apply→postflight, runtime 설정과
+                이미지 복사 경로를 정적으로 추적. 테스트·빌드·GCP·Discord 호출 없음. 두 리뷰 전후
+                git status는 clean이며 빈 diff SHA256
+                e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855가 일치함.
+              </dd>
+            </dl>
+            <table>
+              <caption>
+                발견 당시 항목 · ad4abea에서 해결
+              </caption>
+              <thead>
+                <tr>
+                  <th>ID·상태·판정</th>
+                  <th>근거·조건·영향</th>
+                  <th>최소 방향</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th>FR-01 · 해결됨 · 당시 P2 blocker</th>
+                  <td>
+                    infra/error-log-relay/deploy.mjs:65–88은 계정·topic·subscription 형식만 확인하고
+                    역할 간 서로 다른 값인지 검사하지 않는다. 계정이 같으면 secret 접근·격리 발행·
+                    push invoke 권한이 한 principal에 합쳐진다. quarantine/DLQ topic과
+                    subscription을 각각 같은 값으로 지정하면 같은 retained resource의 postflight가
+                    통과해 안전한 격리와 원본 DLQ가 합쳐질 수 있다. 반대로 subscription ID만 같고
+                    topic은 다른 신규 환경에서는 :921–960의 세 describe가 NOT_FOUND로 통과하고,
+                    계정·IAM·서비스· source subscription 변경 뒤 :1011–1014에서야 topic 충돌로
+                    실패한다. 또한 계정 생성은 :245–251의 현재 project를 쓰지만 뒤 작업은 입력
+                    이메일을 사용해 foreign project 이메일도 일관되지 않게 처리한다. 모두 입력 간
+                    제약 누락이라는 같은 원인이다.
+                  </td>
+                  <td>
+                    기존 validateConfig에서 두 계정의 project·서로 다름, 세 topic과 세
+                    subscription의 각각 고유성을 cloud 호출 전에 검증한다. missing-resource alias 및
+                    quarantine/DLQ 동시 alias 회귀를 추가한다. 별도 검증 프레임워크는 필요하지 않다.
+                  </td>
+                </tr>
+                <tr>
+                  <th>FR-02 · 해결됨 · 당시 P3</th>
+                  <td>
+                    apps/alerting/src/config.ts:37–50,98–103의 runtime 검증은 deploy 검증보다
+                    느슨하다. 예를 들어 GCP_PROJECT_ID=a는 runtime 정규식에 통과하지만
+                    deploy.mjs:21의 규칙에는 실패한다. subscription/topic의 project가
+                    GCP_PROJECT_ID와 달라도 시작할 수 있다. 공식 deploy 경로는 보호되지만 직접
+                    환경변수로 시작하면 잘못된 source 기대값이나 격리 대상으로 서비스를 준비 상태에
+                    올릴 수 있다.
+                  </td>
+                  <td>
+                    runtime의 식별자·resource project 검증을 공식 배포 계약과 일치시킨다. 별도 공통
+                    설정 패키지를 추가하지 않는다.
+                  </td>
+                </tr>
+                <tr>
+                  <th>FR-03 · 해결됨 · 당시 P3</th>
+                  <td>
+                    apps/alerting/tsconfig.json:16이 src와 test를 함께 build하고 Dockerfile:21은
+                    dist 전체를 runtime에 복사한다. 테스트와 memory-quarantine fixture가 실제 배포
+                    산출물에 포함된다. 기존 API tsconfig.build.json은 test를 제외한다. runtime에서
+                    테스트가 실행되는 결함은 발견하지 않았다.
+                  </td>
+                  <td>
+                    가장 작은 변경은 runtime에 dist/src만 같은 경로로 복사하는 것이다. test runner는
+                    기존 산출물 구조를 사용할 수 있다.
+                  </td>
+                </tr>
+                <tr>
+                  <th>FR-04 · 해결됨 · 당시 P3</th>
+                  <td>
+                    apps/api/src/api/common/http/appErrorCode.ts:19–30의 ApiErrorRegistry는
+                    shared에서 이미 추론된 key·code·message 타입을 다시 조립한다. 기존 satisfies
+                    Record 검사가 domain key와 HttpStatus 제약을 검사하는데 annotation이 중복되고,
+                    각 httpStatus literal은 넓은 HttpStatus로 바뀐다. registry 값 복제는 없지만
+                    불필요한 타입 계층이 남았다.
+                  </td>
+                  <td>
+                    기존 API import shim·ErrorDefinition·satisfies 검사는 유지하고 중복 mapped
+                    annotation을 줄인다. 새 타입 프레임워크나 domain 계층은 필요하지 않다.
+                  </td>
+                </tr>
+                <tr>
+                  <th>FR-05 · 해결됨 · 당시 P3</th>
+                  <td>
+                    libs/modules/src/infrastructure/logging/pinoHttp.options.ts:128–143이 Pino의
+                    여섯 기본 level 숫자를 별도 switch로 재정의한다. 유일한 소비자는 :92의
+                    production fatal 차단이다. 이미 입력을 여섯 level로 제한하므로 이 목적에 전체
+                    숫자표가 필요하지 않다.
+                  </td>
+                  <td>
+                    fatal 여부를 직접 검사해 자체 숫자표를 제거한다. Cloud Logging severity 매핑은
+                    별도 의미를 가지므로 유지한다.
+                  </td>
+                </tr>
+                <tr>
+                  <th>FR-06 · 해결됨 · 당시 P3</th>
+                  <td>
+                    README.md:127은 여전히 API 명령에도 shared 선행 빌드가 있다고 설명한다.
+                    eslint.config.mjs:8–11의 *.cjs 규칙과 package.json의 CJS 대상도 삭제한 webpack
+                    파일을 위해 추가한 상태로 남아 있으며 현재 tracked CJS 파일은 없다.
+                  </td>
+                  <td>
+                    API source alias·기존 Nest watch와 ESM consumer 빌드를 문서에서 구분하고 더 이상
+                    적용 대상이 없는 CJS 설정을 정리한다.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <p>
+              FR-01의 alias 증상들은 한 root finding으로 합쳤다. 배포 script가 크다는 이유나 설정
+              값이 반복된다는 이유만으로 전면 재설계를 권하지 않는다. plan/apply 경계, 별도 ESM
+              실행체, 순수 shared 메타데이터와 기존 service/port/type 관례는 유지 근거가 있다.
+              appCode/summary 조합은 실제 ingress가 함께 만들고, outcome reason은 단계별 계약 검증에
+              사용되므로 가상의 새 caller만을 이유로 DTO 재설계를 요구하지 않았다.
+            </p>
+            <p>
+              이 단락은 3745a8d 리뷰 당시의 판단 이력이다. 그때의 로컬 358개 테스트와 CI 9개 통과는
+              FR 수정의 증거가 아니었다. 현재 조치·새 검증은 위 FR 조치 절에 기록했다. 실제 cloud
+              mutation·권한·원격 응답은 여전히 재현하지 않았다.
+            </p>
+          </section>
+          <section id="fr-independent-review">
+            <h3>443c288 독립 no-write 리뷰와 ad4abea 후속 조치</h3>
+            <p>
+              범위: 3745a8d..443c288의 여섯 책임 커밋을 승인 설계와 대조. 배포 validation→apply,
+              alerting 시작 순서, Docker 복사, API 타입·Pino·문서 구조를 정적으로 추적했다. 코드
+              동작 blocker는 없었다. API private HttpStatus 어댑터는 기존 apiResponse.ts 호출 경계에
+              필요한 최소 호환 타입으로 판단했다.
+            </p>
+            <p>
+              리뷰에서 quarantine/DLQ 동시 alias 회귀 누락 1건을 발견했다. topic과 subscription의 두
+              alias를 각각 검증하고 subscription alias의 apply runner 호출 0회를 확인하도록
+              ad4abea를 추가했다. pnpm test:alerting:ops 18/18 통과. 리뷰 전후 git status는 두
+              HTML만 수정 상태였고 diff SHA-256
+              c5e3c35ff07fee56f7c259cbb662bdd7a4eccd2de9790dac49a95b453944aed5가 일치해 no-write를
+              확인했다. 이 문서의 당시 상태 불일치 지적도 현재 판정으로 갱신했다.
+            </p>
+          </section>
+          <h3>이전 AR1–AR6 발견·해결 이력</h3>
           <p>
             범위: main 기준 83be31c54c62d5c8959e3bd17e7206f2d6aa5046 →
             47970238d2210ef0b75ecf15ea7c6d7c37e14850 전체 변경. 자기 작성 변경에 대한 root 리뷰와
@@ -587,6 +808,16 @@ Firestore·PostgreSQL·lease·fence·영속 disabled 없음</pre>
         </section>
         <section id="commits">
           <h2>책임별 커밋</h2>
+          <ol>
+            <li>0eb5dd7 — 배포 계정·topic·subscription 역할 검증</li>
+            <li>1739c24 — alerting 실행 설정의 배포 계약 정합성</li>
+            <li>85c7c24 — runtime 이미지에서 테스트 산출물 제외</li>
+            <li>05d7217 — API shared 에러 값의 추론 유지와 HttpStatus 호환</li>
+            <li>e339f31 — production fatal 검사 단순화</li>
+            <li>443c288 — README·CJS 도구 설정 잔재 정리</li>
+            <li>ad4abea — 독립 리뷰의 격리/DLQ 회귀 보강</li>
+          </ol>
+          <p>이번 FR 후속 커밋이다. 아래 AR 및 초기 구현 커밋은 이력으로 보존한다.</p>
           <ol>
             <li>548c0c6 — 전체 재리뷰 수정 설계 승인</li>
             <li>16a3663 — 기존 API source alias·build/watch 복원</li>
