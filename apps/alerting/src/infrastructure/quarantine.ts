@@ -1,11 +1,16 @@
-import type { PubSub, Topic } from '@google-cloud/pubsub';
+import type { v1, CallOptions } from '@google-cloud/pubsub';
 
 import {
+  type DeliveryOptions,
   type QuarantinePort,
   type QuarantineReason,
   type QuarantineRecord,
 } from '../application/port/alertDelivery.port.js';
 import type { SourceEnvironment } from '../application/type/alert.type.js';
+
+const QUARANTINE_PUBLISH_TIMEOUT_MS = 2_000;
+
+export type PublisherClient = Pick<v1.PublisherClient, 'publish' | 'initialize'>;
 
 export type QuarantineWireConfig = Readonly<{
   sourceProjectId: string;
@@ -28,20 +33,41 @@ export type QuarantineWireRecord = Readonly<{
 }>;
 
 export class PubSubQuarantinePublisher implements QuarantinePort {
-  private readonly topic: Topic;
-
   constructor(
-    pubsub: PubSub,
+    private readonly publisher: PublisherClient,
     private readonly config: QuarantineConfig,
-  ) {
-    this.topic = pubsub.topic(config.quarantineTopic);
-  }
+    private readonly clock: () => number = Date.now,
+  ) {}
 
-  async publish(record: QuarantineRecord): Promise<void> {
-    await this.topic.publishMessage({
-      json: toQuarantineWireRecord(record, this.config),
-    });
+  async publish(record: QuarantineRecord, options: DeliveryOptions = {}): Promise<void> {
+    const remaining = remainingBudget(options, this.clock());
+    if (options.signal?.aborted || remaining <= 0) {
+      throw new Error('quarantine publish deadline exceeded');
+    }
+
+    const callOptions: CallOptions = {
+      retry: null,
+      timeout: Math.min(QUARANTINE_PUBLISH_TIMEOUT_MS, remaining),
+    };
+    await this.publisher.publish(
+      {
+        topic: this.config.quarantineTopic,
+        messages: [
+          { data: Buffer.from(JSON.stringify(toQuarantineWireRecord(record, this.config))) },
+        ],
+      },
+      callOptions,
+    );
+    if (options.signal?.aborted || remainingBudget(options, this.clock()) <= 0) {
+      throw new Error('quarantine publish deadline exceeded');
+    }
   }
+}
+
+function remainingBudget(options: DeliveryOptions, now: number): number {
+  return options.deadline === undefined
+    ? QUARANTINE_PUBLISH_TIMEOUT_MS
+    : Math.min(QUARANTINE_PUBLISH_TIMEOUT_MS, options.deadline - now);
 }
 
 export function toQuarantineWireRecord(

@@ -1,5 +1,10 @@
 import type { Alert, AlertSummary } from '../type/alert.type.js';
 
+export type DeliveryOptions = Readonly<{
+  deadline?: number;
+  signal?: AbortSignal;
+}>;
+
 export type DeliveryOutcome = Readonly<{
   acknowledged: boolean;
   reason: string;
@@ -19,7 +24,7 @@ export const PERMANENT_FAILURE_REASON = {
 
 export type SenderResult =
   | Readonly<{ kind: typeof SENDER_RESULT_KIND.SUCCESS; status: number; messageId: string }>
-  | Readonly<{ kind: typeof SENDER_RESULT_KIND.RATE_LIMITED; status: 429; retryAfterMs: number }>
+  | Readonly<{ kind: typeof SENDER_RESULT_KIND.RATE_LIMITED; status: 429 }>
   | Readonly<{
       kind: typeof SENDER_RESULT_KIND.TRANSIENT_FAILURE;
       status?: number;
@@ -32,7 +37,7 @@ export type SenderResult =
     }>;
 
 export interface AlertSender {
-  send(summary: AlertSummary, options?: { deadline?: number }): Promise<SenderResult>;
+  send(summary: AlertSummary, options?: DeliveryOptions): Promise<SenderResult>;
 }
 
 export const QUARANTINE_REASONS = [
@@ -54,7 +59,7 @@ export type QuarantineRecord = Readonly<{
 }>;
 
 export interface QuarantinePort {
-  publish(record: QuarantineRecord): Promise<void>;
+  publish(record: QuarantineRecord, options?: DeliveryOptions): Promise<void>;
 }
 
 export type AlertLogger = Readonly<{
@@ -64,5 +69,5 @@ export type AlertLogger = Readonly<{
 }>;
 
 export type DeliveryUseCase = Readonly<{
-  deliver(alert: Alert, options?: { deadline?: number }): Promise<DeliveryOutcome>;
+  deliver(alert: Alert, options?: DeliveryOptions): Promise<DeliveryOutcome>;
 }>;

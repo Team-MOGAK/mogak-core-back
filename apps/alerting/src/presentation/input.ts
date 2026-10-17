@@ -56,11 +56,10 @@ export type ClassificationIgnoreReason =
 
 export function parsePushEnvelope(
   value: unknown,
-  options: { expectedSubscription?: string } | string = {},
+  expectedSubscription: string,
 ): PushEnvelopeParseResult {
-  const expectedSubscription = typeof options === 'string' ? options : options.expectedSubscription;
   if (!isRecord(value)) return { ok: false, reason: 'envelope_not_object' };
-  if (expectedSubscription !== undefined && value.subscription !== expectedSubscription) {
+  if (value.subscription !== expectedSubscription) {
     return { ok: false, reason: 'subscription_mismatch' };
   }
   if (!isRecord(value.message)) return { ok: false, reason: 'message_missing' };

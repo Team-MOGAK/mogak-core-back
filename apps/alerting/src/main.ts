@@ -1,17 +1,24 @@
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 
-import { PubSub } from '@google-cloud/pubsub';
+import { v1 } from '@google-cloud/pubsub';
 import pino from 'pino';
 
 import { DiscordClient } from './infrastructure/discordClient.js';
-import { PubSubQuarantinePublisher } from './infrastructure/quarantine.js';
+import { PubSubQuarantinePublisher, type PublisherClient } from './infrastructure/quarantine.js';
 import { loadConfig } from './config.js';
 import { createRelayHandler } from './presentation/handler.js';
 import { DeliveryService } from './application/service/alertDelivery.service.js';
 
-export function start(): ReturnType<typeof createServer> {
-  const config = loadConfig();
+export type RelayStartOptions = Readonly<{
+  config?: ReturnType<typeof loadConfig>;
+  publisher?: PublisherClient;
+}>;
+
+export async function start(
+  options: RelayStartOptions = {},
+): Promise<ReturnType<typeof createServer>> {
+  const config = options.config ?? loadConfig();
   const logger = pino({
     base: {
       schemaVersion: 1,
@@ -26,9 +33,15 @@ export function start(): ReturnType<typeof createServer> {
       }),
     },
   });
-  const pubsub = new PubSub({ projectId: config.gcpProjectId });
+  const publisher = options.publisher ?? new v1.PublisherClient({ projectId: config.gcpProjectId });
+  try {
+    await publisher.initialize();
+  } catch {
+    logger.error({ event: 'relay_startup_failed' }, 'Error log relay startup failed');
+    throw new Error('Error log relay startup failed');
+  }
   const discordClient = new DiscordClient(config.discordWebhookUrl);
-  const quarantine = new PubSubQuarantinePublisher(pubsub, {
+  const quarantine = new PubSubQuarantinePublisher(publisher, {
     quarantineTopic: config.quarantineTopic,
     sourceProjectId: config.gcpProjectId,
     sourceService: config.sourceApiService,
@@ -44,16 +57,28 @@ export function start(): ReturnType<typeof createServer> {
   const server = createServer((request, response) => {
     void handler(request, response).catch(() => {
       logger.error({ event: 'relay_handler_failed' }, 'Relay request handling failed');
-      if (!response.headersSent) response.statusCode = 503;
-      if (!response.writableEnded) response.end();
+      if (!response.headersSent && !response.destroyed) response.statusCode = 503;
+      if (!response.writableEnded && !response.destroyed) response.end();
     });
   });
-  server.listen(config.port, '0.0.0.0', () => {
-    logger.info({ event: 'relay_started', port: config.port }, 'Error log relay started');
+  await new Promise<void>((resolve, reject) => {
+    const onError = (error: Error) => {
+      server.removeListener('error', onError);
+      logger.error({ event: 'relay_startup_failed' }, 'Error log relay startup failed');
+      reject(error);
+    };
+    server.once('error', onError);
+    server.listen(config.port, '0.0.0.0', () => {
+      server.removeListener('error', onError);
+      logger.info({ event: 'relay_started', port: config.port }, 'Error log relay started');
+      resolve();
+    });
   });
   return server;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  start();
+  void start().catch(() => {
+    process.exitCode = 1;
+  });
 }

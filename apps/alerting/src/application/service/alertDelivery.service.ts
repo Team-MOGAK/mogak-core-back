@@ -3,6 +3,7 @@ import { PERMANENT_FAILURE_REASON, SENDER_RESULT_KIND } from '../port/alertDeliv
 import type {
   AlertLogger,
   AlertSender,
+  DeliveryOptions,
   DeliveryOutcome,
   DeliveryUseCase,
   QuarantinePort,
@@ -19,20 +20,21 @@ export class DeliveryService implements DeliveryUseCase {
     private readonly logger?: AlertLogger,
   ) {}
 
-  async deliver(alert: Alert, options: { deadline?: number } = {}): Promise<DeliveryOutcome> {
+  async deliver(alert: Alert, options: DeliveryOptions = {}): Promise<DeliveryOutcome> {
     const now = this.clock();
-    if (options.deadline !== undefined && now >= options.deadline) {
+    if (requestUnavailable(options, now)) {
       return transient('request_deadline_before_discord');
     }
 
     let result: SenderResult;
     try {
-      result = await this.sender.send(
-        summarizeAlert(alert),
-        options.deadline === undefined ? {} : { deadline: options.deadline },
-      );
+      result = await this.sender.send(summarizeAlert(alert), options);
     } catch {
       result = { kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE, reason: 'network' };
+    }
+
+    if (requestUnavailable(options, this.clock())) {
+      return transient('request_deadline_after_discord');
     }
 
     switch (result.kind) {
@@ -62,22 +64,35 @@ export class DeliveryService implements DeliveryUseCase {
             'Discord webhook rejected',
           );
         }
-        return this.quarantinePermanentFailure(result.reason, alert);
+        return this.quarantinePermanentFailure(result.reason, alert, options);
     }
   }
 
   private async quarantinePermanentFailure(
     reason: QuarantineReason,
     alert: Alert,
+    options: DeliveryOptions,
   ): Promise<DeliveryOutcome> {
+    if (requestUnavailable(options, this.clock())) {
+      return transient('request_deadline_before_quarantine');
+    }
     try {
-      await this.quarantine.publish(createQuarantineRecord(reason, alert, this.clock));
+      await this.quarantine.publish(createQuarantineRecord(reason, alert, this.clock), options);
+      if (requestUnavailable(options, this.clock())) {
+        return transient('request_deadline_after_quarantine');
+      }
       return acknowledged('quarantined');
     } catch {
       this.logger?.error?.({ event: 'quarantine_publish_failed' }, 'Quarantine publish failed');
       return transient('quarantine_failed');
     }
   }
+}
+
+function requestUnavailable(options: DeliveryOptions, now: number): boolean {
+  return (
+    options.signal?.aborted === true || (options.deadline !== undefined && now >= options.deadline)
+  );
 }
 
 export function createQuarantineRecord(

@@ -8,9 +8,10 @@ import type { AlertSummary } from '../application/type/alert.type.js';
 import {
   PERMANENT_FAILURE_REASON,
   SENDER_RESULT_KIND,
+  type DeliveryOptions,
   type SenderResult,
 } from '../application/port/alertDelivery.port.js';
-import { buildDiscordPayload, type DiscordPayload } from './discord.js';
+import { buildDiscordPayload } from './discord.js';
 
 const MAX_SUCCESS_RESPONSE_BODY_BYTES = 64 * 1024;
 
@@ -29,25 +30,13 @@ export class DiscordClient {
     this.webhookUrl = validateDiscordWebhookUrl(webhookUrl);
   }
 
-  async send(
-    summary: AlertSummary,
-    options?: { deadline?: number; signal?: AbortSignal },
-  ): Promise<SenderResult>;
-  async send(
-    payload: DiscordPayload,
-    options?: { deadline?: number; signal?: AbortSignal },
-  ): Promise<SenderResult>;
-  async send(
-    value: AlertSummary | DiscordPayload,
-    options: { deadline?: number; signal?: AbortSignal } = {},
-  ): Promise<SenderResult> {
-    const payload = 'source' in value ? buildDiscordPayload(value) : value;
+  async send(summary: AlertSummary, options: DeliveryOptions = {}): Promise<SenderResult> {
+    const payload = buildDiscordPayload(summary);
     const now = this.clock();
     if (this.nextAllowedAt > now) {
       return {
         kind: SENDER_RESULT_KIND.RATE_LIMITED,
         status: 429,
-        retryAfterMs: this.nextAllowedAt - now,
       };
     }
     const deadline = options.deadline ?? now + this.timeoutMs;
@@ -84,9 +73,14 @@ export class DiscordClient {
         };
       }
 
+      if (controller.signal.aborted) {
+        await discardResponseBody(response);
+        return { kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE, reason: 'timeout' };
+      }
+
       if (response.status >= 200 && response.status < 300) {
         try {
-          const messageId = await readSuccessMessageId(response);
+          const messageId = await readSuccessMessageId(response, controller.signal);
           if (controller.signal.aborted) {
             return { kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE, reason: 'timeout' };
           }
@@ -108,12 +102,21 @@ export class DiscordClient {
         }
       }
       if (response.status === 429) {
-        const retryAfterMs = await retryAfterMsFromResponse(response);
+        let retryAfterMs: number;
+        try {
+          retryAfterMs = await retryAfterMsFromResponse(response, controller.signal);
+        } catch (error) {
+          return controller.signal.aborted || isAbortError(error)
+            ? { kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE, reason: 'timeout' }
+            : { kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE, reason: 'invalid_response' };
+        }
+        if (controller.signal.aborted) {
+          return { kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE, reason: 'timeout' };
+        }
         this.nextAllowedAt = Math.max(this.nextAllowedAt, this.clock() + retryAfterMs);
         return {
           kind: SENDER_RESULT_KIND.RATE_LIMITED,
           status: 429,
-          retryAfterMs,
         };
       }
       if (response.status >= 500) {
@@ -140,38 +143,21 @@ export class DiscordClient {
   }
 }
 
-async function readSuccessMessageId(response: Response): Promise<string | undefined> {
-  if (response.body === null) return undefined;
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  let completed = false;
+async function readSuccessMessageId(
+  response: Response,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  let body: Buffer | undefined;
   try {
-    for (;;) {
-      const chunk = await reader.read();
-      if (chunk.done) {
-        completed = true;
-        break;
-      }
-      size += chunk.value.byteLength;
-      if (size > MAX_SUCCESS_RESPONSE_BODY_BYTES) return undefined;
-      chunks.push(chunk.value);
-    }
-  } finally {
-    if (!completed) {
-      try {
-        await reader.cancel();
-      } catch {
-        // The response body is diagnostic-free and cancellation is best effort.
-      }
-    }
-    reader.releaseLock();
+    body = await readBoundedResponseBody(response, MAX_SUCCESS_RESPONSE_BODY_BYTES, signal);
+  } catch (error) {
+    if (signal.aborted || isAbortError(error)) throw error;
+    body = undefined;
   }
+  if (body === undefined) return undefined;
 
   let json: string;
   try {
-    const body = Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
     json = new TextDecoder('utf-8', { fatal: true }).decode(body);
   } catch {
     return undefined;
@@ -197,30 +183,87 @@ async function discardResponseBody(response: Response): Promise<void> {
   }
 }
 
-export async function retryAfterMs(response: Pick<Response, 'headers' | 'json'>): Promise<number> {
-  return retryAfterMsFromResponse(response);
-}
-
-async function retryAfterMsFromResponse(
-  response: Pick<Response, 'headers' | 'json'>,
-): Promise<number> {
+async function retryAfterMsFromResponse(response: Response, signal: AbortSignal): Promise<number> {
   const values: number[] = [];
   const header = response.headers.get('retry-after');
   const headerMs = secondsToMs(header);
   if (headerMs !== undefined) values.push(headerMs);
 
+  let body: Buffer | undefined;
   try {
-    const body: unknown = await response.json();
-    if (isRecord(body)) {
-      const bodyMs = secondsToMs(body.retry_after);
-      if (bodyMs !== undefined) values.push(bodyMs);
+    body = await readBoundedResponseBody(response, MAX_SUCCESS_RESPONSE_BODY_BYTES, signal);
+  } catch (error) {
+    if (signal.aborted || isAbortError(error)) throw error;
+    body = undefined;
+  }
+  if (body !== undefined) {
+    try {
+      const decoded = new TextDecoder('utf-8', { fatal: true }).decode(body);
+      const parsed: unknown = JSON.parse(decoded);
+      if (isRecord(parsed)) {
+        const bodyMs = secondsToMs(parsed.retry_after);
+        if (bodyMs !== undefined) values.push(bodyMs);
+      }
+    } catch {
+      // The fallback below is deliberately conservative when Discord's body is unavailable.
     }
-  } catch {
-    // The fallback below is deliberately conservative when Discord's body is unavailable.
   }
 
   const retry = values.length === 0 ? RATE_LIMIT_FALLBACK_MS : Math.max(...values);
   return Math.min(MAX_RATE_LIMIT_MS, retry);
+}
+
+async function readBoundedResponseBody(
+  response: Response,
+  limit: number,
+  signal?: AbortSignal,
+): Promise<Buffer | undefined> {
+  if (response.body === null) return undefined;
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  let completed = false;
+  let abortReject: ((reason?: unknown) => void) | undefined;
+  const abortPromise = new Promise<never>((_, reject) => {
+    abortReject = reject;
+  });
+  const abortReading = () => {
+    void reader.cancel().catch(() => undefined);
+    abortReject?.(new DOMException('aborted', 'AbortError'));
+  };
+  if (signal?.aborted) {
+    abortReading();
+  } else {
+    signal?.addEventListener('abort', abortReading, { once: true });
+  }
+
+  try {
+    for (;;) {
+      const chunk =
+        signal === undefined
+          ? await reader.read()
+          : await Promise.race([reader.read(), abortPromise]);
+      if (chunk.done) {
+        completed = true;
+        break;
+      }
+      size += chunk.value.byteLength;
+      if (size > limit) return undefined;
+      chunks.push(chunk.value);
+    }
+  } finally {
+    if (!completed) {
+      void reader.cancel().catch(() => undefined);
+    } else {
+      reader.releaseLock();
+    }
+    signal?.removeEventListener('abort', abortReading);
+  }
+  return Buffer.concat(
+    chunks.map((chunk) => Buffer.from(chunk)),
+    size,
+  );
 }
 
 function secondsToMs(value: unknown): number | undefined {
