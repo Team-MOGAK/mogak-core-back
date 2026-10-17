@@ -119,9 +119,13 @@ pnpm test:integration --runInBand
 API 로그는 JSON으로 출력하며 HTTP 4xx는 `warn`, 5xx와 인프라 실패는 `error`로 분류합니다. Discord 전달은 독립 패키지 `@mogak/alerting`이 담당합니다. 배포 리소스와 운영 설정은 기존 `error-log-relay` 이름을 유지합니다.
 
 ```bash
-pnpm build:relay
-pnpm test:relay
-pnpm test:relay-infra
+pnpm build:alerting
+pnpm test:alerting
+pnpm test:alerting:ops
 ```
 
-중계 서비스의 설정, 배포 전제조건, 채널 초기화·재개, DLQ 조회와 수동 복구는 [운영 가이드](docs/runbooks/error-log-discord-relay.md)를 따릅니다. API 이미지에는 중계 서비스의 Google Cloud SDK와 웹훅 secret을 포함하지 않습니다.
+로그의 공개 에러·이벤트 정의는 기존 `libs` 아래의 `@mogak/shared`를 API와 alerting이 함께 사용합니다. 빌드·타입 검사·테스트 명령은 shared를 먼저 빌드하며, `pnpm start:dev`는 shared와 API 변경을 함께 감시합니다.
+
+알림 전달용 DB는 사용하지 않습니다. 429 대기 시간만 프로세스 메모리에 보관하므로 재시작 시 사라지고 실행체 사이에 공유되지 않습니다. 실패는 Pub/Sub 재시도를 사용하며 중복 전달은 발생할 수 있습니다.
+
+중계 서비스의 설정, 배포 전제조건, DLQ 조회와 수동 복구는 [운영 가이드](docs/runbooks/error-log-discord-relay.md)를 따릅니다. API 이미지에는 중계 서비스의 Google Cloud SDK와 웹훅 secret을 포함하지 않습니다.

@@ -22,11 +22,6 @@
     "memory": "512Mi",
     "pushPath": "/pubsub/push"
   },
-  "firestore": {
-    "databaseId": "mogak-error-relay",
-    "location": "asia-northeast3",
-    "channelDocumentPath": "alertChannels/production-discord"
-  },
   "secret": {
     "name": "discord-webhook",
     "version": "1"

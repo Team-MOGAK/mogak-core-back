@@ -9,11 +9,9 @@ import { dirname, resolve } from 'node:path';
 
 const SCRIPT_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = resolve(SCRIPT_DIRECTORY, 'config.example.json');
-const fetch = globalThis.fetch;
 const REQUIRED_APIS = [
   'artifactregistry.googleapis.com',
   'cloudbuild.googleapis.com',
-  'firestore.googleapis.com',
   'iamcredentials.googleapis.com',
   'logging.googleapis.com',
   'pubsub.googleapis.com',
@@ -48,12 +46,14 @@ export function validateConfig(config) {
 
   assertObject(config.source, 'config.source');
   assertMatch(config.source.apiService, RESOURCE_ID, 'config.source.apiService');
-  assertNonEmpty(config.source.environment, 'config.source.environment');
   assert(
-    config.source.environment === 'production',
-    'config.source.environment must be production',
+    config.source.environment === 'development' || config.source.environment === 'production',
+    'config.source.environment must be development or production',
   );
-  assertNonEmpty(config.source.producer, 'config.source.producer');
+  assert(
+    config.source.producer === 'mogak-core-api',
+    'config.source.producer must match the trusted mogak-core-api producer',
+  );
 
   assertObject(config.relay, 'config.relay');
   assertMatch(config.relay.service, RESOURCE_ID, 'config.relay.service');
@@ -75,15 +75,6 @@ export function validateConfig(config) {
   assertNonEmpty(config.relay.pushPath, 'config.relay.pushPath');
   assert(config.relay.pushPath.startsWith('/'), 'relay.pushPath must start with /');
 
-  assertObject(config.firestore, 'config.firestore');
-  assertNonEmpty(config.firestore.databaseId, 'config.firestore.databaseId');
-  assert(
-    config.firestore.databaseId !== '(default)',
-    'use a separate Firestore database for the relay',
-  );
-  assertNonEmpty(config.firestore.location, 'config.firestore.location');
-  assertFirestorePath(config.firestore.channelDocumentPath);
-
   assertObject(config.secret, 'config.secret');
   assertMatch(config.secret.name, RESOURCE_ID, 'config.secret.name');
   assertNumericVersion(config.secret.version, 'config.secret.version');
@@ -99,7 +90,7 @@ export function validateConfig(config) {
   assertObject(config.sink, 'config.sink');
   assertMatch(config.sink.name, RESOURCE_ID, 'config.sink.name');
   assertMatch(config.sink.metricName, METRIC_ID, 'config.sink.metricName');
-  assert(config.sink.enabled === false, 'production sink must start disabled in config');
+  assert(config.sink.enabled === false, 'sink must start disabled in config');
 
   assertObject(config.pubsub, 'config.pubsub');
   assert(config.pubsub.ackDeadlineSeconds === 30, 'pubsub.ackDeadlineSeconds must be 30');
@@ -176,18 +167,6 @@ export function buildPreflightChecks(config) {
       'All required APIs must already be enabled.',
     ),
     check(
-      'firestore-database',
-      gcloudArgs(
-        'firestore',
-        'databases',
-        'describe',
-        `--database=${config.firestore.databaseId}`,
-        `--project=${project}`,
-        '--format=json',
-      ),
-      `Firestore database ${config.firestore.databaseId} must already exist in ${config.firestore.location}.`,
-    ),
-    check(
       'secret-version',
       gcloudArgs(
         'secrets',
@@ -219,14 +198,6 @@ export function buildPreflightChecks(config) {
       readOnly: true,
       expected:
         'The planned Cloud Run service forbids unauthenticated access and the planned Pub/Sub push uses the dedicated push service account.',
-    },
-    {
-      name: 'firestore-channel-document',
-      kind: 'firestore-rest-document',
-      argv: gcloudArgs('auth', 'print-access-token'),
-      target: firestoreDocumentUrl(config),
-      readOnly: true,
-      expected: `Document ${config.firestore.channelDocumentPath} must already exist and contain schemaVersion 1 state.`,
     },
   ];
   return checks;
@@ -331,7 +302,6 @@ export function buildDeploymentPlan(config, options = {}) {
   const preRunIamNames = new Set([
     'relay-publish-quarantine',
     'relay-selected-secret-version',
-    'relay-firestore-database-user',
     'pubsub-agent-token-creator',
     'pubsub-agent-publish-dlq',
   ]);
@@ -467,7 +437,7 @@ export function buildDeploymentPlan(config, options = {}) {
         config.sink.metricName,
         `--project=${project}`,
         `--log-filter=${buildMissingEligibilityMetricFilter(config)}`,
-        '--description=Production API ERROR logs with missing or invalid alertEligible',
+        `--description=${config.source.environment} API ERROR logs with missing or invalid alertEligible`,
       ),
       'Create or reconcile a queryable counter for source API ERROR records that omit or invalidate alertEligible.',
       gcloudArgs(
@@ -477,7 +447,7 @@ export function buildDeploymentPlan(config, options = {}) {
         config.sink.metricName,
         `--project=${project}`,
         `--log-filter=${buildMissingEligibilityMetricFilter(config)}`,
-        '--description=Production API ERROR logs with missing or invalid alertEligible',
+        `--description=${config.source.environment} API ERROR logs with missing or invalid alertEligible`,
       ),
     ),
   );
@@ -518,7 +488,7 @@ export function buildDeploymentPlan(config, options = {}) {
     ),
     mutate: true,
     rationale:
-      'Keep the production sink disabled while its resource and publisher IAM are reconciled.',
+      'Keep the configured sink disabled while its resource and publisher IAM are reconciled.',
   });
   operations.push(...iam.filter((operation) => operation.name === 'sink-writer-publish-source'));
 
@@ -536,7 +506,7 @@ export function buildDeploymentPlan(config, options = {}) {
       ),
       mutate: true,
       rationale:
-        'Enable the production sink only after resource reconciliation, publisher IAM, and disabled-state postflight pass.',
+        'Enable the configured sink only after resource reconciliation, publisher IAM, and disabled-state postflight pass.',
     });
   }
 
@@ -549,7 +519,7 @@ export function buildDeploymentPlan(config, options = {}) {
     preflight: buildPreflightChecks(config),
     operations,
     warnings: [
-      'This plan never enables Firestore or creates a Firestore database.',
+      'No persistent delivery database is configured; process-local cooldown resets on restart and is not shared across instances.',
       'The image must be an immutable sha256 digest before --apply.',
       'The relay and push service accounts are intentionally distinct.',
       'Pub/Sub delivery is at least once; preserve errorId during manual replay.',
@@ -563,21 +533,10 @@ export function runtimeEnv(config) {
   return [
     `GCP_PROJECT_ID=${project}`,
     `SOURCE_API_SERVICE=${config.source.apiService}`,
+    `SOURCE_ENVIRONMENT=${config.source.environment}`,
     `EXPECTED_SUBSCRIPTION=${config.expectedSubscription}`,
     `QUARANTINE_TOPIC=${config.quarantineTopic}`,
-    `FIRESTORE_DATABASE_ID=${config.firestore.databaseId}`,
-    `CHANNEL_DOCUMENT_PATH=${config.firestore.channelDocumentPath}`,
-    `DISCORD_SECRET_VERSION=${config.secret.version}`,
-    'NODE_ENV=production',
   ].join(',');
-}
-
-export function firestoreDocumentUrl(config) {
-  const encodedPath = config.firestore.channelDocumentPath
-    .split('/')
-    .map((segment) => encodeURIComponent(segment))
-    .join('/');
-  return `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(config.gcp.projectId)}/databases/${encodeURIComponent(config.firestore.databaseId)}/documents/${encodedPath}`;
 }
 
 export function gcloudArgs(...args) {
@@ -631,14 +590,6 @@ export function iamOperations(
       'roles/secretmanager.secretAccessor',
       'Bind Secret Manager access at the named secret only; runtime injects the selected numeric version.',
       { project },
-    ),
-    iamBinding(
-      'relay-firestore-database-user',
-      ['projects', 'add-iam-policy-binding', project],
-      relay,
-      'roles/datastore.user',
-      'Restrict datastore.user to the dedicated native Firestore database with the documented resource.name condition.',
-      { project, condition: firestoreDatabaseCondition(config, project) },
     ),
     iamBinding(
       'push-service-invoker',
@@ -700,19 +651,10 @@ export function buildPreflightResult(config, results) {
   const missingApis = [...expectedApis].filter((api) => !enabled.has(api));
   const failures = [];
   if (missingApis.length > 0) failures.push(`Required APIs are missing: ${missingApis.join(', ')}`);
-  const firestore = results.firestoreDatabase;
-  if (!firestore || firestore.locationId !== config.firestore.location) {
-    failures.push(`Firestore database location must be ${config.firestore.location}.`);
-  }
   const secret = results.secretVersion;
   if (!secret || secret.state !== 'ENABLED')
     failures.push(`Secret version ${config.secret.version} must be ENABLED.`);
   if (!results.sourceApiService) failures.push('Source API Cloud Run service does not exist.');
-  if (!results.channelDocument || !isValidChannelDocument(results.channelDocument, config)) {
-    failures.push(
-      'Channel document does not exist or does not contain valid schemaVersion 1 state.',
-    );
-  }
   return { ok: failures.length === 0, failures, missingApis };
 }
 
@@ -949,63 +891,16 @@ export function postflight(config, context, runner = runGcloud) {
   };
 }
 
-function isValidChannelDocument(document, config) {
-  const fields = document.fields;
-  if (fields === undefined || typeof fields !== 'object') return false;
-  const expected = [
-    'disabled',
-    'leaseExpiresAt',
-    'leaseToken',
-    'nextAllowedAt',
-    'schemaVersion',
-    'secretVersion',
-  ];
-  const keys = Object.keys(fields).sort();
-  if (
-    keys.length !== expected.length ||
-    keys.some((key, index) => key !== expected.slice().sort()[index])
-  ) {
-    return false;
-  }
-  const integer = (field) =>
-    field && typeof field.integerValue === 'string' && /^\d+$/.test(field.integerValue);
-  return (
-    integer(fields.schemaVersion) &&
-    fields.schemaVersion.integerValue === '1' &&
-    integer(fields.secretVersion) &&
-    fields.secretVersion.integerValue === String(Number(config.secret.version)) &&
-    fields.disabled &&
-    typeof fields.disabled.booleanValue === 'boolean' &&
-    integer(fields.nextAllowedAt) &&
-    fields.leaseToken &&
-    (typeof fields.leaseToken.nullValue === 'string' ||
-      typeof fields.leaseToken.stringValue === 'string') &&
-    integer(fields.leaseExpiresAt)
-  );
-}
-
 export function isImmutableImage(image) {
   return DIGEST_IMAGE.test(image);
 }
 
-export async function preflight(config, runner = runGcloud, fetcher = fetch) {
+export async function preflight(config, runner = runGcloud) {
   validateConfig(config);
   const checks = buildPreflightChecks(config);
   const results = {};
   for (const item of checks) {
     if (item.kind === 'static-auth-config') continue;
-    if (item.kind === 'firestore-rest-document') {
-      const token = runner(item.argv);
-      if (token.status !== 0)
-        throw new Error(`preflight ${item.name} failed: ${token.stderr || token.stdout}`);
-      const response = await fetcher(item.target, {
-        headers: { authorization: `Bearer ${token.stdout.trim()}` },
-      });
-      if (!response.ok)
-        throw new Error(`preflight ${item.name} failed with HTTP ${response.status}`);
-      results.channelDocument = await response.json();
-      continue;
-    }
     const result = runner(item.argv);
     if (result.status !== 0)
       throw new Error(`preflight ${item.name} failed: ${result.stderr || result.stdout}`);
@@ -1016,7 +911,6 @@ export async function preflight(config, runner = runGcloud, fetcher = fetch) {
       parsed = result.stdout.trim();
     }
     if (item.name === 'required-apis') results.requiredApis = parsed;
-    if (item.name === 'firestore-database') results.firestoreDatabase = parsed;
     if (item.name === 'secret-version') results.secretVersion = parsed;
     if (item.name === 'source-api-service') results.sourceApiService = parsed;
   }
@@ -1101,7 +995,7 @@ export async function apply(config, options = {}) {
     throw new Error('--activate-sink requires --staging-verified');
   }
   const runner = options.runner ?? runGcloud;
-  await preflight(config, runner, options.fetcher ?? fetch);
+  await preflight(config, runner);
   assertImmutableSubscriptionTopics(config, runner);
   const plan = buildDeploymentPlan(config, { ...options, mode: 'apply' });
   const context = {
@@ -1260,8 +1154,8 @@ function help() {
     '',
     '--plan is the default and emits read-only preflight checks plus shell-free argv operations.',
     '--apply runs the closed preflight and then the explicitly configured resource operations.',
-    '--activate-sink requires --staging-verified and is required to enable the production sink.',
-    'Firestore APIs and databases are never enabled or created by this command.',
+    '--activate-sink requires --staging-verified and is required to enable the configured sink.',
+    'The plan does not create or inspect a delivery database; cooldown is process-local.',
   ].join('\n');
 }
 
@@ -1330,13 +1224,6 @@ function assertNumericVersion(value, label) {
   );
 }
 
-function assertFirestorePath(path) {
-  assert(
-    typeof path === 'string' && /^([^/]+\/[^/]+)(\/[^/]+\/[^/]+)*$/.test(path),
-    'firestore.channelDocumentPath must contain alternating collection/document segments',
-  );
-}
-
 function fullResourceName(kind, project, id) {
   return `projects/${project}/${kind}/${id}`;
 }
@@ -1384,14 +1271,6 @@ function isNeverExpiring(policy) {
 
 function pubsubServiceAgent(project, projectNumber) {
   return `service-${projectNumber}@gcp-sa-pubsub.iam.gserviceaccount.com`;
-}
-
-function firestoreDatabaseCondition(config, project) {
-  return [
-    `expression=resource.name=="projects/${project}/databases/${config.firestore.databaseId}"`,
-    'title=ErrorLogRelayFirestoreDatabase',
-    'description=Limit datastore.user to the dedicated relay Firestore database',
-  ].join(',');
 }
 
 function camelToKebab(value) {
