@@ -48,7 +48,7 @@
     <header>
       <h1>운영 알림 기능 경계 구현 기록</h1>
       <p>
-        구현 완료 · 기술 검증 완료 / 개발자 이해 점검 미실시 ·
+        구현 완료: AR1–AR6 해결 · 로컬 검증 통과 / 개발자 이해 점검 미실시 ·
         <time datetime="2026-10-17">2026-10-17</time> · GitHub #18 / PR #19
       </p>
       <dl>
@@ -66,7 +66,8 @@
     </header>
     <nav>
       <a href="#current-implementation">구현</a> · <a href="#issue-register">이슈</a> ·
-      <a href="#verification-evidence">검증</a> · <a href="#review">리뷰</a> ·
+      <a href="#followup-evidence">현재 검증</a> · <a href="#verification-evidence">이전 검증</a> ·
+      <a href="#review">리뷰</a> ·
       <a href="#implementation-control-state">자기점검</a>
     </nav>
     <main>
@@ -89,9 +90,11 @@
         <section id="implementation-status">
           <h2>기술 상태</h2>
           <p>
-            <strong>구현 완료.</strong> 테스트 350개와 정적 검사·빌드·runtime 이미지 검증 통과. 독립
-            리뷰에서 발견한 기능 문제 2건과 문서 지침 1건은 해결했다. 추가 조치가 필요한 코드 이슈는
-            없다. 실제 운영 전달은 미검증이며 개발자 이해 점검은 미실시다.
+            <strong>구현 완료.</strong> 별도 승인 질문에 대한 사용자의 “ㄱㄱ”로 AR1–AR6 수정과 관련
+            검증을 승인받았다. 6건과 독립 리뷰 후속 4건을 해결했다. 최종 로컬 테스트 358개,
+            format/lint/typecheck/build 및 두 runtime 이미지 확인 통과. 열린 코드 이슈 없음. 실제
+            운영 전달은 미검증이며 개발자 이해 점검은 미실시다. 이전 350개 통과는 과거 이력으로
+            보존한다.
           </p>
         </section>
         <section id="current-implementation">
@@ -131,17 +134,186 @@ Firestore·PostgreSQL·lease·fence·영속 disabled 없음</pre>
               event/status/errorId만 error 로그로 남기며 영속 차단을 만들지 않는다.
             </li>
             <li>
-              공통 정의 선행 빌드·workspace·Docker·개발 watch를 연결했다. 기존 architecture
-              scanner를 확장했고 별도 ESLint 경계 체계는 제거했다. 운영 리소스 식별자는 자동
-              재생성하지 않는다.
+              API는 기존 source alias·Nest bundle/watch로 shared 원본을 소비한다. 선행 shared
+              빌드·runtime dependency·별도 watcher·webpack 래퍼와 전용 테스트를 제거했다. ESM
+              alerting만 CJS shared package를 빌드해 소비한다. 기존 architecture scanner는 프로젝트
+              루트 기준으로 수정하고 별도 로그 AST 검사기는 삭제했다.
             </li>
           </ul>
+        </section>
+        <section id="followup-evidence">
+          <h2>현재 조치·Fresh 검증 · 코드 기준 b358d70</h2>
+          <table>
+            <caption>
+              승인한 AR1–AR6 구현과 검증
+            </caption>
+            <thead>
+              <tr>
+                <th>항목</th>
+                <th>완료한 조치·증거</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>AR1 · 시간 제한</th>
+                <td>
+                  내부12초·배포15초. publisher 초기화 후 listen하고 격리는 직접 Publish RPC로
+                  최대2초·retry:null을 적용. 연결 종료 시 다음 외부 호출 금지·Discord 취소. 실제
+                  node:http 정상 POST·부분 본문 정체·완료 후 disconnect 및 RPC 옵션·wire
+                  allowlist·초기화 순서 검증 통과.
+                </td>
+              </tr>
+              <tr>
+                <th>AR2 · 본문 제한</th>
+                <td>
+                  성공·429에 64KiB reader 공유. 초과·손상·stream 오류에도 검증된 Retry-After 또는
+                  fallback cooldown과 non-ACK 유지. 실제 errored ReadableStream의 header/fallback,
+                  무한 본문 취소, 다음 fetch 억제 확인.
+                </td>
+              </tr>
+              <tr>
+                <th>AR3 · 경로 검사</th>
+                <td>
+                  sourceRoot와 projectRoot를 구분. shared/alerting 상위 폴더 및 shared 밖으로 나가는
+                  import의 positive/negative 회귀 통과.
+                </td>
+              </tr>
+              <tr>
+                <th>AR4 · API 빌드</th>
+                <td>
+                  기존 source alias·Nest watch 재사용. shared dist를 임시 이동한 상태의 API
+                  typecheck/build·6 suites 43개 관련 검사 통과 후 복원. 원본 변경 후 Nest 재컴파일
+                  확인. 별도 webpack 래퍼·전용 테스트·runtime 공유 패키지 복사 제거. ESM consumer용
+                  shared 빌드는 유지.
+                </td>
+              </tr>
+              <tr>
+                <th>AR5 · 로그 검사</th>
+                <td>
+                  373줄 AST 검사기 삭제. 기존 producer 테스트에서 warn/error·marker·metadata·중복
+                  억제 확인. 새 scanner나 logger wrapper 없음. 모든 미래 .error() 자동 탐지 보장은
+                  하지 않음.
+                </td>
+              </tr>
+              <tr>
+                <th>AR6 · 내부 계약</th>
+                <td>
+                  sender는 AlertSummary만 수신, subscription 필수. raw payload overload·미사용
+                  export·rate-limit 결과 필드 제거. 실제 production 계약으로 타입·전달 회귀 통과.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <table>
+            <caption>
+              최종 명령·결과
+            </caption>
+            <thead>
+              <tr>
+                <th>검증</th>
+                <th>결과</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>pnpm test --runInBand</th>
+                <td>61 suites / 317 tests 통과</td>
+              </tr>
+              <tr>
+                <th>pnpm test:alerting</th>
+                <td>23 tests 통과</td>
+              </tr>
+              <tr>
+                <th>pnpm test:alerting:ops / test:verify-local</th>
+                <td>15 / 3 통과. 전체 합계358개. 앞선 focused43개는 중복 합산하지 않음.</td>
+              </tr>
+              <tr>
+                <th>정적·빌드</th>
+                <td>
+                  pnpm format:check, lint, API·alerting typecheck/build 통과. frozen-lockfile
+                  offline 설치 통과.
+                </td>
+              </tr>
+              <tr>
+                <th>Runtime Docker</th>
+                <td>
+                  mogak-core-api:pr19-followup / mogak-alerting:pr19-followup 빌드 통과.
+                  --network=none에서 API는 shared workspace artifact 없이 공식 정의를 bundle에
+                  포함함을 확인. alerting은 ESM/shared/직접 PublisherClient·12초 예산 import,
+                  Firestore 부재 확인. 서버·DB·웹훅을 외부로 호출하지 않음.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <table>
+            <caption>
+              독립 구현 리뷰 추가 발견 · 모두 재검토 완료
+            </caption>
+            <thead>
+              <tr>
+                <th>ID·상태</th>
+                <th>발견·조치</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>AR4-FIX-01 · 해결됨</th>
+                <td>
+                  삭제된 webpack 모듈을 참조하던 scripts/shared-build.test.mjs 제거. script gate3개
+                  통과.
+                </td>
+              </tr>
+              <tr>
+                <th>AR2-FIX-01 · 해결됨</th>
+                <td>
+                  429 reader 오류가 header를 버리던 경로 수정. header·fallback 양쪽의 다음 fetch
+                  억제 확인.
+                </td>
+              </tr>
+              <tr>
+                <th>AR1-VERIFY-01 · 해결됨</th>
+                <td>
+                  service signal 검사 외 실제 node:http의 POST·정체·disconnect 검증 추가. 서버·소켓
+                  cleanup 포함.
+                </td>
+              </tr>
+              <tr>
+                <th>AR-CLEAN-01 · 해결됨</th>
+                <td>
+                  미사용 presentation timeout export 삭제. 실제 값은 adapter 내부 한 곳에 유지.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            같은 독립 no-write 리뷰어가 네 항목과 인접 변경을 재검토했으며 추가 actionable finding은
+            없었다. 리뷰 전후 diff SHA256은 첫 검토
+            4a917dd5557df8666f42e8807ae4ed7e9a4283c06a81cf359c55771ebd63064a, 후속 검토
+            fbaaafad7610d24c12d56231662ed18829040365c5cbabf62e2b1c3562878710로 각각 일치했다.
+            리뷰어는 파일을 수정하거나 검증 명령을 실행하지 않았다.
+          </p>
+          <p>
+            실제 GCP·인증 push·Discord 수신은 미검증이다. Pub/Sub 시간 제한은 설치 SDK의 CallOptions
+            계약과 로컬 대역으로 확인했다. 진행 중 RPC는 공개 API로 강제 취소할 수 없고 최대2초
+            deadline까지 진행할 수 있다. 로컬 timeout은 원격 미발행을 증명하지 않으며 재전달 시
+            격리도 중복될 수 있다.
+          </p>
+          <details>
+            <summary>중간 실패·조치 이력</summary>
+            <p>
+              첫 전체 검사는 구현 중 infrastructure→presentation 참조로1건 실패했다. 상수를 adapter
+              내부로 옮긴 뒤 전체317개 통과. obsolete webpack 테스트도 실패하여 제거 후 script3개
+              통과. 초기 실행의 추가 --가 Jest 패턴으로 전달된 문제는 pnpm test --runInBand로
+              바로잡았다. 실패를 통과 결과에 합산하지 않았다.
+            </p>
+          </details>
         </section>
         <section id="issue-register">
           <h2>이슈 기록</h2>
           <p>
-            담당·조치 소유자는 root. 현재 열린 코드 이슈 없음. 실제 환경 검증과 중복 가능성은 아래
-            운영 제한으로 남는다.
+            R1–R10은 이전 조치 이력이다. AR1–AR6과 독립 후속 4건을 모두 해결했다. 조치 소유자는
+            root이며 현재 검증 절에 완료한 변경·증거를 기록했다. 실제 환경 검증과 중복 가능성은 운영
+            제한으로 남긴다.
           </p>
           <table>
             <caption>
@@ -228,7 +400,7 @@ Firestore·PostgreSQL·lease·fence·영속 disabled 없음</pre>
           </table>
         </section>
         <section id="verification-evidence">
-          <h2>Fresh 기술 검증</h2>
+          <h2>이전 기술 검증 이력 · 4797023</h2>
           <ul>
             <li>
               pnpm format:check / pnpm lint / API typecheck·build / alerting typecheck·build — 통과
@@ -278,16 +450,155 @@ Firestore·PostgreSQL·lease·fence·영속 disabled 없음</pre>
           </p>
         </section>
         <section id="review">
-          <h2>리뷰 결과</h2>
+          <h2>전체 PR 재리뷰 · 후속 조치 완료</h2>
           <p>
-            사용자 리뷰 21개에 개별 답변하고 같은 원인을 producer/consumer/운영/빌드/검사 전체에
-            적용했다. 독립 no-write 리뷰는 입력·전송·429·격리·ACK/재시도·공유 메타데이터·배포·Docker
-            사용 경로를 확인했다. 기능 문제 2건은 수정 diff와 회귀 증거까지 재검토했으며 추가 기능
-            결함을 발견하지 못했다. runbook 문서 지침도 반영했다.
+            범위: main 기준 83be31c54c62d5c8959e3bd17e7206f2d6aa5046 →
+            47970238d2210ef0b75ecf15ea7c6d7c37e14850 전체 변경. 자기 작성 변경에 대한 root 리뷰와
+            독립 no-write 구조 감사·실행 경로 리뷰를 병행했다. 이전 수정분만이 아니라 기존 alias,
+            Nest 빌드, service/port 배치, architecture 검사와 신규 구현을 대조했다. 리뷰 전후 git
+            diff와 status가 비어 있음을 확인했다. 아래 증상·행 번호는 4797023 당시 근거다. 당시
+            제안한 개선은 후속 명시 승인 뒤 모두 구현했으며 현재 조치·검증은 위 현재 검증 절을
+            참조한다.
           </p>
+          <table>
+            <caption>
+              발견 당시 근거와 개선 방향 · 현재 모두 구현·검증 완료
+            </caption>
+            <thead>
+              <tr>
+                <th>ID·판정</th>
+                <th>조건·영향과 근거</th>
+                <th>당시 개선 방향 · 현재 반영됨</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>AR1 · P1 · 해결됨 · 동작 결함</th>
+                <td>
+                  handler.ts:117과 alertDelivery.service.ts:74의 격리 publish에는 deadline·취소가
+                  전달되지 않는다. quarantine.ts:37–43은 SDK 기본 publish를 사용한다. 설치된
+                  @google-cloud/pubsub-api의 활성 Publish 설정은 RPC 60초·총 재시도 600초여서
+                  Pub/Sub 장애 시 요청 예산 15초를 초과할 수 있다. deploy.mjs:67–68은 1–15초를
+                  허용하지만 handler 예산은 고정 15초여서 더 짧은 배포 설정도 일치하지 않는다. Cloud
+                  Run 504 이후 작업이 계속되면 재전달·격리 중복이 가능하다.
+                </td>
+                <td>
+                  플랫폼 timeout보다 짧은 일관된 내부 예산을 만들고 실제 publish RPC·재시도에 남은
+                  시간을 적용한다. 응답 여유 시간을 남기고 취소를 전달한다. Promise.race만으로
+                  백그라운드 publish를 남기지 않는다.
+                </td>
+              </tr>
+              <tr>
+                <th>AR2 · P2 · 해결됨 · 동작 결함</th>
+                <td>
+                  discordClient.ts:213은 429 본문을 response.json()으로 제한 없이 버퍼링한다. 성공
+                  응답에만 64KiB 상한이 있다. 큰 429 본문은 메모리·JSON 파싱 비용을 제한하지 못하며
+                  타이머만으로 바이트 수나 동기 파싱을 제한할 수 없다.
+                </td>
+                <td>
+                  성공·429 응답에 같은 제한된 본문 읽기 방식을 사용한다. 초과·손상 시 보수적인
+                  cooldown과 non-ACK를 유지한다.
+                </td>
+              </tr>
+              <tr>
+                <th>AR3 · P2 · 해결됨 · 검사 결함</th>
+                <td>
+                  layerBoundaries.spec.ts:229–237은 절대 경로에 shared/alerting이라는 세그먼트가
+                  있는지로 모듈을 분류한다. 상위 checkout 폴더 이름이 shared이면 전체 저장소에
+                  shared 규칙이 적용되고 alerting이면 다른 application까지 제한된다. 코드와 무관한
+                  머신 경로에 따라 검사 결과가 달라진다.
+                </td>
+                <td>
+                  저장소 상대 경로의 명확한 모듈 루트로 분류하고 fixture의 정책도 명시한다. import
+                  대상도 실제 shared 루트 내부인지 판정한다.
+                </td>
+              </tr>
+              <tr>
+                <th>AR4 · P2 · 해결됨 · 구조 위험(비차단)</th>
+                <td>
+                  package.json:19–29·43의 API 선행 shared 빌드·workspace 런타임 의존성,
+                  webpack.config.cjs:1–7의 externals 재정의와 API Docker의 shared 산출물 연결은 기존
+                  tsconfig source alias·Nest bundle/watch 경로와 별도 체계를 만든다. 현재 빌드
+                  성공과 별개로 명령마다 반복 컴파일하고 두 watcher를 유지할 필요가 생겼다.
+                </td>
+                <td>
+                  API/Jest는 기존 source alias 방식으로 shared를 소비하도록 단순화한다. 별도 ESM
+                  alerting이 소비하는 공통 메타데이터 패키지 빌드는 유지할 근거가 있다.
+                </td>
+              </tr>
+              <tr>
+                <th>AR5 · P2 · 해결됨 · 검사 구조 위험(비차단)</th>
+                <td>
+                  신규 errorAlert.contract.spec.ts:143은 모든 .error()를 logger로 취급한다.
+                  :272–312는 import·scope 대신 저장소 전체의 동일 이름 선언을 모아 유일성으로
+                  helper를 찾는다. 다른 파일의 무관한 이름 충돌이나 logger가 아닌 .error()에 오탐할
+                  수 있고 alias·computed 호출은 놓친다. :330의 파일 탐색도 기존 architecture 검사와
+                  중복이다.
+                </td>
+                <td>
+                  공식 typed producer 경계와 직접 계약 검사를 우선한다. 정적 탐색이 필요한 범위만
+                  기존 검사에 연결하고 파일·심벌 범위를 정확히 처리한다. 새 범용 검사 프레임워크로
+                  확장하지 않는다.
+                </td>
+              </tr>
+              <tr>
+                <th>AR6 · P3 · 해결됨 · 불필요한 공개 계약(비차단)</th>
+                <td>
+                  discordClient.ts:36–44의 raw DiscordPayload overload는 테스트에서만 사용하며
+                  production의 안전한 summary 투영을 우회하는 추가 경로다. :200의 retryAfterMs
+                  export는 호출자가 없고 결과의 retryAfterMs도 application에서 소비하지 않는다.
+                  input.ts:59는 실제 호출에 필요 없는 string/options 이중 형태와 subscription 검증
+                  생략 기본값을 제공한다.
+                </td>
+                <td>
+                  실제 production 호출에 맞춰 sender 입력 하나와 필수 expectedSubscription으로
+                  축소한다. 테스트는 실제 계약으로 작성하고 사용하지 않는 export·결과 필드를
+                  제거한다.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p>
+            외부 동작 근거:
+            <a href="https://docs.cloud.google.com/run/docs/configuring/request-timeout"
+              >Cloud Run request timeout</a
+            >은 제한 초과 시 504를 반환하며 컨테이너 처리가 계속될 수 있음을 명시한다. SDK 시간 값은
+            설치된 @google-cloud/pubsub-api@0.3.0의 활성 publisher_client_config.json에서 확인했다.
+          </p>
+          <p>
+            최초 정적 리뷰 당시에는 HTTP 연결 종료·본문 지연·429 크기·격리 RPC 제한의 회귀 증거가
+            없었다. 후속 로컬 검증으로 실제 HTTP·429·RPC 옵션 증거를 추가했다. 실제 GCP 장애와 외부
+            발송은 검증하지 않았으며 이전 350개 통과를 현재 경로의 증거로 확대 해석하지 않는다.
+          </p>
+          <p>
+            유지 근거가 있는 구조: 공식 공통 메타데이터, 별도 ESM alerting 실행 단위, framework 없는
+            application service/port, 안전한 입력·출력 투영. 패키지나 adapter의 존재 자체가 문제가
+            아니라 기존 경로와 중복된 연결 및 실제 호출에 필요 없는 계약이 개선 대상이다. 최초
+            리뷰에서는 구현을 바꾸지 않았고 후속 명시 승인 뒤 수정했다.
+          </p>
+          <details>
+            <summary>이전 부분 리뷰 이력</summary>
+            <p>
+              사용자 리뷰 21개에 개별 답변했다. 당시 독립 리뷰에서 발견한 기능 문제 2건과 runbook
+              지침을 수정하고 추가 기능 결함을 발견하지 못했다고 기록했다. 그 판단은 당시 검사
+              범위의 결과이며 현재 전체 재리뷰의 AR1–AR6로 보완한다.
+            </p>
+          </details>
         </section>
         <section id="commits">
           <h2>책임별 커밋</h2>
+          <ol>
+            <li>548c0c6 — 전체 재리뷰 수정 설계 승인</li>
+            <li>16a3663 — 기존 API source alias·build/watch 복원</li>
+            <li>b458351 — 프로젝트 루트 기준 검사·기존 producer 테스트 재사용</li>
+            <li>e7987cf — obsolete webpack 전용 테스트 제거</li>
+            <li>4537664 — 배포·요청 제한 시간 정합성</li>
+            <li>b358d70 — 전달·격리 시간 제한·내부 계약·실제 HTTP 회귀</li>
+          </ol>
+          <p>
+            이번 후속 커밋이다. 전달 옵션·sender·회귀가 함께 바뀌는 AR1·AR2·AR6은 하나의 전달 경로
+            커밋으로 묶었고 API 빌드·검사·배포는 분리했다. 아래 이전 커밋도 보존한다.
+          </p>
           <ol>
             <li>009300c — 현재 저장소 없는 설계 승인 기록</li>
             <li>02b91d4 — 공통 정의·API producer·빌드/검사 연결</li>
@@ -358,9 +669,11 @@ Firestore·PostgreSQL·lease·fence·영속 disabled 없음</pre>
           </section>
           <section class="question">
             <fieldset>
-              <legend>I4 · 격리 publish가 실패하면?</legend>
+              <legend>I4 · 격리 publish가 실패하거나 시간이 소진되면?</legend>
               <label><input type="radio" name="i3" value="0" />204 ACK</label
-              ><label><input type="radio" name="i3" value="1" />503 재시도</label
+              ><label
+                ><input type="radio" name="i3" value="1" />503 또는 끊긴 연결로 non-ACK
+                재시도</label
               ><button type="button" data-question="3">제출</button>
             </fieldset>
             <div class="result" hidden>
@@ -419,7 +732,7 @@ Firestore·PostgreSQL·lease·fence·영속 disabled 없음</pre>
         },
         {
           answer: 1,
-          why: '격리 publish 성공 후에만 ACK한다. 실패는 Pub/Sub 재시도이며 원문을 fallback으로 기록하지 않는다.',
+          why: '내부 예산12초·배포15초이며 초기화 후 listen한다. 직접 격리 RPC는 최대2초·SDK 재시도 없음이다. 실패·기한 소진은 non-ACK이며 연결 종료 후 다음 외부 호출을 시작하지 않는다. 원문 fallback은 없다.',
         },
         {
           answer: 0,
