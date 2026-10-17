@@ -89,7 +89,7 @@ export function resolveLogLevel(
     return nodeEnv === 'development' ? 'debug' : 'info';
   }
   if (isLogLevel(candidate)) {
-    if (isProduction(nodeEnv) && levelNumber(candidate) > levelNumber('error')) {
+    if (isProduction(nodeEnv) && candidate === 'fatal') {
       throw new Error('production LOG_LEVEL은 error 이상을 기록해야 합니다.');
     }
     return candidate;
@@ -123,23 +123,6 @@ function resolveServiceName(serviceName: string | undefined): string {
 
 function isProduction(nodeEnv: string | undefined): boolean {
   return nodeEnv?.trim().toLowerCase() === 'production';
-}
-
-function levelNumber(level: (typeof LOG_LEVELS)[number]): number {
-  switch (level) {
-    case 'fatal':
-      return 60;
-    case 'error':
-      return 50;
-    case 'warn':
-      return 40;
-    case 'info':
-      return 30;
-    case 'debug':
-      return 20;
-    case 'trace':
-      return 10;
-  }
 }
 
 function numericStatusCode(response: { statusCode?: unknown }): number | undefined {
