@@ -5,6 +5,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/alerting/package.json ./apps/alerting/package.json
 COPY libs/shared/package.json ./libs/shared/package.json
 RUN pnpm install --filter @mogak/alerting... --frozen-lockfile
+COPY tsconfig.json ./
 COPY apps/alerting ./apps/alerting
 COPY libs/shared ./libs/shared
 RUN pnpm --filter @mogak/alerting build
