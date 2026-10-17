@@ -49,8 +49,9 @@
     <header>
       <h1>운영 알림 기능 경계 구현 기록</h1>
       <p>
-        구현 기록 · Standard · 구현 완료 · 생성 <time datetime="2026-10-16">2026-10-16</time> · 갱신
-        <time datetime="2026-10-16">2026-10-16</time> · 추적: GitHub #18 / PR #19
+        구현 기록 · Standard · 구현 점검 중 — 변경 요청·설계 재승인 대기 · 생성
+        <time datetime="2026-10-16">2026-10-16</time> · 갱신
+        <time datetime="2026-10-17">2026-10-17</time> · 추적: GitHub #18 / PR #19
       </p>
       <dl>
         <dt>목적</dt>
@@ -82,7 +83,12 @@
         </section>
         <section id="implementation-status">
           <h2>기술 상태</h2>
-          <p>구현 완료. 운영 적용·배포·웹훅 호출은 범위 밖이며 수행하지 않았다.</p>
+          <p>
+            구현 준비 — 2026-10-17 사용자가 “ㅇㅇ ㄱㄱ. 개선 ㄱ”로 현재 축소안을 승인했다.
+            efa05a5를 출발점으로 기존 정의 재사용·입력 계약·저장소 없는 전달·운영 도구를
+            개선한다. 승인 범위에 관련 회귀·정적·빌드 검증과 책임별 커밋을 포함한다.
+            DB 변경·실제 배포·웹훅 호출은 수행하지 않는다. 개발자 이해 점검은 미실시다.
+          </p>
         </section>
         <section id="current-implementation">
           <h2>구현 경계·흐름</h2>
@@ -146,7 +152,73 @@ main.ts: 설정·SDK·구체 어댑터 조립</pre>
         </section>
         <section id="issue-register">
           <h2>이슈 기록</h2>
-          <p>열린 concrete finding 없음. 아래 이관 중 발견·수정 사항을 보존한다.</p>
+          <table>
+            <caption>
+              2026-10-17 사용자 리뷰 후 열린 원인별 항목
+            </caption>
+            <thead>
+              <tr>
+                <th>ID·상태</th>
+                <th>증거·영향</th>
+                <th>수정·다음 행동</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>R1 · open</th>
+                <td>
+                  contracts/input/quarantine의 Z006|Z500·이벤트·요약 map이 AppErrorCode와 중복
+                </td>
+                <td>
+                  공식 registry를 shared로 이동, API 경로 보존. 기존 승인 범위이며 저장소 변경을
+                  포함한 현재 안 승인 후 구현.
+                </td>
+              </tr>
+              <tr>
+                <th>R2 · open</th>
+                <td>source production literal이 여러 계층과deploy에 고정</td>
+                <td>
+                  감시 대상 환경 주입과 sink/consumer/표시 일치. ㄱㄱ로 승인한 기존 수정 범위.
+                </td>
+              </tr>
+              <tr>
+                <th>R3 · open</th>
+                <td>수동 route catalog stale 위험, source baseUrl 보간</td>
+                <td>router template 단일 원본·routeTemplate 계약. legacy route 표시는 생략.</td>
+              </tr>
+              <tr>
+                <th>R4 · open</th>
+                <td>URL validator/cooldown 정책 중복, SDK Like+이중 cast, alias/wrapper</td>
+                <td>기존 policy/service/port 관례와 SDK 타입 재사용. 실제 반복 검증은 유지.</td>
+              </tr>
+              <tr>
+                <th>R5 · open</th>
+                <td>불필요한 revision, 정상 timestamp까지 optional, 중복 DTO</td>
+                <td>필드 목적에 맞게 정리. 비HTTP status optional은 유지.</td>
+              </tr>
+              <tr>
+                <th>R6 · open</th>
+                <td>새 package는 기존 CJS/ESM·Docker·검사 경계에 영향</td>
+                <td>
+                  검증 계획과 빌드 graph를 함께 승인·구현. 과거 통과를 현재 수정 결과로 주장하지
+                  않음.
+                </td>
+              </tr>
+              <tr>
+                <th>R7 · open / 축소안 승인 대기</th>
+                <td>
+                  Firestore는 요구하지 않은 신규 도입이었다. 사용자가 공유 상태 보장은 아직 필요
+                  없다고 지적하여 PostgreSQL 대체안도 철회했다.
+                </td>
+                <td>
+                  Firestore 상태/SDK/설정/IAM/운영 도구 제거, DB 추가 없음. 직접 전송·프로세스별 429
+                  대기·Pub/Sub 재시도·영구 오류 격리로 축소. 현재는 설계만 반영했으며 코드는 아직
+                  Firestore를 사용한다.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p>사용자 리뷰 후 열린 구조 개선 항목 R1–R7. 아래 이전 이관 중 해결 기록도 보존한다.</p>
           <ul>
             <li>
               해결됨 — 초기 application 추출에서 quarantine receivedAt에 injected clock을 적용할
@@ -205,12 +277,21 @@ main.ts: 설정·SDK·구체 어댑터 조립</pre>
           </p>
         </section>
         <section id="review">
-          <h2>독립 리뷰</h2>
+          <h2>2026-10-17 사용자 리뷰 — 변경 요청</h2>
           <p>
-            검토 완료 · 자기 변경 독립 no-write 리뷰 · 기준 9c44c49..fb4a1f5 · concrete finding
-            없음. 입력 검증, ACK/retry, 상태 fence/cooldown, payload/privacy, package/build 참조를
-            대조했다. ESLint 규칙은 현재 graph를 검사하지만 모든 상대경로 깊이·새 barrel을 완전히
-            봉인하는 구조 분석기는 아니다.
+            자기 변경 리뷰 · Team-MOGAK/mogak-core-back · codex/error-log-discord-webhook · 구현
+            기준 efa05a5 · review5556787873. 리뷰21개를 확인하고 전부 개별 답변했다. 답변은 현재
+            사실·필드 목적과 미구현 수정 계획을 구분했다.
+          </p>
+          <p>
+            판단: 구조 개선 항목 있음. 기존 코드의 공식 정의·관례 재사용이 충분하지 않았다. 예전
+            독립 리뷰의 concrete finding 없음 판정은 9c44c49..fb4a1f5 동작 보존 검토 결과이며 이번
+            요청의 구조 적절성을 해결한 증거가 아니다.
+          </p>
+          <p>
+            새 구현과 회귀 검증은 아직 하지 않았다. 현재 as-built 기술 증거는 efa05a5 이전 기록이며,
+            앞선 리뷰 수정안 승인(ㄱㄱ)은 보존하며 저장소 없는 전달 축소안은 승인 대기다.
+            저장소·실제 배포 상태는 변경하지 않았다.
           </p>
         </section>
         <section id="commits">
