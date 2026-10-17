@@ -56,7 +56,7 @@
     <header>
       <h1>운영 알림 기능의 책임·의존 경계 — PR 리뷰 반영안</h1>
       <p>
-        설계 기준 · High-risk(개인정보 투영·입력 계약·외부 오류 전달) · 승인됨 · 생성
+        설계 기준 · High-risk(개인정보 투영·입력 계약·외부 오류 전달) · 설계 승인됨 · 생성
         <time datetime="2026-10-16">2026-10-16</time> · 갱신
         <time datetime="2026-10-17">2026-10-17</time>
       </p>
@@ -72,18 +72,18 @@
         </dd>
         <dt>핵심 흐름</dt>
         <dd>
-          기존 공식 메타데이터 → producer 안전 투영 → 입력 검증 → application 전달 → provider·상태
-          adapter → ACK/격리
+          기존 공식 메타데이터 → producer 안전 투영 → 입력 검증 → application 전달 → provider
+          adapter(DB 없음) → ACK/격리
         </dd>
         <dt>추적</dt>
-        <dd>GitHub #18 / PR #19 / review 5556787873 · 현재 구현 efa05a5</dd>
+        <dd>GitHub #18 / PR #19 / review 5556787873 · 재리뷰 대상 4797023 · AR1–AR6 수정안</dd>
       </dl>
     </header>
     <nav>
-      <a href="#goal">목표</a> · <a href="#decisions">기존 구조 재사용</a> ·
-      <a href="#system-model">경계</a> · <a href="#delivery-state">저장 없는 전달</a> ·
-      <a href="#invariants">계약</a> · <a href="#verification-plan">검증</a> ·
-      <a href="#design-control-state">자기점검</a> ·
+      <a href="#goal">목표</a> · <a href="#review-followup">AR1–AR6 수정</a> ·
+      <a href="#decisions">기존 구조 재사용</a> · <a href="#system-model">경계</a> ·
+      <a href="#delivery-state">저장 없는 전달</a> · <a href="#invariants">계약</a> ·
+      <a href="#verification-plan">검증</a> · <a href="#design-control-state">자기점검</a> ·
       <a href="#approval-state">승인</a>
     </nav>
     <main>
@@ -105,6 +105,115 @@
               >이전 승인 기준</a
             >을 기록으로 보존한다.
           </p>
+        </section>
+        <section id="review-followup">
+          <h2>전체 재리뷰 AR1–AR6 · 이번 승인 범위</h2>
+          <p>
+            같은 목적·사용자·문제·전달 흐름의 후속 수정이다. 이전 저장소 없는 전달 승인은 이력으로
+            보존한다. 요청 제한·시작 준비·입력 계약·검증 방식의 이번 변경은 별도 승인 질문에 대한
+            사용자의 “ㄱㄱ”로 승인됐다(2026-10-17). 아래 수정안을 구현 기준으로 삼는다.
+          </p>
+          <table>
+            <caption>
+              재확인한 원인과 최소 수정
+            </caption>
+            <thead>
+              <tr>
+                <th>항목</th>
+                <th>수정할 동작·구조</th>
+                <th>재사용·삭제 경계</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>AR1 · 요청·격리 제한 시간</th>
+                <td>
+                  내부 요청 예산 12초, Cloud Run 설정은 정확히 15초로 고정한다. 두 격리 경로에
+                  deadline을 전달한다. 격리는 남은 시간과 2초 중 작은 값으로 RPC timeout을 정하고
+                  SDK 재시도는 끈다. 남은 시간이 없거나 연결이 종료되면 다음 외부 호출을 시작하지
+                  않는다. Discord fetch에는 취소 signal을 전달한다.
+                </td>
+                <td>
+                  기존 SDK의 v1.PublisherClient로 단일 메시지를 직접 publish한다. Topic의 배치 큐를
+                  거치지 않는다. 인증·stub 초기화는 RPC timeout 밖에 있으므로 initialize() 완료 후
+                  HTTP listen을 시작한다. 새 SDK·범용 실행 래퍼는 없다.
+                </td>
+              </tr>
+              <tr>
+                <th>AR2 · 429 응답 크기</th>
+                <td>
+                  성공·429 응답에 같은 64KiB 제한 reader를 적용한다. 초과·손상된 본문은 무시하고
+                  유효한 Retry-After header 또는 기존 fallback 대기를 적용한다. 429는 non-ACK다.
+                </td>
+                <td>DiscordClient 내부의 기존 읽기 함수를 재사용한다. 별도 util 패키지는 없다.</td>
+              </tr>
+              <tr>
+                <th>AR3 · 검사 경로</th>
+                <td>
+                  scanner의 sourceRoot와 projectRoot를 구분하고 프로젝트 상대 경로 libs/shared/src와
+                  apps/alerting/src/application으로 판정한다. 상대 import 대상도 실제 shared 루트
+                  내부인지 확인한다.
+                </td>
+                <td>기존 architecture scanner와 실제 모양의 fixture를 사용한다.</td>
+              </tr>
+              <tr>
+                <th>AR4 · API 빌드</th>
+                <td>
+                  API/Jest는 기존 방식대로 @mogak/shared source alias를 소비한다. 루트의 runtime
+                  workspace 의존성·선행 shared 빌드·별도 watcher·webpack externals 재정의·API
+                  runtime shared 산출물 복사를 제거한다.
+                </td>
+                <td>
+                  ESM alerting의 CJS shared 패키지와 의존 빌드는 유지한다. 공식 정의는 하나다.
+                </td>
+              </tr>
+              <tr>
+                <th>AR5 · 로그 계약 검사</th>
+                <td>
+                  새 errorAlert.contract.spec.ts AST scanner를 삭제한다. 모든 .error()를 로그로
+                  취급하거나 저장소 전체 이름으로 helper를 찾는 검증은 중단한다. 실제 exception
+                  filter·DB pool·Pino 옵션·Nest/Pino 통합 테스트로 metadata와 중복 억제를 확인한다.
+                </td>
+                <td>
+                  기존 producer 테스트를 보강한다. 새 scanner·logger wrapper·전역 타입 체계는 만들지
+                  않는다. 모든 미래 .error()를 자동 탐지한다는 보장은 하지 않는다.
+                </td>
+              </tr>
+              <tr>
+                <th>AR6 · 불필요한 계약</th>
+                <td>
+                  sender는 AlertSummary만 받는다. raw payload overload·미사용 retryAfterMs
+                  export·application에서 소비하지 않는 결과 필드는 제거한다. parsePushEnvelope의
+                  expectedSubscription은 필수 문자열 하나로 통일한다.
+                </td>
+                <td>
+                  테스트도 production 계약을 사용한다. 내부 cooldown과 안전한 payload 투영은
+                  유지한다.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <aside>
+            공개 PublisherClient API는 진행 중 RPC의 AbortSignal/cancel을 지원하지 않는다. 시작 전
+            취소·남은 시간 검사는 적용하지만 이미 시작한 RPC는 최대 2초 deadline까지 진행할 수 있다.
+            로컬 timeout은 원격 미발행을 증명하지 않는다. 발행 실패는 non-ACK이며 격리 중복 가능성은
+            유지한다. 단순 Promise.race로 SDK 재시도를 남기는 방식은 쓰지 않는다.
+          </aside>
+          <figure>
+            <pre>
+시작: PublisherClient 초기화 성공 → HTTP listen (실패 시 시작 실패)
+요청: 본문·출처 확인 → Discord (최대 5초, 취소 전달)
+                         ├─ 성공 ID 확인 → 204
+                         ├─ 일시 오류·429 → 503
+                         └─ 영구 오류 → 직접 격리 RPC (최대 2초, SDK 재시도 없음)
+                                           ├─ 성공 → 204
+                                           └─ 실패·시간 소진 → 503
+전체 내부 예산 12초 / 배포 timeout 15초 / 연결 종료 시 다음 단계 금지</pre>
+            <figcaption>
+              잘못된 입력도 같은 격리 RPC를 사용한다. 연결이 이미 끊겼으면 응답을 쓰지 않는다. 요청
+              실패·응답 유실 시 Pub/Sub가 재전달하며 중복을 완전히 방지하지 않는다.
+            </figcaption>
+          </figure>
         </section>
         <section id="non-goals">
           <h2>범위 밖</h2>
@@ -245,12 +354,12 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
             </figcaption>
           </figure>
           <p>
-            shared는 한 번 CJS로 빌드하고 exports/types를 제공한다. API CJS/webpack과 alerting Node
-            ESM이 같은 artifact를 소비한다. ESM 소비에서는 default import를 사용해 CJS synthetic
-            named export 추론에 기대지 않는다. 앱보다 shared를 먼저 빌드하고
-            workspace/lockfile/typecheck/dev watch/CI/두 Docker의 manifest·source·dist 복사와
-            production workspace link를 함께 연결한다. 라이브러리 TS를 alerting에서 직접 상대
-            import하는 우회는 쓰지 않는다.
+            API CJS/Nest는 기존 TypeScript/Jest source alias로 libs/shared/src를 직접 소비하고 기존
+            Nest bundle/watch를 사용한다. API에는 shared 선행 빌드나 runtime package link가 필요하지
+            않다. alerting Node ESM은 CJS로 빌드한 private shared package의 exports/types를
+            사용한다. 이 소비 경로에만 shared 선행 빌드·production workspace link를 유지한다. ESM
+            소비에서는 default import를 사용해 CJS synthetic named export 추론에 기대지 않는다.
+            라이브러리 TS를 alerting에서 직접 상대 import하는 우회는 쓰지 않는다.
           </p>
           <p>
             API runtime에 Google SDK가 추가되지 않아야 하며 shared도 Nest/Google SDK/DB 의존성을
@@ -369,8 +478,10 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
                 <td>시작 실패. 배포 도구·runbook에서 값을 먼저 주입하도록 연결.</td>
               </tr>
               <tr>
-                <td>shared build/dist 또는 workspace link 누락</td>
-                <td>타입/build/이미지 게이트가 실패해야 함. root/local gate가 의존 순서를 보장.</td>
+                <td>alerting의 shared build/dist 또는 workspace link 누락</td>
+                <td>
+                  타입/build/이미지 게이트가 실패해야 함. API는 기존 source alias로 독립 빌드.
+                </td>
               </tr>
               <tr>
                 <td>Discord429·네트워크·5xx</td>
@@ -394,9 +505,9 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
         <section id="grilling-state">
           <h2>설계 의사결정 기록</h2>
           <p>
-            진행 상태: 완료. 앞선 리뷰 수정안의 ㄱㄱ 승인은 보존한다. 사용자가 공유 상태 보장은 아직
-            필요 없다고 결정하여 Firestore/PG 상태 저장을 제외했다. 현재 축소안은 명시 승인됐다.
-            리뷰21개 조사·답변 완료는 구현 승인을 대신하지 않는다.
+            진행 상태: 완료. 기존 저장소 없는 전달 결정은 유지한다. AR1–AR6은 코드·설치 SDK의 공개
+            API·기존 producer 테스트를 재확인했다. 이번 수정안은 “ㄱㄱ”로 승인됐다. 기술적으로
+            확인할 수 있는 사항을 사용자 선택 질문으로 넘기지 않았다.
           </p>
           <dl>
             <dt>shared registry vs producer가 메시지 문자열을 wire에 추가</dt>
@@ -406,8 +517,9 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
             </dd>
             <dt>단일 CJS vs dual build</dt>
             <dd>
-              단일 CJS 권고. 현재 두 consumer의 module 호환을 충족하며 불필요한 두 번째 빌드 구성을
-              피한다. Node ESM 실제 import 검증을 포함한다.
+              ESM consumer용 shared는 단일 CJS 빌드를 유지한다. API는 기존 source alias로 같은
+              원본을 사용한다. 두 consumer가 반드시 같은 artifact를 사용해야 한다는 이전 결정을
+              수정하여 API 선행 빌드·watch 연결을 제거한다.
             </dd>
             <dt>공유 상태 저장 여부</dt>
             <dd>
@@ -421,11 +533,38 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
               제거한다. 획일적으로 inline하거나 공용 util로 승격하지 않는다.
             </dd>
             <dt>현 frontier</dt>
-            <dd>미해결 설계 결정 없음. 사용자는 현재 축소안의 구현과 관련 검증을 명시 승인했다.</dd>
+            <dd>
+              사용자 소유의 미해결 선택 없음. 기존 저장소 없는 전달·15초 배포 정책 안에서 가장 작은
+              수정안을 선택했다. Topic 전역 옵션·Promise.race는 요청별 RPC 제한을 충족하지 못해
+              제외했다. 진행 중 publish 취소와 exactly-once는 제공하지 않는다.
+            </dd>
           </dl>
         </section>
         <section id="verification-plan">
           <h2>구현·검증·커밋 단위</h2>
+          <p>
+            이번 후속 책임 단위: ① 요청 예산·격리 RPC·429 본문 제한(AR1·AR2), ② 실제 sender/입력
+            계약 축소(AR6), ③ 기존 API alias·빌드 연결 복원(AR4), ④ architecture 경로 수정·기존
+            producer 테스트로 검증 정리(AR3·AR5). 기존 커밋은 squash하지 않는다.
+          </p>
+          <p>
+            승인에 포함할 추가 회귀: publisher 초기화 전 listen 금지, RPC timeout 2초 이하·SDK
+            재시도 비활성화, deadline 소진 시 미호출, 연결 종료 후 다음 단계 금지, 느린 발행, 초과
+            크기·끝나지 않는 429 응답, shared/alerting 상위 폴더에서도 같은 검사 결과, 필수
+            subscription 일치, shared dist 없이 API build/watch. 실제 GCP·Discord 발송 없이 로컬
+            대역과 기존 테스트를 사용한다. 아래 명령은 계획이며 아직 실행하지 않았다.
+          </p>
+          <pre><code>pnpm format:check
+pnpm lint
+pnpm typecheck
+pnpm build
+pnpm typecheck:alerting
+pnpm build:alerting
+pnpm test:alerting
+pnpm test:alerting:ops
+node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.config.ts test/architecture/layerBoundaries.spec.ts test/common/http/globalException.filter.spec.ts test/database/database.provider.spec.ts test/infrastructure/logging/pinoHttp.options.spec.ts test/infrastructure/logging/nestjsPino.integration.spec.ts test/shared/index.spec.ts
+pnpm test</code></pre>
+          <p>이전 구현 단위·검증 범위는 다음 이력으로 유지한다.</p>
           <ol>
             <li>기존 공개 메타데이터 이동과 API shim, 최소 shared package 및 build/Docker 연결.</li>
             <li>기존 producer/로깅 컨텍스트 재사용, 안전한 routeTemplate와 단일 이벤트 정의.</li>
@@ -486,9 +625,18 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
           </p>
           <p>
             범위: 원본 정의/별칭(Q1·Q2), 개인정보(Q2·Q3), 출처/호환(Q3), 환경/설정(Q4),
-            필드/실패(Q5), 빌드/의존(Q6), 공유 상태/복구(Q7), 검증/권한(Q8).
+            필드/실패(Q5), 빌드/의존(Q6), 공유 상태/복구(Q7), 검증/권한(Q8), 제한 시간·원격
+            불확실성(Q9), 429 바이트 제한(Q10), 검사 경로(Q11). AR6은 현재 production 동작을
+            보존하면서 내부 계약만 좁힌다. 별도 운영 선택은 없으며 Q2·Q3의 안전한 투영과 필수
+            subscription의 직접 회귀 검사로 확인한다.
           </p>
-          <output id="progress" aria-live="polite">질문 1 / 8 · 제출 0 / 8</output>
+          <p>
+            커버리지 기록: 목표·범위(Q8), 주요 결정(Q6·Q8), 불변식(Q1·Q2·Q9·Q10), 경계·상태
+            전이(Q3·Q4·Q7·Q11), 실패·복구(Q5·Q7·Q9·Q10), 권한·외부 효과(Q8), 운영 관측(Q9: 기존
+            안전한 격리 실패 로그 유지), 검증·잔여 위험(Q8·Q9). DB schema·데이터 이관·권한 변경
+            질문은 해당 변경이 없으므로 제외한다.
+          </p>
+          <output id="progress" aria-live="polite">질문 1 / 11 · 제출 0 / 11</output>
           <section class="question">
             <fieldset>
               <legend>
@@ -581,12 +729,13 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
           </section>
           <section class="question">
             <fieldset>
-              <legend>Q6 · 빌드·의존 — shared package에 Nest·Google SDK를 넣어도 되는가?</legend>
+              <legend>Q6 · 빌드·의존 — API 시작에도 shared dist와 별도 watcher가 필요한가?</legend>
               <label
-                ><input type="radio" name="q5" value="0" />아니오. 순수 공개 메타데이터와 타입만
-                포함한다</label
+                ><input type="radio" name="q5" value="0" />아니오. API는 기존 source alias와 Nest
+                watch를 쓰고 ESM alerting만 빌드된 shared package를 소비한다</label
               ><label
-                ><input type="radio" name="q5" value="1" />예. 모든 공통 구현을 이곳에 모은다</label
+                ><input type="radio" name="q5" value="1" />예. 두 앱 모두 shared dist와 병렬
+                watcher를 요구한다</label
               ><button type="button" data-question="5">제출</button>
             </fieldset>
             <div class="result" hidden>
@@ -614,12 +763,72 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
           </section>
           <section class="question">
             <fieldset>
-              <legend>Q8 · 검증·권한 — 리뷰 답변과 이 자기점검이 구현 승인을 대신하는가?</legend>
+              <legend>
+                Q8 · 검증·권한 — AST scanner를 지우면 무엇으로 로그 계약을 확인하는가?
+              </legend>
               <label
-                ><input type="radio" name="q7" value="0" />아니오. 공유 상태를 제거한 현재 전달·실패
-                처리 계약의 구현 승인이 필요하다</label
-              ><label><input type="radio" name="q7" value="1" />예. 문서를 열면 자동 승인된다</label
+                ><input type="radio" name="q7" value="0" />실제 producer의 기존 단위·통합 테스트를
+                보강한다. 이번 승인은 로컬 수정·검증만 포함한다</label
+              ><label
+                ><input type="radio" name="q7" value="1" />검사를 없애고 실제 웹훅으로만
+                확인한다</label
               ><button type="button" data-question="7">제출</button>
+            </fieldset>
+            <div class="result" hidden>
+              <strong class="status"></strong>
+              <p class="explanation"></p>
+              <p class="next-action"></p>
+            </div>
+          </section>
+          <section class="question">
+            <fieldset>
+              <legend>Q9 · 제한 시간 — 격리 RPC가 timeout이면 원격 미발행이 확실한가?</legend>
+              <label><input type="radio" name="q8" value="0" />예. 취소됐으므로 중복이 없다</label>
+              <label
+                ><input type="radio" name="q8" value="1" />아니오. non-ACK로 재시도하며 원격 수락과
+                중복 가능성이 남는다. 다음 단계는 시작하지 않는다</label
+              >
+              <button type="button" data-question="8">제출</button>
+            </fieldset>
+            <div class="result" hidden>
+              <strong class="status"></strong>
+              <p class="explanation"></p>
+              <p class="next-action"></p>
+            </div>
+          </section>
+          <section class="question">
+            <fieldset>
+              <legend>Q10 · 429 — 본문이 64KiB를 넘으면 어떻게 처리하는가?</legend>
+              <label
+                ><input type="radio" name="q9" value="0" />본문 읽기를 제한하고 유효한 header 또는
+                fallback 대기를 적용하며 non-ACK한다</label
+              >
+              <label
+                ><input type="radio" name="q9" value="1" />대기 시간을 찾을 때까지 본문을 전부
+                읽는다</label
+              >
+              <button type="button" data-question="9">제출</button>
+            </fieldset>
+            <div class="result" hidden>
+              <strong class="status"></strong>
+              <p class="explanation"></p>
+              <p class="next-action"></p>
+            </div>
+          </section>
+          <section class="question">
+            <fieldset>
+              <legend>
+                Q11 · 경로 — checkout 상위 폴더 이름이 shared이면 검사 정책도 바뀌는가?
+              </legend>
+              <label
+                ><input type="radio" name="q10" value="0" />예. 절대 경로의 모든 세그먼트가
+                기준이다</label
+              >
+              <label
+                ><input type="radio" name="q10" value="1" />아니오. projectRoot 기준의 실제 모듈
+                위치로 판정하므로 결과가 같아야 한다</label
+              >
+              <button type="button" data-question="10">제출</button>
             </fieldset>
             <div class="result" hidden>
               <strong class="status"></strong>
@@ -632,15 +841,22 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
         <section id="approval-state">
           <h2>구현 승인</h2>
           <p>
-            <strong>설계 승인됨 — 2026-10-17.</strong> 사용자가 구현 승인 질문에 “ㅇㅇ ㄱㄱ. 개선
-            ㄱ”로 답했다. 앞선 리뷰 수정과 공유 상태·Firestore·PostgreSQL을 제외한 현재 전달·실패
-            처리 축소안 및 관련 검증을 승인 범위로 기록한다.
+            <strong>설계 승인됨 — AR1–AR6 · 2026-10-17.</strong> 사용자가 별도 구현 승인 질문에
+            “ㄱㄱ”로 답했다. 요청 예산·시작 준비·내부 입력 계약·검증 전략의 변경을 승인했다.
+            자기점검은 미실시·비차단이며 승인과 별도로 관리한다.
           </p>
           <p>
-            승인된 범위: 앞서 승인한 공통 정의·기존 구조 재사용 개선 + 저장소 없는 직접
-            전달·실패/429 재시도·영구 오류 격리 + Firestore 의존/운영 도구 제거 + 관련
-            회귀·정적·빌드 검증. 책임별 커밋. DB schema 변경/실제 배포/리소스 삭제/웹훅 발송 없음.
+            승인 범위: AR1–AR6 최소 수정 + 관련 회귀 테스트 작성·실행 및 정적·빌드·watch 검증 +
+            책임별 커밋. 저장소·새 프레임워크·실제 배포·리소스 변경·웹훅 발송은 포함하지 않는다.
           </p>
+          <details>
+            <summary>이전 승인 이력</summary>
+            <p>
+              2026-10-17 사용자가 구현 승인 질문에 “ㅇㅇ ㄱㄱ. 개선 ㄱ”로 답했다. 공통 정의·기존
+              구조 재사용, 저장소 없는 전달·429 재시도·영구 오류 격리, Firestore 의존 제거와 관련
+              회귀·정적·빌드 검증을 승인했다. 당시 승인 기준은 4797023의 설계 이력으로 보존한다.
+            </p>
+          </details>
           <p>
             <a href="operational-alert-boundaries-implementation.html">현재 구현·이슈·리뷰 기록</a>
           </p>
@@ -671,7 +887,7 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
         },
         {
           answer: 0,
-          why: 'CJS 한 번 빌드한 artifact를 API와 Node ESM이 소비한다. workspace/타입/build/watch/Docker 의존 순서를 함께 연결하고 libs 소스 직접 상대 import로 우회하지 않는다.',
+          why: 'API는 기존 source alias·Nest bundle/watch로 원본을 소비한다. ESM alerting만 빌드된 CJS package를 소비한다. 공식 메타데이터는 순수하게 유지하고 Nest·Google SDK를 넣지 않는다.',
         },
         {
           answer: 0,
@@ -679,7 +895,19 @@ API(CJS/Nest, 기존 import shim) → 기존 JSON log → alerting(ESM)
         },
         {
           answer: 0,
-          why: '앞선 리뷰 수정 승인은 보존한다. 공유 상태 제거와 응답별 처리 계약으로 축소한 현재 안의 구현 승인을 별도로 요청한다. 자기점검은 비차단이며 구현 승인이 아니다.',
+          why: '기존 exception filter·DB pool·Pino 옵션·통합 테스트에서 실제 metadata와 중복 억제를 검사한다. 모든 미래 .error 자동 탐지는 보장하지 않는다. 자기점검은 승인이 아니며 실제 외부 발송 권한도 없다.',
+        },
+        {
+          answer: 1,
+          why: '초기화는 listen 전에 끝내고 직접 publish RPC는 재시도 없이 최대 2초다. 공개 API는 진행 중 RPC 취소를 보장하지 않으며 timeout 직전 원격 수락 가능성이 남는다. 내부 예산 12초와 배포 15초를 구분한다.',
+        },
+        {
+          answer: 0,
+          why: '성공·429 모두 64KiB 제한 reader를 사용한다. 초과·손상 본문은 대기 시간으로 신뢰하지 않고 유효한 header나 기존 fallback을 사용한다. 429는 계속 non-ACK다.',
+        },
+        {
+          answer: 1,
+          why: 'sourceRoot와 projectRoot를 구분해 실제 프로젝트 상대 위치로 판정한다. 상위 폴더명은 정책 근거가 아니다. shared import 대상도 실제 shared 루트 안에 있어야 한다.',
         },
       ];
       const slides = [...document.querySelectorAll('.question')],
