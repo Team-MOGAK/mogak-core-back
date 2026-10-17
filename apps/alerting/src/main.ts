@@ -1,15 +1,14 @@
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 
-import { Firestore } from '@google-cloud/firestore';
 import { PubSub } from '@google-cloud/pubsub';
 import pino from 'pino';
 
-import { FirestoreChannelStateStore } from './infrastructure/channelState.js';
 import { DiscordClient } from './infrastructure/discordClient.js';
 import { PubSubQuarantinePublisher } from './infrastructure/quarantine.js';
 import { loadConfig } from './config.js';
 import { createRelayHandler } from './presentation/handler.js';
+import { DeliveryService } from './application/service/alertDelivery.service.js';
 
 export function start(): ReturnType<typeof createServer> {
   const config = loadConfig();
@@ -27,15 +26,7 @@ export function start(): ReturnType<typeof createServer> {
       }),
     },
   });
-  const firestore = new Firestore({
-    projectId: config.gcpProjectId,
-    databaseId: config.firestoreDatabaseId,
-  });
   const pubsub = new PubSub({ projectId: config.gcpProjectId });
-  const stateStore = new FirestoreChannelStateStore(
-    config,
-    firestore as unknown as ConstructorParameters<typeof FirestoreChannelStateStore>[1],
-  );
   const discordClient = new DiscordClient(config.discordWebhookUrl);
   const quarantine = new PubSubQuarantinePublisher(pubsub, {
     quarantineTopic: config.quarantineTopic,
@@ -43,10 +34,10 @@ export function start(): ReturnType<typeof createServer> {
     sourceService: config.sourceApiService,
     sourceEnvironment: config.sourceEnvironment,
   });
+  const delivery = new DeliveryService(discordClient, quarantine, Date.now, logger);
   const handler = createRelayHandler({
     config,
-    state: stateStore,
-    sender: discordClient,
+    delivery,
     quarantine,
     logger,
   });

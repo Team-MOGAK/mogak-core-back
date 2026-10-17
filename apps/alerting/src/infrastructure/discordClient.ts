@@ -3,24 +3,28 @@ import {
   MAX_RATE_LIMIT_MS,
   RATE_LIMIT_FALLBACK_MS,
   validateDiscordWebhookUrl,
-} from './config.js';
-import type { AlertSummary } from '../application/contracts.js';
-import type { SenderResult } from '../application/ports.js';
+} from './discord.policy.js';
+import type { AlertSummary } from '../application/type/alert.type.js';
+import {
+  PERMANENT_FAILURE_REASON,
+  SENDER_RESULT_KIND,
+  type SenderResult,
+} from '../application/port/alertDelivery.port.js';
 import { buildDiscordPayload, type DiscordPayload } from './discord.js';
 
 const MAX_SUCCESS_RESPONSE_BODY_BYTES = 64 * 1024;
-
-export type DiscordSendResult = SenderResult;
 
 export type FetchLike = typeof fetch;
 
 export class DiscordClient {
   private readonly webhookUrl: string;
+  private nextAllowedAt = 0;
 
   constructor(
     webhookUrl: string,
     private readonly fetchImpl: FetchLike = fetch,
     private readonly timeoutMs = DISCORD_TIMEOUT_MS,
+    private readonly clock: () => number = Date.now,
   ) {
     this.webhookUrl = validateDiscordWebhookUrl(webhookUrl);
   }
@@ -28,20 +32,28 @@ export class DiscordClient {
   async send(
     summary: AlertSummary,
     options?: { deadline?: number; signal?: AbortSignal },
-  ): Promise<DiscordSendResult>;
+  ): Promise<SenderResult>;
   async send(
     payload: DiscordPayload,
     options?: { deadline?: number; signal?: AbortSignal },
-  ): Promise<DiscordSendResult>;
+  ): Promise<SenderResult>;
   async send(
     value: AlertSummary | DiscordPayload,
     options: { deadline?: number; signal?: AbortSignal } = {},
-  ): Promise<DiscordSendResult> {
+  ): Promise<SenderResult> {
     const payload = 'source' in value ? buildDiscordPayload(value) : value;
-    const deadline = options.deadline ?? Date.now() + this.timeoutMs;
-    const remaining = deadline - Date.now();
+    const now = this.clock();
+    if (this.nextAllowedAt > now) {
+      return {
+        kind: SENDER_RESULT_KIND.RATE_LIMITED,
+        status: 429,
+        retryAfterMs: this.nextAllowedAt - now,
+      };
+    }
+    const deadline = options.deadline ?? now + this.timeoutMs;
+    const remaining = deadline - this.clock();
     if (!Number.isFinite(remaining) || remaining <= 0) {
-      return { kind: 'transient_failure', reason: 'timeout' };
+      return { kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE, reason: 'timeout' };
     }
 
     const controller = new AbortController();
@@ -67,7 +79,7 @@ export class DiscordClient {
         });
       } catch (error) {
         return {
-          kind: 'transient_failure',
+          kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE,
           reason: isAbortError(error) ? 'timeout' : 'network',
         };
       }
@@ -76,42 +88,50 @@ export class DiscordClient {
         try {
           const messageId = await readSuccessMessageId(response);
           if (controller.signal.aborted) {
-            return { kind: 'transient_failure', reason: 'timeout' };
+            return { kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE, reason: 'timeout' };
           }
           return messageId === undefined
             ? {
-                kind: 'transient_failure',
+                kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE,
                 status: response.status,
                 reason: 'invalid_response',
               }
-            : { kind: 'success', status: response.status, messageId };
+            : { kind: SENDER_RESULT_KIND.SUCCESS, status: response.status, messageId };
         } catch (error) {
           return controller.signal.aborted || isAbortError(error)
-            ? { kind: 'transient_failure', reason: 'timeout' }
+            ? { kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE, reason: 'timeout' }
             : {
-                kind: 'transient_failure',
+                kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE,
                 status: response.status,
                 reason: 'invalid_response',
               };
         }
       }
       if (response.status === 429) {
+        const retryAfterMs = await retryAfterMsFromResponse(response);
+        this.nextAllowedAt = Math.max(this.nextAllowedAt, this.clock() + retryAfterMs);
         return {
-          kind: 'rate_limited',
+          kind: SENDER_RESULT_KIND.RATE_LIMITED,
           status: 429,
-          retryAfterMs: await retryAfterMs(response),
+          retryAfterMs,
         };
       }
       if (response.status >= 500) {
         await discardResponseBody(response);
-        return { kind: 'transient_failure', status: response.status, reason: 'server' };
+        return {
+          kind: SENDER_RESULT_KIND.TRANSIENT_FAILURE,
+          status: response.status,
+          reason: 'server',
+        };
       }
       await discardResponseBody(response);
       return {
-        kind: 'permanent_failure',
+        kind: SENDER_RESULT_KIND.PERMANENT_FAILURE,
         status: response.status,
-        disableChannel:
-          response.status === 401 || response.status === 403 || response.status === 404,
+        reason:
+          response.status === 401 || response.status === 403 || response.status === 404
+            ? PERMANENT_FAILURE_REASON.WEBHOOK_REJECTED
+            : PERMANENT_FAILURE_REASON.PAYLOAD_REJECTED,
       };
     } finally {
       clearTimeout(timeout);
@@ -178,13 +198,19 @@ async function discardResponseBody(response: Response): Promise<void> {
 }
 
 export async function retryAfterMs(response: Pick<Response, 'headers' | 'json'>): Promise<number> {
+  return retryAfterMsFromResponse(response);
+}
+
+async function retryAfterMsFromResponse(
+  response: Pick<Response, 'headers' | 'json'>,
+): Promise<number> {
   const values: number[] = [];
   const header = response.headers.get('retry-after');
   const headerMs = secondsToMs(header);
   if (headerMs !== undefined) values.push(headerMs);
 
   try {
-    const body = (await response.json()) as unknown;
+    const body: unknown = await response.json();
     if (isRecord(body)) {
       const bodyMs = secondsToMs(body.retry_after);
       if (bodyMs !== undefined) values.push(bodyMs);
@@ -200,10 +226,10 @@ export async function retryAfterMs(response: Pick<Response, 'headers' | 'json'>)
 function secondsToMs(value: unknown): number | undefined {
   const parsed =
     typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
-  if (!Number.isFinite(parsed) || parsed <= 0 || parsed * 1_000 > MAX_RATE_LIMIT_MS) {
+  if (!Number.isFinite(parsed) || parsed <= 0) {
     return undefined;
   }
-  return Math.ceil(parsed * 1_000);
+  return Math.min(MAX_RATE_LIMIT_MS, Math.ceil(parsed * 1_000));
 }
 
 function isAbortError(error: unknown): boolean {

@@ -1,7 +1,6 @@
 import { URL } from 'node:url';
 
 export const DISCORD_TIMEOUT_MS = 5_000;
-export const LEASE_TTL_MS = 30_000;
 export const RATE_LIMIT_FALLBACK_MS = 60_000;
 export const MAX_RATE_LIMIT_MS = 24 * 60 * 60 * 1_000;
 

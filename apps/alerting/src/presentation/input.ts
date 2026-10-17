@@ -1,62 +1,30 @@
-import { MAX_PUBSUB_DATA_BYTES, SOURCE_ENVIRONMENT } from './constants.js';
+import { METHODS } from 'node:http';
+import shared from '@mogak/shared';
+import type { LogEvent as SharedLogEvent } from '@mogak/shared';
+
+import { MAX_PUBSUB_DATA_BYTES } from './constants.js';
 import type { PresentationConfig } from './types.js';
 import {
-  KNOWN_EVENTS,
+  resolveAppErrorCode,
   type Alert,
-  type HttpMethod,
-  type KnownEvent,
-  type NormalizedEvent,
   type SourceReference,
-} from '../application/contracts.js';
+} from '../application/type/alert.type.js';
 
-export type PubSubPushEnvelope = Readonly<{
-  message: Readonly<{
-    data: string;
-    messageId?: string;
-    publishTime?: string;
-    attributes?: Record<string, string>;
+const HTTP_METHODS = new Set(METHODS);
+const TRUSTED_PRODUCER = 'mogak-core-api';
+const { LogEvent } = shared;
+
+export type ClassificationResult =
+  | Readonly<{ kind: 'match'; entry: ClassifiedLogEntry }>
+  | Readonly<{ kind: 'ignore'; reason: ClassificationIgnoreReason }>;
+
+export type ClassifiedLogEntry = Omit<Alert, 'source'> &
+  Readonly<{
+    projectId: string;
   }>;
-  subscription: string;
-}>;
-
-export type LogEntry = Readonly<{
-  logName: string;
-  resource: Readonly<{
-    type: string;
-    labels: Readonly<Record<string, unknown>>;
-  }>;
-  severity: string;
-  timestamp?: string;
-  jsonPayload: Readonly<Record<string, unknown>>;
-}>;
-
-export type ClassifiedLogEntry = Readonly<{
-  timestamp?: string;
-  revision?: string;
-  errorId: string;
-  event: NormalizedEvent;
-  appCode?: 'Z006' | 'Z500';
-  statusCode?: number;
-  method?: HttpMethod;
-  route?: string;
-  service: string;
-  environment: 'production';
-  logName: string;
-  projectId: string;
-}>;
 
 export type PushEnvelopeParseResult =
-  | Readonly<{
-      ok: true;
-      envelope: PubSubPushEnvelope;
-      logEntry: LogEntry;
-      messageId?: string;
-      publishTime?: string;
-    }>
-  | Readonly<{
-      ok: false;
-      reason: EnvelopeRejectReason;
-    }>;
+  Readonly<{ ok: true; logEntry: unknown }> | Readonly<{ ok: false; reason: EnvelopeRejectReason }>;
 
 export type EnvelopeRejectReason =
   | 'envelope_not_object'
@@ -69,29 +37,22 @@ export type EnvelopeRejectReason =
   | 'data_not_json'
   | 'log_entry_not_object';
 
-export type ClassificationResult =
-  | Readonly<{
-      kind: 'match';
-      entry: ClassifiedLogEntry;
-    }>
-  | Readonly<{
-      kind: 'ignore';
-      reason: ClassificationIgnoreReason;
-    }>;
-
 export type ClassificationIgnoreReason =
   | 'wrong_resource'
   | 'wrong_project'
   | 'wrong_service'
+  | 'wrong_producer'
   | 'wrong_log_name'
   | 'wrong_severity'
   | 'wrong_payload'
   | 'wrong_environment'
   | 'wrong_level'
   | 'not_alert_eligible'
+  | 'invalid_timestamp'
   | 'invalid_error_id'
   | 'invalid_event'
-  | 'invalid_status_code';
+  | 'invalid_status_code'
+  | 'invalid_method';
 
 export function parsePushEnvelope(
   value: unknown,
@@ -133,49 +94,18 @@ export function parsePushEnvelope(
   } catch {
     return { ok: false, reason: 'data_not_json' };
   }
-  if (!isRecord(decoded)) return { ok: false, reason: 'log_entry_not_object' };
-
-  const subscription = value.subscription;
-  if (typeof subscription !== 'string' || subscription.length === 0) {
-    return { ok: false, reason: 'subscription_mismatch' };
-  }
-
-  const messageId = optionalString(value.message.messageId);
-  const publishTime = optionalString(value.message.publishTime);
-  const attributes = isStringRecord(value.message.attributes)
-    ? value.message.attributes
-    : undefined;
-
-  return {
-    ok: true,
-    envelope: {
-      message: {
-        data,
-        ...(messageId === undefined ? {} : { messageId }),
-        ...(publishTime === undefined ? {} : { publishTime }),
-        ...(attributes === undefined ? {} : { attributes }),
-      },
-      subscription,
-    },
-    logEntry: decoded as unknown as LogEntry,
-    ...(messageId === undefined ? {} : { messageId }),
-    ...(publishTime === undefined ? {} : { publishTime }),
-  };
+  return isRecord(decoded)
+    ? { ok: true, logEntry: decoded }
+    : { ok: false, reason: 'log_entry_not_object' };
 }
 
 export function classifyLogEntry(value: unknown, config: PresentationConfig): ClassificationResult {
-  if (config.sourceEnvironment !== SOURCE_ENVIRONMENT) {
-    return { kind: 'ignore', reason: 'wrong_environment' };
-  }
   if (!isRecord(value)) return { kind: 'ignore', reason: 'wrong_payload' };
   if (value.logName !== stdoutLogName(config.gcpProjectId)) {
     return { kind: 'ignore', reason: 'wrong_log_name' };
   }
   if (value.severity !== 'ERROR') return { kind: 'ignore', reason: 'wrong_severity' };
-  if (value.resource === null || !isRecord(value.resource)) {
-    return { kind: 'ignore', reason: 'wrong_resource' };
-  }
-  if (value.resource.type !== 'cloud_run_revision') {
+  if (!isRecord(value.resource) || value.resource.type !== 'cloud_run_revision') {
     return { kind: 'ignore', reason: 'wrong_resource' };
   }
   if (!isRecord(value.resource.labels)) return { kind: 'ignore', reason: 'wrong_resource' };
@@ -189,9 +119,11 @@ export function classifyLogEntry(value: unknown, config: PresentationConfig): Cl
 
   const payload = value.jsonPayload;
   if (payload.schemaVersion !== 1) return { kind: 'ignore', reason: 'wrong_payload' };
-  const environment = payload.environment ?? payload.env;
-  if (environment !== config.sourceEnvironment) {
+  if (payload.environment !== config.sourceEnvironment) {
     return { kind: 'ignore', reason: 'wrong_environment' };
+  }
+  if (payload.producer !== TRUSTED_PRODUCER) {
+    return { kind: 'ignore', reason: 'wrong_producer' };
   }
   if (payload.service !== config.sourceApiService) {
     return { kind: 'ignore', reason: 'wrong_service' };
@@ -200,6 +132,9 @@ export function classifyLogEntry(value: unknown, config: PresentationConfig): Cl
   if (payload.alertEligible !== true) {
     return { kind: 'ignore', reason: 'not_alert_eligible' };
   }
+
+  const timestamp = safeTimestamp(value.timestamp);
+  if (timestamp === undefined) return { kind: 'ignore', reason: 'invalid_timestamp' };
 
   const errorId = payload.errorId;
   if (typeof errorId !== 'string' || !isUuid(errorId)) {
@@ -219,28 +154,27 @@ export function classifyLogEntry(value: unknown, config: PresentationConfig): Cl
   ) {
     return { kind: 'ignore', reason: 'invalid_status_code' };
   }
+  if (payload.method !== undefined && safeMethod(payload.method) === undefined) {
+    return { kind: 'ignore', reason: 'invalid_method' };
+  }
 
-  const revision = safeRevision(value.resource.labels.revision_name);
-  const appCode = safeAppCode(payload.appCode ?? payload.code);
+  const appCode = resolveAppErrorCode(payload.appCode ?? payload.code);
   const method = safeMethod(payload.method);
-  const route = safeRoute(payload.route);
-  const timestamp = safeTimestamp(value.timestamp);
-  const event = isKnownEvent(rawEvent) ? rawEvent : 'unknown_error';
+  const routeTemplate = safeRouteTemplate(payload.routeTemplate);
+  const event = isKnownEvent(rawEvent) ? rawEvent : LogEvent.UNKNOWN_ERROR;
 
   return {
     kind: 'match',
     entry: {
-      ...(timestamp === undefined ? {} : { timestamp }),
-      ...(revision === undefined ? {} : { revision }),
+      timestamp,
       errorId,
       event,
-      ...(appCode === undefined ? {} : { appCode }),
+      ...(appCode === undefined ? {} : { appCode: appCode.code, appCodeSummary: appCode.summary }),
       ...(statusCode === undefined ? {} : { statusCode }),
       ...(method === undefined ? {} : { method }),
-      ...(route === undefined ? {} : { route }),
+      ...(routeTemplate === undefined ? {} : { routeTemplate }),
       service: config.sourceApiService,
-      environment: 'production',
-      logName: value.logName,
+      environment: config.sourceEnvironment,
       projectId: config.gcpProjectId,
     },
   };
@@ -251,20 +185,20 @@ export function stdoutLogName(projectId: string): string {
 }
 
 /** Create the application DTO only after the Cloud Logging source checks pass. */
-export function toAlert(entry: ClassifiedLogEntry, projectId: string): Alert {
+export function toAlert(entry: ClassifiedLogEntry): Alert {
   const source: SourceReference = {
     label: 'Logs',
-    href: loggingLink(projectId, entry.errorId),
+    href: loggingLink(entry.projectId, entry.errorId),
   };
   return {
-    ...(entry.timestamp === undefined ? {} : { timestamp: entry.timestamp }),
-    ...(entry.revision === undefined ? {} : { revision: entry.revision }),
+    timestamp: entry.timestamp,
     errorId: entry.errorId,
     event: entry.event,
     ...(entry.appCode === undefined ? {} : { appCode: entry.appCode }),
+    ...(entry.appCodeSummary === undefined ? {} : { appCodeSummary: entry.appCodeSummary }),
     ...(entry.statusCode === undefined ? {} : { statusCode: entry.statusCode }),
     ...(entry.method === undefined ? {} : { method: entry.method }),
-    ...(entry.route === undefined ? {} : { route: entry.route }),
+    ...(entry.routeTemplate === undefined ? {} : { routeTemplate: entry.routeTemplate }),
     service: entry.service,
     environment: entry.environment,
     source,
@@ -282,30 +216,22 @@ export function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }
 
-function safeRevision(value: unknown): string | undefined {
-  return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(value)
+function safeMethod(value: unknown): string | undefined {
+  return typeof value === 'string' && HTTP_METHODS.has(value) ? value : undefined;
+}
+
+function safeRouteTemplate(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 256) return undefined;
+  if (!value.startsWith('/') || value.includes('?') || value.includes('#')) return undefined;
+  const segments = value.slice(1).split('/');
+  if (segments.some((segment) => segment.length === 0)) return undefined;
+  return segments.every((segment) =>
+    segment.startsWith(':')
+      ? /^:[A-Za-z][A-Za-z0-9_]*$/.test(segment)
+      : /^[A-Za-z0-9._~-]+$/.test(segment),
+  )
     ? value
     : undefined;
-}
-
-function safeAppCode(value: unknown): 'Z006' | 'Z500' | undefined {
-  return value === 'Z006' || value === 'Z500' ? value : undefined;
-}
-
-function safeMethod(value: unknown): HttpMethod | undefined {
-  return value === 'GET' ||
-    value === 'POST' ||
-    value === 'PUT' ||
-    value === 'PATCH' ||
-    value === 'DELETE' ||
-    value === 'HEAD' ||
-    value === 'OPTIONS'
-    ? value
-    : undefined;
-}
-
-function safeRoute(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length <= 256 ? value : undefined;
 }
 
 function safeTimestamp(value: unknown): string | undefined {
@@ -314,8 +240,8 @@ function safeTimestamp(value: unknown): string | undefined {
   return Number.isNaN(parsed.valueOf()) ? undefined : parsed.toISOString();
 }
 
-function isKnownEvent(value: string): value is KnownEvent {
-  return (KNOWN_EVENTS as readonly string[]).includes(value);
+function isKnownEvent(value: string): value is SharedLogEvent {
+  return Object.values(LogEvent).some((event) => event === value);
 }
 
 function isStrictBase64(value: string): boolean {
@@ -328,12 +254,4 @@ function isStrictBase64(value: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  return isRecord(value) && Object.values(value).every((item) => typeof item === 'string');
-}
-
-function optionalString(value: unknown): string | undefined {
-  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }

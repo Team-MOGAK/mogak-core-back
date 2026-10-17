@@ -8,26 +8,21 @@ import {
   toAlert,
   type ClassificationIgnoreReason,
 } from './input.js';
-import { createDeliveryUseCase, createQuarantineRecord } from '../application/delivery.js';
+import { createQuarantineRecord } from '../application/service/alertDelivery.service.js';
 import type {
   AlertLogger,
-  AlertSender,
-  ChannelStatePort,
-  DeliveryDependencies,
+  DeliveryUseCase,
   QuarantinePort,
   QuarantineReason,
-} from '../application/ports.js';
-
-export type RelayLogger = AlertLogger;
+} from '../application/port/alertDelivery.port.js';
 
 export type RelayDependencies = Readonly<{
   config: PresentationConfig;
-  state: ChannelStatePort;
-  sender: AlertSender;
+  delivery: DeliveryUseCase;
   quarantine: QuarantinePort;
   clock?: () => number;
   requestBudgetMs?: number;
-  logger?: RelayLogger;
+  logger?: AlertLogger;
 }>;
 
 export type RelayOutcome = Readonly<{
@@ -41,8 +36,6 @@ export function createRelayHandler(dependencies: RelayDependencies) {
     await handleRequest(req, res, dependencies);
   };
 }
-
-export const createHandler = createRelayHandler;
 
 export async function handleRequest(
   req: IncomingMessage,
@@ -109,18 +102,12 @@ export async function processPushBody(
     return acknowledged('filtered');
   }
 
-  const alert = toAlert(classified.entry, dependencies.config.gcpProjectId);
-  const outcome = await createDeliveryUseCase(createDeliveryDependencies(dependencies)).deliver(
-    alert,
-    { deadline },
-  );
+  const outcome = await dependencies.delivery.deliver(toAlert(classified.entry), { deadline });
   return {
     statusCode: outcome.acknowledged ? 204 : 503,
     ...outcome,
   };
 }
-
-export const handlePush = processPushBody;
 
 async function quarantineOutcome(
   reason: QuarantineReason,
@@ -149,20 +136,12 @@ function transient(reason: string): RelayOutcome {
 function isMalformedClassification(reason: ClassificationIgnoreReason): boolean {
   return (
     reason === 'wrong_payload' ||
+    reason === 'invalid_timestamp' ||
     reason === 'invalid_error_id' ||
     reason === 'invalid_event' ||
-    reason === 'invalid_status_code'
+    reason === 'invalid_status_code' ||
+    reason === 'invalid_method'
   );
-}
-
-function createDeliveryDependencies(dependencies: RelayDependencies): DeliveryDependencies {
-  return {
-    state: dependencies.state,
-    sender: dependencies.sender,
-    quarantine: dependencies.quarantine,
-    ...(dependencies.clock === undefined ? {} : { clock: dependencies.clock }),
-    ...(dependencies.logger === undefined ? {} : { logger: dependencies.logger }),
-  };
 }
 
 type ReadBodyResult =

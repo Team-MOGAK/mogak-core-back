@@ -1,19 +1,16 @@
 import type { PubSub, Topic } from '@google-cloud/pubsub';
 
 import {
-  QUARANTINE_REASONS,
   type QuarantinePort,
   type QuarantineReason,
   type QuarantineRecord,
-} from '../application/ports.js';
-
-export { QUARANTINE_REASONS };
-export type { QuarantineReason, QuarantineRecord };
+} from '../application/port/alertDelivery.port.js';
+import type { SourceEnvironment } from '../application/type/alert.type.js';
 
 export type QuarantineWireConfig = Readonly<{
   sourceProjectId: string;
   sourceService: string;
-  sourceEnvironment: 'production';
+  sourceEnvironment: SourceEnvironment;
 }>;
 
 type QuarantineConfig = Readonly<{ quarantineTopic: string }> & QuarantineWireConfig;
@@ -23,16 +20,14 @@ export type QuarantineWireRecord = Readonly<{
   reason: QuarantineReason;
   sourceProjectId: string;
   sourceService: string;
-  sourceEnvironment: 'production';
+  sourceEnvironment: SourceEnvironment;
   receivedAt: string;
   errorId?: string;
   statusCode?: number;
-  appCode?: 'Z006' | 'Z500';
+  appCode?: string;
 }>;
 
-export type QuarantinePublisher = QuarantinePort;
-
-export class PubSubQuarantinePublisher implements QuarantinePublisher {
+export class PubSubQuarantinePublisher implements QuarantinePort {
   private readonly topic: Topic;
 
   constructor(
