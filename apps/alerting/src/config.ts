@@ -1,6 +1,9 @@
 import type { SourceEnvironment } from './application/type/alert.type.js';
 import { validateDiscordWebhookUrl } from './infrastructure/discord.policy.js';
 
+const RESOURCE_ID = /^[a-z][a-z0-9-]{2,62}$/;
+const PROJECT_ID = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+
 export type RelayConfig = Readonly<{
   gcpProjectId: string;
   sourceApiService: string;
@@ -37,17 +40,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RelayConfig {
   if (!isProjectId(gcpProjectId)) {
     throw new RelayConfigError('GCP_PROJECT_ID', 'must be a valid project identifier');
   }
-  if (!isResourceName(expectedSubscription, 'subscriptions')) {
+  if (!isResourceName(expectedSubscription, 'subscriptions', gcpProjectId)) {
     throw new RelayConfigError(
       'EXPECTED_SUBSCRIPTION',
       'must be projects/{project}/subscriptions/{subscription}',
     );
   }
-  if (!isResourceName(quarantineTopic, 'topics')) {
+  if (!isResourceName(quarantineTopic, 'topics', gcpProjectId)) {
     throw new RelayConfigError('QUARANTINE_TOPIC', 'must be projects/{project}/topics/{topic}');
   }
-  if (sourceApiService.length > 128) {
-    throw new RelayConfigError('SOURCE_API_SERVICE', 'is too long');
+  if (!isResourceId(sourceApiService)) {
+    throw new RelayConfigError('SOURCE_API_SERVICE', 'must be a valid resource identifier');
+  }
+  if (!isResourceId(relayServiceName)) {
+    throw new RelayConfigError('K_SERVICE', 'must be a valid resource identifier');
   }
   if (relayServiceName === sourceApiService) {
     throw new RelayConfigError(
@@ -96,9 +102,18 @@ function parsePort(value: string | undefined): number {
 }
 
 function isProjectId(value: string): boolean {
-  return /^[a-z][a-z0-9-]{0,62}$/.test(value);
+  return PROJECT_ID.test(value);
 }
 
-function isResourceName(value: string, kind: 'subscriptions' | 'topics'): boolean {
-  return new RegExp(`^projects/[a-z][a-z0-9-]{0,62}/${kind}/[A-Za-z0-9_.~-]{1,255}$`).test(value);
+function isResourceId(value: string): boolean {
+  return RESOURCE_ID.test(value);
+}
+
+function isResourceName(
+  value: string,
+  kind: 'subscriptions' | 'topics',
+  projectId: string,
+): boolean {
+  const prefix = `projects/${projectId}/${kind}/`;
+  return value.startsWith(prefix) && isResourceId(value.slice(prefix.length));
 }

@@ -434,6 +434,48 @@ test('source environment is required and method/route input is bounded', async (
   assert.equal(quarantine.records.at(-1)?.reason, 'invalid_log_entry');
 });
 
+test('runtime configuration matches deployment identifiers and project-local resources', () => {
+  const baseEnvironment = {
+    GCP_PROJECT_ID: CONFIG.gcpProjectId,
+    SOURCE_API_SERVICE: CONFIG.sourceApiService,
+    SOURCE_ENVIRONMENT: 'production',
+    EXPECTED_SUBSCRIPTION: CONFIG.expectedSubscription,
+    QUARANTINE_TOPIC: CONFIG.quarantineTopic,
+    DISCORD_WEBHOOK_URL: CONFIG.discordWebhookUrl,
+  };
+
+  assert.doesNotThrow(() => loadConfig(baseEnvironment));
+  assert.throws(
+    () => loadConfig({ ...baseEnvironment, GCP_PROJECT_ID: 'a' }),
+    (error: unknown) => error instanceof RelayConfigError && error.field === 'GCP_PROJECT_ID',
+  );
+  assert.throws(
+    () => loadConfig({ ...baseEnvironment, SOURCE_API_SERVICE: 'ab' }),
+    (error: unknown) => error instanceof RelayConfigError && error.field === 'SOURCE_API_SERVICE',
+  );
+  assert.throws(
+    () => loadConfig({ ...baseEnvironment, K_SERVICE: 'ab' }),
+    (error: unknown) => error instanceof RelayConfigError && error.field === 'K_SERVICE',
+  );
+  assert.throws(
+    () =>
+      loadConfig({
+        ...baseEnvironment,
+        EXPECTED_SUBSCRIPTION: 'projects/foreign-project/subscriptions/error-relay',
+      }),
+    (error: unknown) =>
+      error instanceof RelayConfigError && error.field === 'EXPECTED_SUBSCRIPTION',
+  );
+  assert.throws(
+    () =>
+      loadConfig({
+        ...baseEnvironment,
+        QUARANTINE_TOPIC: 'projects/foreign-project/topics/error-relay-quarantine',
+      }),
+    (error: unknown) => error instanceof RelayConfigError && error.field === 'QUARANTINE_TOPIC',
+  );
+});
+
 test('Discord client keeps a bounded in-memory rate limit and requires a numeric ACK id', async () => {
   const requests: Array<{ url: string; init: RequestInit }> = [];
   let now = 1_000;
