@@ -116,16 +116,12 @@ pnpm test:integration --runInBand
 
 ## 운영 로그와 Discord 오류 알림
 
-API 로그는 JSON으로 출력하며 HTTP 4xx는 `warn`, 5xx와 인프라 실패는 `error`로 분류합니다. Discord 전달은 독립 패키지 `@mogak/alerting`이 담당합니다. 배포 리소스와 운영 설정은 기존 `error-log-relay` 이름을 유지합니다.
+API 로그는 JSON으로 출력하며 HTTP 4xx는 `warn`, 5xx와 DB pool 오류는 `error`로 분류합니다. `AlertingModule`이 같은 backend 프로세스 안에서 5xx와 DB pool error를 Discord webhook으로 비동기 전달합니다. Discord 응답은 API 응답을 지연시키지 않습니다.
+
+`DISCORD_WEBHOOK_URL`은 선택 설정입니다. 값이 없거나 유효하지 않으면 시작 경고를 남기고 알림만 끕니다. 운영 배포에서는 기존 backend 서비스의 Secret Manager 환경변수 주입으로 설정합니다. API 이미지나 로그에 secret 값을 넣지 마세요.
+
+전송은 best-effort이며 별도 relay, Pub/Sub, 영속 queue, 재시도가 없습니다. Discord 장애나 backend 프로세스 종료 중 알림이 유실될 수 있습니다. 구현과 운영 경계는 [Discord 오류 알림 가이드](docs/runbooks/error-log-discord-webhook.md)를 따릅니다.
 
 ```bash
-pnpm build:alerting
-pnpm test:alerting
-pnpm test:alerting:ops
+pnpm test --runInBand test/infrastructure/alerting/discordWebhookNotifier.spec.ts test/common/http/globalException.filter.spec.ts test/database/database.provider.spec.ts test/infrastructure/logging/pinoHttp.options.spec.ts
 ```
-
-로그의 공개 에러·이벤트 정의는 기존 `libs` 아래의 `@mogak/shared`를 API와 alerting이 함께 사용합니다. API는 `@mogak/shared` source alias와 Nest 빌드/watch로 shared 소스를 직접 사용하고, alerting은 ESM 실행체라 빌드·타입 검사·테스트 명령에서 shared CJS 패키지를 먼저 빌드합니다. `pnpm start:dev`는 shared와 API 변경을 함께 감시합니다.
-
-알림 전달용 DB는 사용하지 않습니다. 429 대기 시간만 프로세스 메모리에 보관하므로 재시작 시 사라지고 실행체 사이에 공유되지 않습니다. 실패는 Pub/Sub 재시도를 사용하며 중복 전달은 발생할 수 있습니다.
-
-중계 서비스의 설정, 배포 전제조건, DLQ 조회와 수동 복구는 [운영 가이드](docs/runbooks/error-log-discord-relay.md)를 따릅니다. API 이미지에는 중계 서비스의 Google Cloud SDK와 웹훅 secret을 포함하지 않습니다.

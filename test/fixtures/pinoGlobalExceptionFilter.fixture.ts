@@ -2,6 +2,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 
 import { GlobalExceptionFilter } from '@api/common/http/globalException.filter';
+import { ALERT_NOTIFIER } from '@infra/alerting/alerting.module';
 
 export const pinoGlobalExceptionFilterTestImports = [
   LoggerModule.forRoot({
@@ -13,5 +14,6 @@ export const pinoGlobalExceptionFilterTestImports = [
 ];
 
 export const pinoGlobalExceptionFilterTestProviders = [
+  { provide: ALERT_NOTIFIER, useValue: { notify: () => undefined } },
   { provide: APP_FILTER, useClass: GlobalExceptionFilter },
 ];

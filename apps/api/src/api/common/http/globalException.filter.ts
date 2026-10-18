@@ -1,6 +1,7 @@
 import {
   Catch,
   HttpException,
+  Inject,
   HttpStatus,
   type ArgumentsHost,
   type ExceptionFilter,
@@ -21,6 +22,7 @@ import {
   type RequestLogContext,
 } from '@infra/logging/errorAlert.context';
 import { AppErrorCode, type AppErrorCode as AppErrorDefinition } from './appErrorCode';
+import { ALERT_NOTIFIER, type AlertNotifier } from '@infra/alerting/alerting.module';
 import { errorResponse } from './apiResponse';
 
 function errorForStatus(status: number): AppErrorDefinition {
@@ -44,6 +46,7 @@ type RequestForDomainExceptionLog = RequestForRateLimitLog & {
   query?: unknown;
 };
 
+const NOOP_ALERT_NOTIFIER: AlertNotifier = { notify: () => undefined };
 const OMIT = Symbol('omit-request-log-value');
 const TRUNCATED = '[TRUNCATED]';
 const SENSITIVE_KEY_PARTS = ['authorization', 'cookie', 'password', 'secret', 'token'];
@@ -62,6 +65,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   constructor(
     @InjectPinoLogger(GlobalExceptionFilter.name)
     private readonly logger: PinoLogger,
+    @Inject(ALERT_NOTIFIER) private readonly alertNotifier: AlertNotifier = NOOP_ALERT_NOTIFIER,
   ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
@@ -100,6 +104,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           error,
           undefined,
           'Domain exception',
+          this.alertNotifier,
         );
       } else {
         this.logger.warn({
@@ -123,6 +128,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           error,
           { err: exceptionDetails(exception) },
           'Unhandled HTTP exception',
+          this.alertNotifier,
         );
       } else {
         this.logger.warn(
@@ -145,6 +151,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         AppErrorCode.INTERNAL_SERVER_ERROR,
         unhandledExceptionDetails(exception),
         'Unhandled exception',
+        this.alertNotifier,
       );
     }
 
@@ -170,6 +177,7 @@ function logCanonicalServerError(
   error: AppErrorDefinition,
   details: Record<string, unknown> | undefined,
   message: string,
+  alertNotifier: AlertNotifier,
 ): void {
   const errorId = requestErrorId(request);
   markResponseErrorLog(response, { errorId, appCode: error.code });
@@ -188,6 +196,14 @@ function logCanonicalServerError(
     },
     message,
   );
+  alertNotifier.notify({
+    event,
+    errorId,
+    statusCode: error.httpStatus,
+    appCode: error.code,
+    method: requestMethod(request),
+    ...(route === undefined ? {} : { routeTemplate: route }),
+  });
 }
 
 function requestFromHttp(

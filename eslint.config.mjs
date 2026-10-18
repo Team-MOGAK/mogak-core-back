@@ -6,7 +6,7 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['apps/**/src/**/*.ts', 'apps/alerting/test/**/*.ts', 'test/**/*.ts'],
+    files: ['apps/**/src/**/*.ts', 'libs/**/*.ts', 'test/**/*.ts'],
     rules: {
       '@typescript-eslint/consistent-type-imports': 'error',
       '@typescript-eslint/no-explicit-any': 'error',

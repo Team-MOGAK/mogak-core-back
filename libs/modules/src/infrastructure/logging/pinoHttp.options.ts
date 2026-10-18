@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Options as PinoHttpOptions } from 'pino-http';
 import { LogEvent } from '@mogak/shared';
+import type { AlertNotifier } from '@infra/alerting/alerting.module';
 
 import {
   requestErrorId,
@@ -28,6 +29,7 @@ export function createPinoHttpOptions(
   nodeEnv: string | undefined,
   configuredLevel: string | undefined,
   serviceName?: string,
+  alertNotifier?: AlertNotifier,
 ): PinoHttpOptions {
   const environment = normalizedEnvironment(nodeEnv);
   return {
@@ -52,9 +54,9 @@ export function createPinoHttpOptions(
       return error === undefined ? 'info' : 'error';
     },
     customSuccessObject: (request, response, value) =>
-      completedRequestObject(request, response, value),
+      completedRequestObject(request, response, value, alertNotifier),
     customErrorObject: (request, response, _error, value) =>
-      completedRequestObject(request, response, value),
+      completedRequestObject(request, response, value, alertNotifier),
     redact: {
       paths: [
         'req.headers.authorization',
@@ -134,6 +136,7 @@ function completedRequestObject(
   request: RequestLogContext,
   response: { statusCode?: unknown },
   value: Record<string, unknown>,
+  alertNotifier?: AlertNotifier,
 ): Record<string, unknown> {
   const statusCode = numericStatusCode(response);
   if (statusCode === undefined || statusCode < 500) return value;
@@ -142,6 +145,15 @@ function completedRequestObject(
   const errorId = marker?.errorId ?? requestErrorId(request);
   const appCode = marker?.appCode;
   const route = routeTemplate(request);
+  if (marker === undefined) {
+    alertNotifier?.notify({
+      event: LogEvent.HTTP_REQUEST_FAILED,
+      errorId,
+      statusCode,
+      method: requestMethod(request),
+      ...(route === undefined ? {} : { routeTemplate: route }),
+    });
+  }
 
   return {
     ...value,

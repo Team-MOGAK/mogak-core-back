@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 
 import { databaseProviders } from './database.provider';
 import { DATABASE, PG_POOL } from './database.tokens';
+import { AlertingModule } from '@infra/alerting/alerting.module';
 
 @Injectable()
 class DatabaseLifecycle implements OnModuleDestroy {
@@ -14,6 +15,7 @@ class DatabaseLifecycle implements OnModuleDestroy {
 }
 
 @Module({
+  imports: [AlertingModule],
   providers: [...databaseProviders, DatabaseLifecycle],
   exports: [DATABASE, PG_POOL],
 })

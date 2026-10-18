@@ -672,6 +672,44 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
   });
 });
 
+describe('GlobalExceptionFilter의 서버 오류 알림', () => {
+  it('5xx 예외를 안전한 allowlist context로 notifier에 한 번 전달하고 HTTP 응답을 유지한다', () => {
+    const notify = jest.fn();
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const requestId = '11111111-1111-4111-8111-111111111111';
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          id: requestId,
+          method: 'GET',
+          route: { path: '/users/:id' },
+          url: '/users/42?token=private',
+        }),
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter(testLogger(), { notify }).catch(
+      new Error('private exception and database details'),
+      host as never,
+    );
+
+    expect(status).toHaveBeenCalledWith(500);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith({
+      event: 'unhandled_exception',
+      errorId: requestId,
+      statusCode: 500,
+      appCode: 'Z500',
+      method: 'GET',
+      routeTemplate: '/users/:id',
+    });
+    expect(JSON.stringify(notify.mock.calls)).not.toContain('private');
+    expect(JSON.stringify(notify.mock.calls)).not.toContain('/users/42');
+  });
+});
+
 describe('GlobalExceptionFilter의 서버 오류 처리', () => {
   afterEach(() => {
     jest.restoreAllMocks();

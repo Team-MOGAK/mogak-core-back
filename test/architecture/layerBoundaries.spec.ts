@@ -10,7 +10,6 @@ const sourceRoots = [
   resolve(process.cwd(), 'libs/core/src'),
   resolve(process.cwd(), 'libs/modules/src'),
   resolve(process.cwd(), 'libs/shared/src'),
-  resolve(process.cwd(), 'apps/alerting/src'),
 ];
 const forbiddenDomainPackages = [
   /^@nestjs(?:\/|$)/,
@@ -50,52 +49,21 @@ describe('layer boundaries', () => {
     ).not.toMatch(/23505|users_nickname_unique/);
   });
 
-  it('checks shared purity and alerting boundaries using the existing module scanner', () => {
-    const root = mkdtempSync(resolve(tmpdir(), 'mogak-alerting-boundaries-'));
+  it('checks shared purity using the existing module scanner', () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'mogak-shared-boundaries-'));
     try {
       writeFixture(root, 'libs/shared/src/index.ts', `import type { Pool } from 'pg';`);
-      writeFixture(
-        root,
-        'apps/alerting/src/application/service/nested/bad.ts',
-        `
-        import type { PubSub } from '@google-cloud/pubsub';
-        type Input = import('../../../presentation/input.js').Input;
-        void import('../../../infrastructure/discordClient.js');
-        process.env.SECRET;
-        Buffer.from('raw');
-      `,
-      );
-      writeFixture(
-        root,
-        'apps/alerting/src/application/service/good.ts',
-        `
-        import metadata from '@mogak/shared';
-        import type { Sender } from '../port/sender.port.js';
-        export class DeliveryService { constructor(private readonly sender: Sender) {} }
-        void metadata;
-      `,
-      );
       const violations = formatViolations(collectLayerBoundaryViolations(root));
-      expect(violations).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining("shared must not import external or application code 'pg'"),
-          expect.stringContaining(
-            "alerting application must not import provider or transport '@google-cloud/pubsub'",
-          ),
-          expect.stringContaining('application must not import presentation'),
-          expect.stringContaining('application must not import infrastructure'),
-          expect.stringContaining(
-            'alerting application must not use runtime globals or dynamic loading',
-          ),
-        ]),
-      );
-      expect(violations.some((violation) => violation.includes('good.ts'))).toBe(false);
+      expect(violations).toEqual([
+        expect.stringContaining("shared must not import external or application code 'pg'"),
+      ]);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it.each(['shared', 'alerting'])('ignores checkout parent directory named %s', (parentName) => {
+  it('ignores checkout parent directory named shared', () => {
+    const parentName = 'shared';
     const temporaryRoot = mkdtempSync(resolve(tmpdir(), 'mogak-boundary-location-'));
     const projectRoot = resolve(temporaryRoot, parentName, 'checkout');
     try {
@@ -249,7 +217,6 @@ function collectLayerBoundaryViolations(sourceRoot: string, root = sourceRoot): 
   const files = listTypeScriptFiles(sourceRoot);
   const violations: Violation[] = [];
   const sharedRoot = resolve(root, 'libs/shared/src');
-  const alertingApplicationRoot = resolve(root, 'apps/alerting/src/application');
 
   for (const file of files) {
     const source = readFileSync(file, 'utf8');
@@ -257,7 +224,6 @@ function collectLayerBoundaryViolations(sourceRoot: string, root = sourceRoot): 
     const projectPath = relative(root, file);
     const segments = projectPath.split(sep);
     const imports = collectModuleSpecifiers(sourceFile);
-    const alertingApplication = isWithinDirectory(alertingApplicationRoot, file);
 
     if (isWithinDirectory(sharedRoot, file)) {
       for (const moduleSpecifier of imports) {
@@ -271,34 +237,6 @@ function collectLayerBoundaryViolations(sourceRoot: string, root = sourceRoot): 
           });
         }
       }
-    }
-
-    if (alertingApplication) {
-      for (const moduleSpecifier of imports) {
-        if (
-          /^(?:node:|@google-cloud(?:\/|$)|@nestjs(?:\/|$)|pg(?:\/|$)|pino(?:\/|$)|drizzle-orm(?:\/|$)|https?(?:\/|$)|express(?:\/|$))/.test(
-            moduleSpecifier,
-          )
-        ) {
-          violations.push({
-            file: projectPath,
-            message: `alerting application must not import provider or transport '${moduleSpecifier}'`,
-          });
-        }
-      }
-      const inspectRuntime = (node: ts.Node): void => {
-        if (
-          (ts.isIdentifier(node) && ['Buffer', 'process', 'require'].includes(node.text)) ||
-          (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword)
-        ) {
-          violations.push({
-            file: projectPath,
-            message: 'alerting application must not use runtime globals or dynamic loading',
-          });
-        }
-        ts.forEachChild(node, inspectRuntime);
-      };
-      inspectRuntime(sourceFile);
     }
 
     if (segments.includes('core')) {

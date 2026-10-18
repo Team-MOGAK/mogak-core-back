@@ -20,9 +20,9 @@
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint apps/api/src apps/alerting/src apps/alerting/test libs test scripts infra/error-log-relay '*.ts'",
-    "format": "prettier --write \"{apps/api/src,apps/alerting/src,apps/alerting/test,libs,test,scripts}/**/*.{ts,js,mjs}\" \"{apps/alerting,libs/shared}/*.{json,mjs}\" \"*.{json,mjs,ts}\" \".github/**/*.{yml,yaml}\" \"pnpm-workspace.yaml\" \"infra/error-log-relay/**/*.{mjs,json}\" \"cloudbuild.error-log-relay.yaml\"",
-    "format:check": "prettier --check \"{apps/api/src,apps/alerting/src,apps/alerting/test,libs,test,scripts}/**/*.{ts,js,mjs}\" \"{apps/alerting,libs/shared}/*.{json,mjs}\" \"*.{json,mjs,ts}\" \".github/**/*.{yml,yaml}\" \"pnpm-workspace.yaml\" \"infra/error-log-relay/**/*.{mjs,json}\" \"cloudbuild.error-log-relay.yaml\"",
+    "lint": "eslint apps/api/src libs test scripts '*.ts'",
+    "format": "prettier --write \"{apps/api/src,libs,test,scripts}/**/*.{ts,js,mjs}\" \"libs/shared/*.{json,mjs}\" \"*.{json,mjs,ts}\" \".github/**/*.{yml,yaml}\" \"pnpm-workspace.yaml\"",
+    "format:check": "prettier --check \"{apps/api/src,libs,test,scripts}/**/*.{ts,js,mjs}\" \"libs/shared/*.{json,mjs}\" \"*.{json,mjs,ts}\" \".github/**/*.{yml,yaml}\" \"pnpm-workspace.yaml\"",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
     "test:e2e": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.config.ts test",
     "test:integration": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --config jest.db.config.ts",
@@ -31,11 +31,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:legacy-compat": "node scripts/migrateLegacySchemaCompatibility.mjs",
-    "auth:sessions:cleanup": "node scripts/cleanupExpiredSessions.mjs",
-    "build:alerting": "pnpm --filter @mogak/alerting build",
-    "test:alerting": "pnpm --filter @mogak/alerting test",
-    "typecheck:alerting": "pnpm --filter @mogak/alerting typecheck",
-    "test:alerting:ops": "node --test infra/error-log-relay/*.test.mjs"
+    "auth:sessions:cleanup": "node scripts/cleanupExpiredSessions.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.28",

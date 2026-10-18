@@ -9,7 +9,13 @@ import { PG_POOL } from '@infra/database/database.tokens';
 const poolProvider = databaseProviders.find((provider) => provider.provide === PG_POOL);
 if (poolProvider === undefined) throw new Error('database pool provider was not registered');
 
-const createPool = poolProvider.useFactory as (config: ConfigService, logger: PinoLogger) => Pool;
+const createPool = poolProvider.useFactory as (
+  config: ConfigService,
+  logger: PinoLogger,
+  alertNotifier?: {
+    notify: (alert: { event: string; errorId: string; statusCode?: number }) => void;
+  },
+) => Pool;
 
 function configFor(values: Record<string, unknown>): ConfigService {
   return {
@@ -31,7 +37,10 @@ describe('database pool provider', () => {
     const logError = jest.fn();
     const child = jest.fn(() => ({ error: logError }));
     const logger = { logger: { child } } as unknown as PinoLogger;
-    const pool = createPool(configFor({ DATABASE_URL: 'postgresql://db.example/mogak' }), logger);
+    const notify = jest.fn();
+    const pool = createPool(configFor({ DATABASE_URL: 'postgresql://db.example/mogak' }), logger, {
+      notify,
+    });
 
     try {
       expect(pool.options).toMatchObject({
@@ -65,6 +74,11 @@ describe('database pool provider', () => {
         'Database pool error',
       );
       expect(JSON.stringify(logError.mock.calls)).not.toContain('private query and params');
+      expect(notify).toHaveBeenCalledWith({
+        event: 'database_pool_error',
+        errorId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+        statusCode: 500,
+      });
     } finally {
       await pool.end();
     }

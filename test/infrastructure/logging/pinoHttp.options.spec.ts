@@ -1,4 +1,4 @@
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 
 import { RESPONSE_ERROR_LOG_MARKER } from '@infra/logging/errorAlert.context';
 import { createPinoHttpOptions, resolveLogLevel } from '@infra/logging/pinoHttp.options';
@@ -122,6 +122,41 @@ describe('Pino HTTP logger 설정', () => {
       }),
     );
     expect(result).not.toHaveProperty('route');
+  });
+
+  it('대표 오류가 없는 완료 5xx는 alert notifier로 한 번 전달한다', () => {
+    const notify = jest.fn();
+    const options = createPinoHttpOptions('test', 'info', undefined, { notify });
+    const requestId = '11111111-1111-4111-8111-111111111111';
+    options.customErrorObject?.(
+      { id: requestId, method: 'GET', route: { path: '/health/ready' } } as never,
+      { statusCode: 503 } as never,
+      new Error('private exception message'),
+      {},
+    );
+
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith({
+      event: 'http_request_failed',
+      errorId: requestId,
+      statusCode: 503,
+      method: 'GET',
+      routeTemplate: '/health/ready',
+    });
+    expect(JSON.stringify(notify.mock.calls)).not.toContain('private exception message');
+  });
+
+  it('대표 오류 marker가 있으면 완료 5xx는 재전달하지 않는다', () => {
+    const notify = jest.fn();
+    const options = createPinoHttpOptions('test', 'info', undefined, { notify });
+    const requestId = '11111111-1111-4111-8111-111111111111';
+    options.customErrorObject?.(
+      { id: requestId, method: 'GET', route: { path: '/health/ready' } } as never,
+      { statusCode: 503, [RESPONSE_ERROR_LOG_MARKER]: { errorId: requestId } } as never,
+      new Error('private exception message'),
+      {},
+    );
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it('대표 오류 marker가 없으면 완료 5xx가 UUID fallback eligible 오류가 된다', () => {

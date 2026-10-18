@@ -19,6 +19,11 @@ import { ConsentController } from '@api/users/presentation/controller/consent.co
 import { MetadataController } from '@api/users/presentation/controller/metadata.controller';
 import { UsersController } from '@api/users/presentation/controller/users.controller';
 import { AppConfigModule } from '@infra/config/config.module';
+import {
+  AlertingModule,
+  ALERT_NOTIFIER,
+  type AlertNotifier,
+} from '@infra/alerting/alerting.module';
 import { createPinoHttpOptions } from '@infra/logging/pinoHttp.options';
 import { AuthModule } from '@mogak/modules/feature-modules/auth.module';
 import { MogakModule } from '@mogak/modules/feature-modules/mogak.module';
@@ -30,13 +35,16 @@ import { UsersModule } from '@mogak/modules/feature-modules/users.module';
 @Module({
   imports: [
     AppConfigModule,
+    AlertingModule,
     LoggerModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
+      imports: [AlertingModule],
+      inject: [ConfigService, ALERT_NOTIFIER],
+      useFactory: (config: ConfigService, alertNotifier: AlertNotifier) => ({
         pinoHttp: createPinoHttpOptions(
           config.get<string>('NODE_ENV'),
           config.get<string>('LOG_LEVEL'),
           config.get<string>('K_SERVICE'),
+          alertNotifier,
         ),
       }),
     }),

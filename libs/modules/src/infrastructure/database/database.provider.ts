@@ -5,6 +5,7 @@ import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { PinoLogger } from 'nestjs-pino';
 import { Pool } from 'pg';
 import { LogEvent } from '@mogak/shared';
+import { ALERT_NOTIFIER, type AlertNotifier } from '@infra/alerting/alerting.module';
 
 import * as schema from './schema';
 import { DATABASE, PG_POOL } from './database.tokens';
@@ -18,10 +19,14 @@ const DATABASE_IDLE_TIMEOUT_MS = 30_000;
 export const databaseProviders = [
   {
     provide: PG_POOL,
-    inject: [ConfigService, PinoLogger],
-    useFactory: (config: ConfigService, pinoLogger: PinoLogger): Pool => {
+    inject: [ConfigService, PinoLogger, ALERT_NOTIFIER],
+    useFactory: (
+      config: ConfigService,
+      pinoLogger: PinoLogger,
+      alertNotifier?: AlertNotifier,
+    ): Pool => {
       const databaseUrl = config.get<string>('DATABASE_URL');
-      if (databaseUrl !== undefined) return createPool(databaseUrl, pinoLogger);
+      if (databaseUrl !== undefined) return createPool(databaseUrl, pinoLogger, alertNotifier);
 
       const jdbcUrl = config.getOrThrow<string>('APP_DB_URL');
       const url = new URL(jdbcUrl.startsWith('jdbc:') ? jdbcUrl.slice('jdbc:'.length) : jdbcUrl);
@@ -33,7 +38,7 @@ export const databaseProviders = [
       const password = config.get<string>('APP_DB_PASSWORD');
       if (username !== undefined) url.username = username;
       if (password !== undefined) url.password = password;
-      return createPool(url.toString(), pinoLogger);
+      return createPool(url.toString(), pinoLogger, alertNotifier);
     },
   },
   {
@@ -43,7 +48,11 @@ export const databaseProviders = [
   },
 ];
 
-function createPool(connectionString: string, pinoLogger: PinoLogger): Pool {
+function createPool(
+  connectionString: string,
+  pinoLogger: PinoLogger,
+  alertNotifier?: AlertNotifier,
+): Pool {
   const pool = new Pool({
     connectionString,
     connectionTimeoutMillis: DATABASE_CONNECTION_TIMEOUT_MS,
@@ -60,10 +69,11 @@ function createPool(connectionString: string, pinoLogger: PinoLogger): Pool {
     };
     // Idle client errors must be observed so EventEmitter does not terminate the process.
     // Keep only allowlisted PostgreSQL identifiers in the application log.
+    const errorId = randomUUID();
     poolLogger.error(
       {
         event: LogEvent.DATABASE_POOL_ERROR,
-        errorId: randomUUID(),
+        errorId,
         alertEligible: true,
         err: {
           database: {
@@ -75,6 +85,7 @@ function createPool(connectionString: string, pinoLogger: PinoLogger): Pool {
       },
       'Database pool error',
     );
+    alertNotifier?.notify({ event: LogEvent.DATABASE_POOL_ERROR, errorId, statusCode: 500 });
   });
   return pool;
 }

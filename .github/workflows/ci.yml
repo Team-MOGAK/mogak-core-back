@@ -79,7 +79,6 @@ jobs:
       - name: Run typecheck
         run: |
           pnpm typecheck
-          pnpm typecheck:alerting
 
   test:
     name: Test
@@ -98,7 +97,6 @@ jobs:
       - name: Run non-database tests
         run: |
           pnpm test --runInBand
-          pnpm test:alerting
 
   scripts:
     name: Script tests
@@ -117,7 +115,6 @@ jobs:
       - name: Run database-free script tests
         run: |
           pnpm test:verify-local
-          pnpm test:alerting:ops
 
   build:
     name: Application build
@@ -136,7 +133,6 @@ jobs:
       - name: Build application
         run: |
           pnpm build
-          pnpm build:alerting
 
   workflow-lint:
     name: Workflow lint
@@ -235,7 +231,6 @@ jobs:
       - name: Build runtime image (no push)
         run: |
           docker build --pull --target runtime --tag mogak-core-back:ci .
-          docker build --pull --file apps/alerting/Dockerfile --target runtime --tag mogak-error-log-relay:ci .
 
   ci-required:
     name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'CI Required' || 'CI Manual' }}

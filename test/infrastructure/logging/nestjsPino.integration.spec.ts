@@ -12,6 +12,7 @@ import { DomainErrorCode, DomainException } from '@core/common/error/domainExcep
 import { configureApp } from '@api/app.setup';
 import { GlobalExceptionFilter } from '@api/common/http/globalException.filter';
 import { createPinoHttpOptions } from '@infra/logging/pinoHttp.options';
+import { ALERT_NOTIFIER } from '@infra/alerting/alerting.module';
 
 @Controller('pino-logging-test')
 class PinoLoggingTestController {
@@ -64,7 +65,10 @@ describe('nestjs-pino 요청 컨텍스트', () => {
         }),
       ],
       controllers: [PinoLoggingTestController],
-      providers: [{ provide: APP_FILTER, useClass: GlobalExceptionFilter }],
+      providers: [
+        { provide: ALERT_NOTIFIER, useValue: { notify: () => undefined } },
+        { provide: APP_FILTER, useClass: GlobalExceptionFilter },
+      ],
     }).compile();
     const app = module.createNestApplication();
     app.useLogger(app.get(NestjsPinoLogger));
