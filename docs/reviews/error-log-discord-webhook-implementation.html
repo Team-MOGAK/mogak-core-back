@@ -19,7 +19,7 @@ body{font:16px/1.65 system-ui,sans-serif;color:#172333;background:#f8fafc;max-wi
 <tr><td>4xx/중복 알림</td><td>해결</td><td>4xx는 제외. 예외 필터가 대표 5xx를 소유하고 완료 로그는 marker가 있으면 재전달하지 않는다.</td></tr>
 <tr><td>Discord 장애·재시작</td><td>수용</td><td>비동기 best-effort라 전송 실패·timeout·프로세스 종료 시 유실 가능. 재시도·영속 queue 없음.</td></tr>
 <tr><td>운영 secret</td><td>배포 시 확인</td><td>기존 backend runtime에 Secret Manager의 <code>DISCORD_WEBHOOK_URL</code> 주입 필요. 실제 secret/서비스 설정은 이 변경에서 만들지 않았다.</td></tr>
-<tr><td>운영 image build</td><td>환경 제한</td><td>로컬 Docker daemon이 실행되지 않아 Docker image build는 확인할 수 없었다. 애플리케이션 build는 통과.</td></tr>
+<tr><td>운영 image build</td><td>환경 제한</td><td>로컬 Docker daemon은 실행되지 않아 로컬 image build는 생략했다. GitHub Actions Runtime image build는 통과했다.</td></tr>
 </tbody></table></section>
 <section><h2>검증 증거</h2><ul>
 <li><code>pnpm install --offline --frozen-lockfile</code> — 통과.</li>
@@ -28,6 +28,7 @@ body{font:16px/1.65 system-ui,sans-serif;color:#172333;background:#f8fafc;max-wi
 <li><code>pnpm test --runInBand</code> — 62 suites, 323 tests 통과.</li>
 <li>집중 오류 알림 suite — 4 suites, 40 tests 통과. fake local HTTP server, 4xx 제외, 안전한 payload, notifier failure 경계를 확인.</li>
 <li><code>pnpm test:verify-local</code> — 3 tests 통과.</li>
+<li>GitHub Actions run <code>39145297424</code> / head <code>1dab4a8b2fe07481443695f1ff606944193ece4a</code> — Format, Lint, Typecheck, Workflow lint, Script tests, Application build, Runtime image build, Test, CI Required 모두 성공.</li>
 </ul><p>정적 자체 리뷰: endpoint host/path validation, redirect 차단, payload allowlist, 2초 timeout, API 응답 비대기, marker 기반 중복 억제, secret·원문 오류 비노출을 확인했다. 별도 독립 reviewer 검토는 미실시다.</p></section>
 <section><h2>구현 이해 자기점검</h2><p>이 점검은 참고용이며 답변은 현재 브라우저에만 남고 구현 승인이나 운영 설정을 대신하지 않는다.</p>
 <fieldset><legend>1. Discord가 느리거나 끊기면 API 요청은?</legend><label><input type="radio" name="q1" value="1"> Discord를 기다리지 않고 기존 응답을 반환한다.</label><label><input type="radio" name="q1" value="0"> Discord 성공까지 기다렸다가 응답한다.</label></fieldset>
