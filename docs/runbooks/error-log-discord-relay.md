@@ -81,6 +81,30 @@ The relay runtime receives these values from the deployment plan:
 | QUARANTINE_TOPIC      | Full quarantine topic name.                                                                                             |
 | DISCORD_WEBHOOK_URL   | Injected by Secret Manager at the selected numeric version. It is never placed in config, logs, or quarantine messages. |
 
+## Register the actual Discord webhook
+
+The repository does not contain a working Discord webhook URL. Before applying
+the relay, an operator must create a webhook for the intended Discord channel,
+then store its full URL as a version of a Secret Manager secret in
+`gcp.projectId`. Use separate webhook URLs and secrets for development and
+production. Treat the URL as a credential: do not put it in the JSON config,
+Git, PR text, build arguments, or logs.
+
+In an operator-only copy of the config, set `secret.name` to that existing
+Secret Manager secret and `secret.version` to its enabled numeric version (for
+example, `1`). The example's `discord-webhook:1` is a placeholder, not a
+provisioned webhook. The deployment preflight checks that the selected version
+exists and is `ENABLED`; it does not create the secret or upload the URL.
+
+During `--apply`, the deploy helper grants the relay runtime service account
+`roles/secretmanager.secretAccessor` on the selected secret and deploys Cloud Run
+with `--set-secrets=DISCORD_WEBHOOK_URL=<secret.name>:<secret.version>`. The
+alerting process reads that injected environment variable at startup. Inspect
+the Cloud Run revision's secret reference and selected version without printing
+the webhook value. A real delivery test requires a separate staging webhook and
+an explicit operator run; a successful plan or image build does not prove that
+Discord received a message.
+
 NODE_ENV is owned by the worker image and remains independent of the source
 log environment. Cloud Run injects the reserved PORT variable; the deploy
 command selects the container port with --port=8080 and does not put PORT in
