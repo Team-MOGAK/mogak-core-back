@@ -31,7 +31,7 @@ export function createPinoHttpOptions(
   serviceName?: string,
   alertNotifier?: AlertNotifier,
 ): PinoHttpOptions {
-  const environment = normalizedEnvironment(nodeEnv);
+  const environment = nodeEnv?.trim() || 'development';
   return {
     level: resolveLogLevel(nodeEnv, configuredLevel),
     genReqId: () => randomUUID(),
@@ -106,11 +106,6 @@ function isLogLevel(value: string): value is (typeof LOG_LEVELS)[number] {
 function requestPath(url: unknown): string | undefined {
   if (typeof url !== 'string') return undefined;
   return url.split('?', 1)[0];
-}
-
-function normalizedEnvironment(nodeEnv: string | undefined): string {
-  const environment = nodeEnv?.trim();
-  return environment === undefined || environment.length === 0 ? 'development' : environment;
 }
 
 function resolveServiceName(serviceName: string | undefined): string {
