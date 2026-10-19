@@ -3,9 +3,9 @@ import { randomUUID } from 'node:crypto';
 export const RESPONSE_ERROR_LOG_MARKER = Symbol('response-error-log-marker');
 
 export type RequestLogContext = {
-  id?: unknown;
-  method?: unknown;
-  route?: { path?: unknown };
+  id?: string;
+  method?: string;
+  route?: { path?: string };
 };
 
 export type ResponseErrorLogContext = {
