@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
+import type { ReqId } from 'pino-http';
 
 export const RESPONSE_ERROR_LOG_MARKER = Symbol('response-error-log-marker');
 
 export type RequestLogContext = {
-  id?: string;
-  method?: string;
+  id?: ReqId;
+  method?: string | undefined;
   route?: { path?: string };
 };
 
@@ -19,7 +20,10 @@ export type ResponseWithErrorLogContext = {
 };
 
 export function requestErrorId(request: RequestLogContext | undefined): string {
-  return request?.id ?? randomUUID();
+  const id = request?.id;
+  if (typeof id === 'string') return id;
+  if (typeof id === 'number') return String(id);
+  return randomUUID();
 }
 
 export function requestMethod(request: RequestLogContext | undefined): string {
