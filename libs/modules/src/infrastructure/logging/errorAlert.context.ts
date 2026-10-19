@@ -18,12 +18,8 @@ export type ResponseWithErrorLogContext = {
   statusCode?: unknown;
 };
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
 export function requestErrorId(request: RequestLogContext | undefined): string {
-  const id = request?.id;
-  if (typeof id === 'string' && UUID_PATTERN.test(id)) return id;
-  return randomUUID();
+  return request?.id ?? randomUUID();
 }
 
 export function requestMethod(request: RequestLogContext | undefined): string {
