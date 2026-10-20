@@ -159,7 +159,7 @@ describe('Pino HTTP logger 설정', () => {
     expect(notify).not.toHaveBeenCalled();
   });
 
-  it('대표 오류 marker가 없으면 완료 5xx가 UUID fallback eligible 오류가 된다', () => {
+  it('대표 오류 marker가 없으면 Pino request ID로 완료 5xx alert eligible 오류를 만든다', () => {
     const options = createPinoHttpOptions('test', 'info');
     const result = options.customErrorObject?.(
       { id: 'request-id', method: 'GET', route: { path: '/health/ready' } } as never,
@@ -171,7 +171,7 @@ describe('Pino HTTP logger 설정', () => {
     expect(result).toEqual(
       expect.objectContaining({
         event: 'http_request_failed',
-        errorId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+        errorId: 'request-id',
         alertEligible: true,
       }),
     );
