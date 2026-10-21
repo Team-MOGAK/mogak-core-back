@@ -77,8 +77,7 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Run typecheck
-        run: |
-          pnpm typecheck
+        run: pnpm typecheck
 
   test:
     name: Test
@@ -95,8 +94,7 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Run non-database tests
-        run: |
-          pnpm test --runInBand
+        run: pnpm test --runInBand
 
   scripts:
     name: Script tests
@@ -113,8 +111,7 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Run database-free script tests
-        run: |
-          pnpm test:verify-local
+        run: pnpm test:verify-local
 
   build:
     name: Application build
@@ -131,8 +128,7 @@ jobs:
         uses: ./.github/actions/setup-node-pnpm
 
       - name: Build application
-        run: |
-          pnpm build
+        run: pnpm build
 
   workflow-lint:
     name: Workflow lint
@@ -229,8 +225,7 @@ jobs:
           persist-credentials: false
 
       - name: Build runtime image (no push)
-        run: |
-          docker build --pull --target runtime --tag mogak-core-back:ci .
+        run: docker build --pull --target runtime --tag mogak-core-back:ci .
 
   ci-required:
     name: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'CI Required' || 'CI Manual' }}

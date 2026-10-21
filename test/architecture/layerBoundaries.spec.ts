@@ -31,8 +31,8 @@ const sourceAliases = {
   '@mogak/modules/': 'modules',
 } as const;
 
-describe('layer boundaries', () => {
-  it('keeps source imports and request contracts within the agreed architecture', () => {
+describe('계층 경계', () => {
+  it('소스 import와 요청 계약이 정해진 아키텍처 경계를 지킨다', () => {
     const violations = sourceRoots.flatMap((sourceRoot) =>
       collectLayerBoundaryViolations(sourceRoot, process.cwd()),
     );
@@ -40,7 +40,7 @@ describe('layer boundaries', () => {
     expect(formatViolations(violations)).toEqual([]);
   });
 
-  it('keeps PostgreSQL unique-violation details out of auth and user application services', () => {
+  it('인증·사용자 애플리케이션 서비스가 PostgreSQL 고유 제약 위반의 세부 정보에 의존하지 않는다', () => {
     expect(
       readFileSync('libs/core/src/core/auth/application/service/auth.service.ts', 'utf8'),
     ).not.toMatch(/23505|users_email_unique|social_accounts_provider_user_unique/);
@@ -49,7 +49,7 @@ describe('layer boundaries', () => {
     ).not.toMatch(/23505|users_nickname_unique/);
   });
 
-  it('checks shared purity using the existing module scanner', () => {
+  it('기존 모듈 스캐너로 shared 모듈의 외부 의존성 부재를 검사한다', () => {
     const root = mkdtempSync(resolve(tmpdir(), 'mogak-shared-boundaries-'));
     try {
       writeFixture(root, 'libs/shared/src/index.ts', `import type { Pool } from 'pg';`);
@@ -62,7 +62,7 @@ describe('layer boundaries', () => {
     }
   });
 
-  it('ignores checkout parent directory named shared', () => {
+  it('체크아웃 상위 디렉터리의 shared 이름을 모듈 경계로 판단하지 않는다', () => {
     const parentName = 'shared';
     const temporaryRoot = mkdtempSync(resolve(tmpdir(), 'mogak-boundary-location-'));
     const projectRoot = resolve(temporaryRoot, parentName, 'checkout');
@@ -90,7 +90,7 @@ describe('layer boundaries', () => {
     }
   });
 
-  it('rejects dynamic module references and generic type-contract bypasses', () => {
+  it('동적 모듈 참조와 제네릭을 통한 타입 계약 우회를 거부한다', () => {
     const root = mkdtempSync(resolve(tmpdir(), 'mogak-layerBoundaries-'));
     try {
       writeFixture(
