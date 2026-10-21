@@ -116,7 +116,11 @@ pnpm test:integration --runInBand
 
 ## 운영 로그와 Discord 오류 알림
 
-API 로그는 JSON으로 출력하며 HTTP 4xx는 `warn`, 5xx와 DB pool 오류는 `error`로 분류합니다. `AlertingModule`이 같은 backend 프로세스 안에서 5xx와 DB pool error를 Discord webhook으로 비동기 전달합니다. Discord 응답은 API 응답을 지연시키지 않습니다.
+API 로그는 JSON으로 출력하며 HTTP 4xx는 `warn`, 5xx와 DB pool 오류는 `error`로 분류합니다. 기존 backend 이미지·프로세스 안의 `AlertingModule`이 알림 provider를 연결하고, `DiscordWebhookNotifier`가 Discord webhook으로 비동기 전송합니다. Discord 응답은 API 응답을 지연시키지 않습니다.
+
+로그의 `route`에는 `/api/users/:id`처럼 접두사를 포함한 라우트 패턴을 기록합니다. 요청 오류는 요청 ID를 `errorId`로 재사용하며, 같은 ID로 오류 로그와 Discord 알림을 연결합니다. DB pool 생성은 연결 설정만 담당하고, 별도 `DatabasePoolErrorHandler`가 pool 오류의 로그와 알림을 처리합니다.
+
+`LOG_LEVEL`에 설정한 유효한 값은 환경에 관계없이 적용합니다. 비워 두면 development는 `debug`, 나머지 환경은 `info`입니다. 운영에서도 `fatal`을 설정할 수 있으며, 이 경우 `error` 이하 로그는 출력되지 않습니다.
 
 `DISCORD_WEBHOOK_URL`은 선택 설정입니다. 값이 없거나 유효하지 않으면 시작 경고를 남기고 알림만 끕니다. 운영 배포에서는 기존 backend 서비스의 Secret Manager 환경변수 주입으로 설정합니다. API 이미지나 로그에 secret 값을 넣지 마세요.
 
