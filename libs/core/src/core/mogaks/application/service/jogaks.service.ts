@@ -513,7 +513,7 @@ function categoryOf(
   customCategoryName: string | null,
 ) {
   const name = categoryName ?? customCategoryName;
-  if (name === null) throw new Error('Mogak category was not populated');
+  if (name === null) throw new MogakPersistenceException('Mogak category was not populated');
   return { code, name };
 }
 

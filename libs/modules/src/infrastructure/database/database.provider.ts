@@ -1,10 +1,11 @@
 import { ConfigService } from '@nestjs/config';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { ConfigurationException } from '@infra/config/configuration.exception';
 
 import * as schema from './schema';
 import { DATABASE, PG_POOL } from './database.tokens';
-import { DatabasePoolErrorHandler } from './databasePoolErrorHandler';
+import { DatabasePoolExceptionHandler } from './databasePoolExceptionHandler';
 
 export type Database = NodePgDatabase<typeof schema>;
 
@@ -15,11 +16,11 @@ const DATABASE_IDLE_TIMEOUT_MS = 30_000;
 export const databaseProviders = [
   {
     provide: PG_POOL,
-    inject: [ConfigService, DatabasePoolErrorHandler],
-    useFactory: (config: ConfigService, errorHandler: DatabasePoolErrorHandler): Pool => {
+    inject: [ConfigService, DatabasePoolExceptionHandler],
+    useFactory: (config: ConfigService, exceptionHandler: DatabasePoolExceptionHandler): Pool => {
       const pool = createPool(resolveConnectionString(config));
       // Observe idle client errors before exposing the pool to consumers.
-      pool.on('error', (error: Error) => errorHandler.handle(error));
+      pool.on('error', (error: Error) => exceptionHandler.handle(error));
       return pool;
     },
   },
@@ -47,7 +48,7 @@ function resolveConnectionString(config: ConfigService): string {
   const jdbcUrl = config.getOrThrow<string>('APP_DB_URL');
   const url = new URL(jdbcUrl.startsWith('jdbc:') ? jdbcUrl.slice('jdbc:'.length) : jdbcUrl);
   if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') {
-    throw new Error('APP_DB_URL은 PostgreSQL 연결 문자열이어야 합니다.');
+    throw new ConfigurationException('APP_DB_URL은 PostgreSQL 연결 문자열이어야 합니다.');
   }
 
   const username = config.get<string>('APP_DB_USERNAME');

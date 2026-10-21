@@ -7,7 +7,7 @@ import { LogEvent } from '@mogak/shared';
 import { ALERT_NOTIFIER, type AlertNotifier } from '@infra/alerting/alertNotifier';
 
 @Injectable()
-export class DatabasePoolErrorHandler {
+export class DatabasePoolExceptionHandler {
   private readonly logger: Logger;
 
   constructor(
@@ -17,8 +17,8 @@ export class DatabasePoolErrorHandler {
     this.logger = pinoLogger.logger.child({});
   }
 
-  handle(error: Error): void {
-    const details = error as Error & {
+  handle(exception: Error): void {
+    const details = exception as Error & {
       code?: unknown;
       constraint?: unknown;
       table?: unknown;

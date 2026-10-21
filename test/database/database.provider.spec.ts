@@ -4,7 +4,7 @@ import type { PinoLogger } from 'nestjs-pino';
 import type { Pool } from 'pg';
 
 import { databaseProviders } from '@infra/database/database.provider';
-import { DatabasePoolErrorHandler } from '@infra/database/databasePoolErrorHandler';
+import { DatabasePoolExceptionHandler } from '@infra/database/databasePoolExceptionHandler';
 import { PG_POOL } from '@infra/database/database.tokens';
 
 const poolProvider = databaseProviders.find((provider) => provider.provide === PG_POOL);
@@ -12,7 +12,7 @@ if (poolProvider === undefined) throw new Error('database pool provider was not 
 
 const createPool = poolProvider.useFactory as (
   config: ConfigService,
-  errorHandler: DatabasePoolErrorHandler,
+  exceptionHandler: DatabasePoolExceptionHandler,
 ) => Pool;
 
 function configFor(values: Record<string, unknown>): ConfigService {
@@ -53,8 +53,8 @@ describe('DB 연결 풀 provider', () => {
       const child = jest.fn(() => ({ error: logError }));
       const logger = { logger: { child } } as unknown as PinoLogger;
       const notify = jest.fn();
-      const errorHandler = new DatabasePoolErrorHandler(logger, { notify });
-      const pool = createPool(configFor(values), errorHandler);
+      const exceptionHandler = new DatabasePoolExceptionHandler(logger, { notify });
+      const pool = createPool(configFor(values), exceptionHandler);
 
       try {
         expect(pool.options).toMatchObject({

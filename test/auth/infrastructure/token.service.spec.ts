@@ -1,3 +1,4 @@
+import { ConfigurationException } from '@infra/config/configuration.exception';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import type { ConfigService } from '@nestjs/config';
 
@@ -33,6 +34,7 @@ describe('토큰 서비스 설정 경계', () => {
   });
 
   it.each([undefined, '', '   '])('JWT secret이 비어 있으면 기동을 거부한다 (%p)', (secret) => {
+    expect(() => new JwtTokenService(createConfig(secret))).toThrow(ConfigurationException);
     expect(() => new JwtTokenService(createConfig(secret))).toThrow(/JWT_SECRET/);
   });
 

@@ -96,7 +96,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const error = appErrorForDomainCode(exception.code);
       const request = requestFromHttp(http);
       if (error.httpStatus >= HttpStatus.INTERNAL_SERVER_ERROR) {
-        logCanonicalServerError(
+        reportServerException(
           this.logger,
           response,
           request,
@@ -120,7 +120,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const request = requestFromHttp(http);
       const route = routeTemplate(request);
       if (error.httpStatus >= HttpStatus.INTERNAL_SERVER_ERROR) {
-        logCanonicalServerError(
+        reportServerException(
           this.logger,
           response,
           request,
@@ -143,7 +143,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
     } else {
       const request = requestFromHttp(http);
-      logCanonicalServerError(
+      reportServerException(
         this.logger,
         response,
         request,
@@ -166,7 +166,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 }
 
-function logCanonicalServerError(
+function reportServerException(
   logger: PinoLogger,
   response: Response,
   request: RequestForRateLimitLog,
@@ -211,13 +211,13 @@ function requestFromHttp(
 ): RequestForDomainExceptionLog {
   try {
     const request = http.getRequest<RequestForDomainExceptionLog>();
-    return isErrorLike(request) ? (request as RequestForDomainExceptionLog) : {};
+    return isObject(request) ? (request as RequestForDomainExceptionLog) : {};
   } catch {
     return {};
   }
 }
 
-type DatabaseErrorDetails = {
+type DatabaseExceptionDetails = {
   code?: string | undefined;
   constraint?: string | undefined;
   table?: string | undefined;
@@ -227,16 +227,16 @@ type ExceptionDetails = Readonly<{
   name: string;
   message: string;
   stack?: string | undefined;
-  database?: DatabaseErrorDetails | undefined;
+  database?: DatabaseExceptionDetails | undefined;
 }>;
 
-function databaseErrorDetails(exception: unknown): DatabaseErrorDetails | undefined {
+function databaseExceptionDetails(exception: unknown): DatabaseExceptionDetails | undefined {
   const seen = new WeakSet<object>();
   let current: unknown = exception;
   let isDatabaseError = false;
-  const details: DatabaseErrorDetails = {};
+  const details: DatabaseExceptionDetails = {};
 
-  while (isErrorLike(current) && !seen.has(current)) {
+  while (isObject(current) && !seen.has(current)) {
     seen.add(current);
     if (current instanceof DrizzleQueryError || current instanceof DrizzleError) {
       isDatabaseError = true;
@@ -265,22 +265,22 @@ function safeDatabaseIdentifier(value: unknown): string | undefined {
   return typeof value === 'string' && /^[A-Za-z0-9_]{1,128}$/.test(value) ? value : undefined;
 }
 
-function isErrorLike(value: unknown): value is Record<string, unknown> {
+function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function exceptionDetails(error: unknown): ExceptionDetails | undefined {
-  if (!(error instanceof Error)) return undefined;
+function exceptionDetails(exception: unknown): ExceptionDetails | undefined {
+  if (!(exception instanceof Error)) return undefined;
 
-  const database = databaseErrorDetails(error);
+  const database = databaseExceptionDetails(exception);
   if (database !== undefined) {
-    return { name: error.name, message: 'Database operation failed', database };
+    return { name: exception.name, message: 'Database operation failed', database };
   }
 
   return {
-    name: error.name,
-    message: error.message,
-    stack: error.stack,
+    name: exception.name,
+    message: exception.message,
+    stack: exception.stack,
   };
 }
 
@@ -384,7 +384,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isMultipartInputError(exception: unknown): exception is { code: string } {
   return (
-    isErrorLike(exception) &&
+    isObject(exception) &&
     typeof exception.code === 'string' &&
     MULTIPART_INPUT_ERROR_CODES.has(exception.code)
   );

@@ -6,6 +6,7 @@ import { Logger as PinoLogger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { configureApp } from '@api/app.setup';
+import { ConfigurationException } from '@infra/config/configuration.exception';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -27,7 +28,9 @@ function parseCorsAllowedOrigins(value: string | undefined): string[] {
     const normalized = origin.trim();
     const url = new URL(normalized);
     if ((url.protocol !== 'https:' && url.protocol !== 'http:') || url.origin !== normalized) {
-      throw new Error('CORS_ALLOWED_ORIGINS에는 완전한 origin만 설정할 수 있습니다.');
+      throw new ConfigurationException(
+        'CORS_ALLOWED_ORIGINS에는 완전한 origin만 설정할 수 있습니다.',
+      );
     }
     return normalized;
   });
