@@ -19,11 +19,8 @@ import { ConsentController } from '@api/users/presentation/controller/consent.co
 import { MetadataController } from '@api/users/presentation/controller/metadata.controller';
 import { UsersController } from '@api/users/presentation/controller/users.controller';
 import { AppConfigModule } from '@infra/config/config.module';
-import {
-  AlertingModule,
-  ALERT_NOTIFIER,
-  type AlertNotifier,
-} from '@infra/alerting/alerting.module';
+import { AlertingModule } from '@infra/alerting/alerting.module';
+import { ALERT_NOTIFIER, type AlertNotifier } from '@infra/alerting/alertNotifier';
 import { createPinoHttpOptions } from '@infra/logging/pinoHttp.options';
 import { AuthModule } from '@mogak/modules/feature-modules/auth.module';
 import { MogakModule } from '@mogak/modules/feature-modules/mogak.module';

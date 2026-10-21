@@ -2,6 +2,7 @@ import { Inject, Injectable, Module, type OnModuleDestroy } from '@nestjs/common
 import type { Pool } from 'pg';
 
 import { databaseProviders } from './database.provider';
+import { DatabasePoolErrorHandler } from './databasePoolErrorHandler';
 import { DATABASE, PG_POOL } from './database.tokens';
 import { AlertingModule } from '@infra/alerting/alerting.module';
 
@@ -16,7 +17,7 @@ class DatabaseLifecycle implements OnModuleDestroy {
 
 @Module({
   imports: [AlertingModule],
-  providers: [...databaseProviders, DatabaseLifecycle],
+  providers: [...databaseProviders, DatabasePoolErrorHandler, DatabaseLifecycle],
   exports: [DATABASE, PG_POOL],
 })
 export class DatabaseModule {}

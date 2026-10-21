@@ -3,9 +3,9 @@ import type { AddressInfo } from 'node:net';
 import { Logger } from '@nestjs/common';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
-import { DiscordWebhookNotifier } from '@infra/alerting/alerting.module';
+import { DiscordWebhookNotifier } from '@infra/alerting/discordWebhookNotifier';
 
-const ERROR_ID = '11111111-1111-4111-8111-111111111111';
+const ERROR_ID = 'request-id';
 const WEBHOOK = 'https://discord.com/api/webhooks/123456789012345678/secret-token';
 
 async function listen(server: Server): Promise<string> {
@@ -54,7 +54,7 @@ describe('DiscordWebhookNotifier', () => {
         statusCode: 500,
         appCode: 'Z001',
         method: 'GET',
-        routeTemplate: '/users/:id',
+        route: '/users/:id',
       });
       expect(result).toBeUndefined();
       await received;
@@ -123,7 +123,7 @@ describe('DiscordWebhookNotifier', () => {
       event: 'http_request_failed',
       errorId: ERROR_ID,
       statusCode: 503,
-      routeTemplate: '/users/123?token=secret',
+      route: '/users/123?token=secret',
     });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     const requestBody = JSON.parse(fetchImpl.mock.calls[0]?.[1]?.body as string) as {

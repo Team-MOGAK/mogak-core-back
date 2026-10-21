@@ -21,10 +21,8 @@ describe('Pino HTTP logger 설정', () => {
     expect(resolveLogLevel('production', ' WARN ')).toBe('warn');
   });
 
-  it('운영 환경에서 error를 숨기는 fatal threshold를 거부한다', () => {
-    expect(() => resolveLogLevel('production', 'fatal')).toThrow(
-      'production LOG_LEVEL은 error 이상을 기록해야 합니다.',
-    );
+  it('운영 환경에서도 설정한 fatal 로그 레벨을 그대로 사용한다', () => {
+    expect(resolveLogLevel('production', 'fatal')).toBe('fatal');
   });
 
   it('잘못된 LOG_LEVEL은 부팅 전에 실패시킨다', () => {
@@ -116,12 +114,12 @@ describe('Pino HTTP logger 설정', () => {
         alertEligible: false,
         statusCode: 503,
         method: 'GET',
-        routeTemplate: '/health/ready',
+        route: '/api/health/ready',
         code: 'Z006',
         appCode: 'Z006',
       }),
     );
-    expect(result).not.toHaveProperty('route');
+    expect(result).not.toHaveProperty('routeTemplate');
   });
 
   it('대표 오류가 없는 완료 5xx는 alert notifier로 한 번 전달한다', () => {
@@ -141,7 +139,7 @@ describe('Pino HTTP logger 설정', () => {
       errorId: requestId,
       statusCode: 503,
       method: 'GET',
-      routeTemplate: '/health/ready',
+      route: '/health/ready',
     });
     expect(JSON.stringify(notify.mock.calls)).not.toContain('private exception message');
   });

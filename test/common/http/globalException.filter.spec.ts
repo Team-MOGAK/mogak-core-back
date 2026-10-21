@@ -57,7 +57,7 @@ describe('GlobalExceptionFilter의 rate limit 처리', () => {
     expect(warn).toHaveBeenCalledWith({
       event: 'rate_limit_rejected',
       method: 'POST',
-      routeTemplate: '/login',
+      route: '/api/auth/login',
     });
     expect(JSON.stringify(warn.mock.calls)).not.toContain('203.0.113.10');
     expect(JSON.stringify(warn.mock.calls)).not.toContain('access-secret');
@@ -126,7 +126,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       status: 'NOT_FOUND',
       message: '존재하지 않는 사용자입니다',
       method: 'GET',
-      routeTemplate: '/users/:id',
+      route: '/api/users/:id',
       request: {
         params: { id: 'wrong' },
         query: { include: 'profile' },
@@ -161,7 +161,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       status: 'FORBIDDEN',
       message: '권한이 부여되지 않았습니다',
       method: 'DELETE',
-      routeTemplate: '/posts/:id',
+      route: '/posts/:id',
       request: { params: { id: 'missing' } },
     });
   });
@@ -232,7 +232,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
       status: 'BAD_REQUEST',
       message: '입력값이 유효하지 않습니다',
       method: 'POST',
-      routeTemplate: '/:postId',
+      route: '/api/posts/:postId',
       request: {
         params: { postId: 'wrong' },
         query: { page: 'wrong' },
@@ -399,7 +399,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
       status: 'NOT_FOUND',
       message: '존재하지 않는 사용자입니다',
       method: 'GET',
-      routeTemplate: '/users/:id',
+      route: '/users/:id',
       request: { params: { id: '42' } },
     });
   });
@@ -464,7 +464,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
         code: 'Z006',
         appCode: 'Z006',
         method: 'POST',
-        routeTemplate: '/posts',
+        route: '/api/posts',
         alertEligible: true,
       }),
       'Domain exception',
@@ -502,7 +502,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
         event: 'http_exception',
         statusCode: HttpStatus.BAD_REQUEST,
         method: 'GET',
-        routeTemplate: '/users/:id',
+        route: '/api/users/:id',
       },
       'HTTP exception',
     );
@@ -703,7 +703,7 @@ describe('GlobalExceptionFilter의 서버 오류 알림', () => {
       statusCode: 500,
       appCode: 'Z500',
       method: 'GET',
-      routeTemplate: '/users/:id',
+      route: '/users/:id',
     });
     expect(JSON.stringify(notify.mock.calls)).not.toContain('private');
     expect(JSON.stringify(notify.mock.calls)).not.toContain('/users/42');

@@ -6,6 +6,7 @@ export const RESPONSE_ERROR_LOG_MARKER = Symbol('response-error-log-marker');
 export type RequestLogContext = {
   id?: ReqId;
   method?: string | undefined;
+  baseUrl?: string;
   route?: { path?: string };
 };
 
@@ -34,7 +35,8 @@ export function requestMethod(request: RequestLogContext | undefined): string {
 
 export function routeTemplate(request: RequestLogContext | undefined): string | undefined {
   const path = request?.route?.path;
-  return typeof path === 'string' && path.length > 0 ? path : undefined;
+  if (typeof path !== 'string' || path.length === 0) return undefined;
+  return `${request?.baseUrl ?? ''}${path}`;
 }
 
 export function markResponseErrorLog(response: unknown, context: ResponseErrorLogContext): void {

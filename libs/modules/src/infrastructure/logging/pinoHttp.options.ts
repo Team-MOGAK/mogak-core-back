@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Options as PinoHttpOptions } from 'pino-http';
 import { LogEvent } from '@mogak/shared';
-import type { AlertNotifier } from '@infra/alerting/alerting.module';
+import type { AlertNotifier } from '@infra/alerting/alertNotifier';
 
 import {
   requestErrorId,
@@ -91,9 +91,6 @@ export function resolveLogLevel(
     return nodeEnv === 'development' ? 'debug' : 'info';
   }
   if (isLogLevel(candidate)) {
-    if (isProduction(nodeEnv) && candidate === 'fatal') {
-      throw new Error('production LOG_LEVEL은 error 이상을 기록해야 합니다.');
-    }
     return candidate;
   }
   throw new Error(`LOG_LEVEL은 ${LOG_LEVELS.join(', ')} 중 하나여야 합니다.`);
@@ -116,10 +113,6 @@ function resolveServiceName(serviceName: string | undefined): string {
   return runtimeService === undefined || runtimeService.length === 0
     ? DEFAULT_SERVICE_NAME
     : runtimeService;
-}
-
-function isProduction(nodeEnv: string | undefined): boolean {
-  return nodeEnv?.trim().toLowerCase() === 'production';
 }
 
 function numericStatusCode(response: { statusCode?: unknown }): number | undefined {
@@ -146,7 +139,7 @@ function completedRequestObject(
       errorId,
       statusCode,
       method: requestMethod(request),
-      ...(route === undefined ? {} : { routeTemplate: route }),
+      route,
     });
   }
 
@@ -156,7 +149,7 @@ function completedRequestObject(
     errorId,
     statusCode,
     method: requestMethod(request),
-    ...(route === undefined ? {} : { routeTemplate: route }),
+    route,
     alertEligible: marker === undefined,
     ...(appCode === undefined ? {} : { code: appCode, appCode }),
   };

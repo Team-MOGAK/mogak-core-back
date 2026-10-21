@@ -1,14 +1,10 @@
-import { randomUUID } from 'node:crypto';
-
 import { ConfigService } from '@nestjs/config';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { PinoLogger } from 'nestjs-pino';
 import { Pool } from 'pg';
-import { LogEvent } from '@mogak/shared';
-import { ALERT_NOTIFIER, type AlertNotifier } from '@infra/alerting/alerting.module';
 
 import * as schema from './schema';
 import { DATABASE, PG_POOL } from './database.tokens';
+import { DatabasePoolErrorHandler } from './databasePoolErrorHandler';
 
 export type Database = NodePgDatabase<typeof schema>;
 
@@ -19,26 +15,12 @@ const DATABASE_IDLE_TIMEOUT_MS = 30_000;
 export const databaseProviders = [
   {
     provide: PG_POOL,
-    inject: [ConfigService, PinoLogger, ALERT_NOTIFIER],
-    useFactory: (
-      config: ConfigService,
-      pinoLogger: PinoLogger,
-      alertNotifier?: AlertNotifier,
-    ): Pool => {
-      const databaseUrl = config.get<string>('DATABASE_URL');
-      if (databaseUrl !== undefined) return createPool(databaseUrl, pinoLogger, alertNotifier);
-
-      const jdbcUrl = config.getOrThrow<string>('APP_DB_URL');
-      const url = new URL(jdbcUrl.startsWith('jdbc:') ? jdbcUrl.slice('jdbc:'.length) : jdbcUrl);
-      if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') {
-        throw new Error('APP_DB_URL은 PostgreSQL 연결 문자열이어야 합니다.');
-      }
-
-      const username = config.get<string>('APP_DB_USERNAME');
-      const password = config.get<string>('APP_DB_PASSWORD');
-      if (username !== undefined) url.username = username;
-      if (password !== undefined) url.password = password;
-      return createPool(url.toString(), pinoLogger, alertNotifier);
+    inject: [ConfigService, DatabasePoolErrorHandler],
+    useFactory: (config: ConfigService, errorHandler: DatabasePoolErrorHandler): Pool => {
+      const pool = createPool(resolveConnectionString(config));
+      // Observe idle client errors before exposing the pool to consumers.
+      pool.on('error', (error: Error) => errorHandler.handle(error));
+      return pool;
     },
   },
   {
@@ -48,52 +30,29 @@ export const databaseProviders = [
   },
 ];
 
-function createPool(
-  connectionString: string,
-  pinoLogger: PinoLogger,
-  alertNotifier?: AlertNotifier,
-): Pool {
-  const pool = new Pool({
+function createPool(connectionString: string): Pool {
+  return new Pool({
     connectionString,
     connectionTimeoutMillis: DATABASE_CONNECTION_TIMEOUT_MS,
     idleTimeoutMillis: DATABASE_IDLE_TIMEOUT_MS,
     query_timeout: DATABASE_QUERY_TIMEOUT_MS,
     statement_timeout: DATABASE_QUERY_TIMEOUT_MS,
   });
-  const poolLogger = pinoLogger.logger.child({});
-  pool.on('error', (error: Error) => {
-    const details = error as Error & {
-      code?: unknown;
-      constraint?: unknown;
-      table?: unknown;
-    };
-    // Idle client errors must be observed so EventEmitter does not terminate the process.
-    // Keep only allowlisted PostgreSQL identifiers in the application log.
-    const errorId = randomUUID();
-    poolLogger.error(
-      {
-        event: LogEvent.DATABASE_POOL_ERROR,
-        errorId,
-        alertEligible: true,
-        err: {
-          database: {
-            code: safeDatabaseCode(details.code),
-            constraint: safeDatabaseIdentifier(details.constraint),
-            table: safeDatabaseIdentifier(details.table),
-          },
-        },
-      },
-      'Database pool error',
-    );
-    alertNotifier?.notify({ event: LogEvent.DATABASE_POOL_ERROR, errorId, statusCode: 500 });
-  });
-  return pool;
 }
 
-function safeDatabaseCode(value: unknown): string | undefined {
-  return typeof value === 'string' && /^[0-9A-Z]{5}$/.test(value) ? value : undefined;
-}
+function resolveConnectionString(config: ConfigService): string {
+  const databaseUrl = config.get<string>('DATABASE_URL');
+  if (databaseUrl !== undefined) return databaseUrl;
 
-function safeDatabaseIdentifier(value: unknown): string | undefined {
-  return typeof value === 'string' && /^[A-Za-z0-9_]{1,128}$/.test(value) ? value : undefined;
+  const jdbcUrl = config.getOrThrow<string>('APP_DB_URL');
+  const url = new URL(jdbcUrl.startsWith('jdbc:') ? jdbcUrl.slice('jdbc:'.length) : jdbcUrl);
+  if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') {
+    throw new Error('APP_DB_URL은 PostgreSQL 연결 문자열이어야 합니다.');
+  }
+
+  const username = config.get<string>('APP_DB_USERNAME');
+  const password = config.get<string>('APP_DB_PASSWORD');
+  if (username !== undefined) url.username = username;
+  if (password !== undefined) url.password = password;
+  return url.toString();
 }

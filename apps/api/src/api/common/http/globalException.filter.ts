@@ -22,7 +22,7 @@ import {
   type RequestLogContext,
 } from '@infra/logging/errorAlert.context';
 import { AppErrorCode, type AppErrorCode as AppErrorDefinition } from './appErrorCode';
-import { ALERT_NOTIFIER, type AlertNotifier } from '@infra/alerting/alerting.module';
+import { ALERT_NOTIFIER, type AlertNotifier } from '@infra/alerting/alertNotifier';
 import { errorResponse } from './apiResponse';
 
 function errorForStatus(status: number): AppErrorDefinition {
@@ -46,7 +46,7 @@ type RequestForDomainExceptionLog = RequestForRateLimitLog & {
   query?: unknown;
 };
 
-const NOOP_ALERT_NOTIFIER: AlertNotifier = { notify: () => undefined };
+const DISABLED_ALERT_NOTIFIER: AlertNotifier = { notify: () => undefined };
 const OMIT = Symbol('omit-request-log-value');
 const TRUNCATED = '[TRUNCATED]';
 const SENSITIVE_KEY_PARTS = ['authorization', 'cookie', 'password', 'secret', 'token'];
@@ -65,7 +65,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   constructor(
     @InjectPinoLogger(GlobalExceptionFilter.name)
     private readonly logger: PinoLogger,
-    @Inject(ALERT_NOTIFIER) private readonly alertNotifier: AlertNotifier = NOOP_ALERT_NOTIFIER,
+    @Inject(ALERT_NOTIFIER) private readonly alertNotifier: AlertNotifier = DISABLED_ALERT_NOTIFIER,
   ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
@@ -77,7 +77,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       this.logger.warn({
         event: 'rate_limit_rejected',
         method: requestMethod(request),
-        ...(route === undefined ? {} : { routeTemplate: route }),
+        route,
       });
       response.status(exception.getStatus()).json(throttlerResponse(exception));
       return;
@@ -126,7 +126,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           request,
           LogEvent.HTTP_EXCEPTION,
           error,
-          { err: exceptionDetails(exception) },
+          exceptionDetails(exception),
           'Unhandled HTTP exception',
           this.alertNotifier,
         );
@@ -136,7 +136,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
             event: LogEvent.HTTP_EXCEPTION,
             statusCode: error.httpStatus,
             method: requestMethod(request),
-            ...(route === undefined ? {} : { routeTemplate: route }),
+            route,
           },
           'HTTP exception',
         );
@@ -149,7 +149,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         request,
         LogEvent.UNHANDLED_EXCEPTION,
         AppErrorCode.INTERNAL_SERVER_ERROR,
-        unhandledExceptionDetails(exception),
+        exceptionDetails(exception),
         'Unhandled exception',
         this.alertNotifier,
       );
@@ -175,7 +175,7 @@ function logCanonicalServerError(
     | typeof LogEvent.HTTP_EXCEPTION
     | typeof LogEvent.UNHANDLED_EXCEPTION,
   error: AppErrorDefinition,
-  details: Record<string, unknown> | undefined,
+  details: ExceptionDetails | undefined,
   message: string,
   alertNotifier: AlertNotifier,
 ): void {
@@ -191,8 +191,8 @@ function logCanonicalServerError(
       code: error.code,
       appCode: error.code,
       method: requestMethod(request),
-      ...(route === undefined ? {} : { routeTemplate: route }),
-      ...(details ?? {}),
+      route,
+      err: details,
     },
     message,
   );
@@ -202,7 +202,7 @@ function logCanonicalServerError(
     statusCode: error.httpStatus,
     appCode: error.code,
     method: requestMethod(request),
-    ...(route === undefined ? {} : { routeTemplate: route }),
+    route,
   });
 }
 
@@ -269,14 +269,9 @@ function isErrorLike(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function unhandledExceptionDetails(exception: unknown): {
-  err?: ExceptionDetails;
-} {
-  if (!(exception instanceof Error)) return {};
-  return { err: exceptionDetails(exception) };
-}
+function exceptionDetails(error: unknown): ExceptionDetails | undefined {
+  if (!(error instanceof Error)) return undefined;
 
-function exceptionDetails(error: Error): ExceptionDetails {
   const database = databaseErrorDetails(error);
   if (database !== undefined) {
     return { name: error.name, message: 'Database operation failed', database };
@@ -302,7 +297,7 @@ function domainExceptionLog(request: RequestForDomainExceptionLog) {
 
   return {
     method: request.method,
-    ...(route === undefined ? {} : { routeTemplate: route }),
+    route,
     request: {
       ...(params === OMIT ? {} : { params }),
       ...(query === OMIT ? {} : { query }),
