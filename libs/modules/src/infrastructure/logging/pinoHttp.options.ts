@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Options as PinoHttpOptions } from 'pino-http';
 import { LogEvent } from '@mogak/shared';
-import { ConfigurationException } from '@infra/config/configuration.exception';
+import { InternalServerErrorException } from '@nestjs/common';
 import type { AlertNotifier } from '@infra/alerting/alertNotifier';
 
 import {
@@ -94,7 +94,9 @@ export function resolveLogLevel(
   if (isLogLevel(candidate)) {
     return candidate;
   }
-  throw new ConfigurationException(`LOG_LEVEL은 ${LOG_LEVELS.join(', ')} 중 하나여야 합니다.`);
+  throw new InternalServerErrorException(
+    `LOG_LEVEL은 ${LOG_LEVELS.join(', ')} 중 하나여야 합니다.`,
+  );
 }
 
 function isLogLevel(value: string): value is (typeof LOG_LEVELS)[number] {
