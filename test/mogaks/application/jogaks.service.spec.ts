@@ -1,5 +1,5 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
-import { MogakPersistenceException } from '@core/mogaks/domain/exception/mogakPersistence.exception';
+import { MogakException } from '@core/mogaks/domain/exception/mogak.exception';
 import { jest } from '@jest/globals';
 import { testMock } from '../../testMock';
 import type { MogakRepositoryPort } from '@core/mogaks/application/port/mogak.repository.port';
@@ -210,12 +210,10 @@ describe('조각 서비스', () => {
     jest.mocked(mogaks.listSuccessCounts).mockResolvedValue([]);
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
-    await expect(service.listDay(7, '2026-07-23')).rejects.toBeInstanceOf(
-      MogakPersistenceException,
-    );
+    await expect(service.listDay(7, '2026-07-23')).rejects.toBeInstanceOf(MogakException);
   });
 
-  it('유효하지 않은 WEEKLY persistence row는 원인을 보존한 MogakPersistenceException으로 번역한다', async () => {
+  it('유효하지 않은 WEEKLY persistence row는 원인을 보존한 MogakException으로 번역한다', async () => {
     const mogaks = repository();
     jest.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([
       {
@@ -239,7 +237,7 @@ describe('조각 서비스', () => {
     const service = new JogaksService(mogaks, () => '2026-07-23');
 
     await expect(service.listDay(7, '2026-07-23')).rejects.toMatchObject({
-      name: 'MogakPersistenceException',
+      name: 'MogakException',
       cause: expect.any(RangeError),
     });
   });

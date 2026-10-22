@@ -6,7 +6,7 @@ import { Pool, type PoolClient } from 'pg';
 
 import type { Database } from '@infra/database/database.provider';
 import { DomainErrorCode } from '@core/common/error/domainException';
-import { MogakPersistenceException } from '@core/mogaks/domain/exception/mogakPersistence.exception';
+import { MogakException } from '@core/mogaks/domain/exception/mogak.exception';
 import * as schema from '@infra/database/schema';
 import {
   jogakExecutions,
@@ -690,7 +690,7 @@ function expectHierarchyRaceOutcomes(outcomes: readonly PromiseSettledResult<unk
       }),
     );
   } else {
-    expect(writer.reason).toBeInstanceOf(MogakPersistenceException);
+    expect(writer.reason).toBeInstanceOf(MogakException);
     expect(writer.reason).toMatchObject({ message: 'Mogak did not exist' });
   }
   for (const outcome of outcomes) {

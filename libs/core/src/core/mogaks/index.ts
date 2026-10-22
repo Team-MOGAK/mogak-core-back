@@ -9,7 +9,7 @@ export * from './application/type/jogak.result';
 export * from './application/type/mogak.command';
 export * from './application/type/mogak.query';
 export * from './application/type/mogak.result';
-export * from './domain/exception/mogakPersistence.exception';
+export * from './domain/exception/mogak.exception';
 export * from './domain/policy/jogak.policy';
 export * from './domain/policy/jogakExecution.policy';
 export * from './domain/policy/jogakSchedule.policy';
