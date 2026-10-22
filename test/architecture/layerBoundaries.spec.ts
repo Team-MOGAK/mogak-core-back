@@ -1,5 +1,5 @@
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import ts from 'typescript';
 
@@ -9,6 +9,7 @@ const sourceRoots = [
   resolve(process.cwd(), 'apps/api/src'),
   resolve(process.cwd(), 'libs/core/src'),
   resolve(process.cwd(), 'libs/modules/src'),
+  resolve(process.cwd(), 'libs/shared/src'),
 ];
 const forbiddenDomainPackages = [
   /^@nestjs(?:\/|$)/,
@@ -30,14 +31,16 @@ const sourceAliases = {
   '@mogak/modules/': 'modules',
 } as const;
 
-describe('layer boundaries', () => {
-  it('keeps source imports and request contracts within the agreed architecture', () => {
-    const violations = sourceRoots.flatMap(collectLayerBoundaryViolations);
+describe('계층 경계', () => {
+  it('소스 import와 요청 계약이 정해진 아키텍처 경계를 지킨다', () => {
+    const violations = sourceRoots.flatMap((sourceRoot) =>
+      collectLayerBoundaryViolations(sourceRoot, process.cwd()),
+    );
 
     expect(formatViolations(violations)).toEqual([]);
   });
 
-  it('keeps PostgreSQL unique-violation details out of auth and user application services', () => {
+  it('인증·사용자 애플리케이션 서비스가 PostgreSQL 고유 제약 위반의 세부 정보에 의존하지 않는다', () => {
     expect(
       readFileSync('libs/core/src/core/auth/application/service/auth.service.ts', 'utf8'),
     ).not.toMatch(/23505|users_email_unique|social_accounts_provider_user_unique/);
@@ -46,7 +49,48 @@ describe('layer boundaries', () => {
     ).not.toMatch(/23505|users_nickname_unique/);
   });
 
-  it('rejects dynamic module references and generic type-contract bypasses', () => {
+  it('기존 모듈 스캐너로 shared 모듈의 외부 의존성 부재를 검사한다', () => {
+    const root = mkdtempSync(resolve(tmpdir(), 'mogak-shared-boundaries-'));
+    try {
+      writeFixture(root, 'libs/shared/src/index.ts', `import type { Pool } from 'pg';`);
+      const violations = formatViolations(collectLayerBoundaryViolations(root));
+      expect(violations).toEqual([
+        expect.stringContaining("shared must not import external or application code 'pg'"),
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('체크아웃 상위 디렉터리의 shared 이름을 모듈 경계로 판단하지 않는다', () => {
+    const parentName = 'shared';
+    const temporaryRoot = mkdtempSync(resolve(tmpdir(), 'mogak-boundary-location-'));
+    const projectRoot = resolve(temporaryRoot, parentName, 'checkout');
+    try {
+      writeFixture(
+        projectRoot,
+        'apps/api/src/api/common/application/probe.ts',
+        `import pino from 'pino'; void pino;`,
+      );
+      writeFixture(projectRoot, 'libs/shared/src/index.ts', `export { value } from './value';`);
+      writeFixture(projectRoot, 'libs/shared/src/value.ts', `export const value = 1;`);
+      expect(collectLayerBoundaryViolations(projectRoot)).toEqual([]);
+
+      writeFixture(
+        projectRoot,
+        'libs/shared/src/escape.ts',
+        `import { outside } from '../outside'; void outside;`,
+      );
+      writeFixture(projectRoot, 'libs/shared/outside.ts', `export const outside = 1;`);
+      expect(formatViolations(collectLayerBoundaryViolations(projectRoot))).toEqual([
+        expect.stringContaining("shared must not import external or application code '../outside'"),
+      ]);
+    } finally {
+      rmSync(temporaryRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('동적 모듈 참조와 제네릭을 통한 타입 계약 우회를 거부한다', () => {
     const root = mkdtempSync(resolve(tmpdir(), 'mogak-layerBoundaries-'));
     try {
       writeFixture(
@@ -169,9 +213,10 @@ describe('layer boundaries', () => {
   });
 });
 
-function collectLayerBoundaryViolations(root: string): Violation[] {
-  const files = listTypeScriptFiles(root);
+function collectLayerBoundaryViolations(sourceRoot: string, root = sourceRoot): Violation[] {
+  const files = listTypeScriptFiles(sourceRoot);
   const violations: Violation[] = [];
+  const sharedRoot = resolve(root, 'libs/shared/src');
 
   for (const file of files) {
     const source = readFileSync(file, 'utf8');
@@ -179,6 +224,20 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
     const projectPath = relative(root, file);
     const segments = projectPath.split(sep);
     const imports = collectModuleSpecifiers(sourceFile);
+
+    if (isWithinDirectory(sharedRoot, file)) {
+      for (const moduleSpecifier of imports) {
+        if (
+          !moduleSpecifier.startsWith('.') ||
+          !isWithinDirectory(sharedRoot, resolve(dirname(file), moduleSpecifier))
+        ) {
+          violations.push({
+            file: projectPath,
+            message: `shared must not import external or application code '${moduleSpecifier}'`,
+          });
+        }
+      }
+    }
 
     if (segments.includes('core')) {
       for (const moduleSpecifier of imports) {
@@ -321,6 +380,11 @@ function collectLayerBoundaryViolations(root: string): Violation[] {
   }
 
   return violations;
+}
+
+function isWithinDirectory(directory: string, file: string): boolean {
+  const path = relative(directory, file);
+  return path !== '..' && !path.startsWith(`..${sep}`) && !isAbsolute(path);
 }
 
 function listTypeScriptFiles(directory: string): string[] {

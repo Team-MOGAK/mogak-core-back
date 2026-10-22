@@ -1,4 +1,5 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
+import { MogakException } from '../../domain/exception/mogak.exception';
 import { patchText, requiredTrimmed } from '@core/common/validation/requiredText';
 import { selectMogakCategory, validateMogakCapacity } from '../../domain/policy/mogak.policy';
 import type { MogakRepositoryPort } from '../port/mogak.repository.port';
@@ -156,7 +157,7 @@ function nullableOptionalTrim(value: string | undefined): string | null | undefi
 
 function toMogakResponse(record: MogakResult) {
   const name = record.categoryName ?? record.customCategoryName;
-  if (name === null) throw new Error('Mogak category was not populated');
+  if (name === null) throw new MogakException('Mogak category was not populated');
   return {
     id: record.id,
     title: record.title,

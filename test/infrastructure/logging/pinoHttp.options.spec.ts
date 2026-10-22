@@ -1,5 +1,6 @@
-import { describe, expect, it } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 
+import { RESPONSE_ERROR_LOG_MARKER } from '@infra/logging/errorAlert.context';
 import { createPinoHttpOptions, resolveLogLevel } from '@infra/logging/pinoHttp.options';
 
 describe('Pino HTTP logger 설정', () => {
@@ -18,6 +19,10 @@ describe('Pino HTTP logger 설정', () => {
 
   it('명시한 유효 레벨을 사용하고 공백·대소문자를 정규화한다', () => {
     expect(resolveLogLevel('production', ' WARN ')).toBe('warn');
+  });
+
+  it('운영 환경에서도 설정한 fatal 로그 레벨을 그대로 사용한다', () => {
+    expect(resolveLogLevel('production', 'fatal')).toBe('fatal');
   });
 
   it('잘못된 LOG_LEVEL은 부팅 전에 실패시킨다', () => {
@@ -52,5 +57,121 @@ describe('Pino HTTP logger 설정', () => {
 
     expect(request).toEqual({ id: 'request-id', method: 'GET', path: '/health' });
     expect(JSON.stringify(request)).not.toContain('secret');
+  });
+
+  it('공통 base metadata와 Cloud Logging severity를 추가하면서 숫자 level을 유지한다', () => {
+    const options = createPinoHttpOptions('production', 'info', 'mogak-spring');
+
+    expect(options.base).toEqual({
+      schemaVersion: 1,
+      service: 'mogak-spring',
+      environment: 'production',
+      producer: 'mogak-core-api',
+    });
+    expect(options.formatters?.level?.('error', 50)).toEqual({
+      level: 50,
+      severity: 'ERROR',
+    });
+    expect(options.formatters?.level?.('warn', 40)).toEqual({
+      level: 40,
+      severity: 'WARNING',
+    });
+  });
+
+  it('HTTP status 기준으로 완료 레벨을 선택한다', () => {
+    const options = createPinoHttpOptions('test', 'info');
+    const customLogLevel = options.customLogLevel as NonNullable<typeof options.customLogLevel>;
+
+    expect(customLogLevel({} as never, { statusCode: 204 } as never)).toBe('info');
+    expect(customLogLevel({} as never, { statusCode: 404 } as never)).toBe('warn');
+    expect(customLogLevel({} as never, { statusCode: 503 } as never)).toBe('error');
+  });
+
+  it('대표 오류 marker가 있으면 완료 5xx가 같은 errorId로 eligible false가 된다', () => {
+    const options = createPinoHttpOptions('test', 'info');
+    const requestId = '11111111-1111-4111-8111-111111111111';
+    const request = {
+      id: requestId,
+      method: 'GET',
+      baseUrl: '/api',
+      route: { path: '/health/ready' },
+    };
+    const response = {
+      statusCode: 503,
+      [RESPONSE_ERROR_LOG_MARKER]: { errorId: requestId, appCode: 'Z006' },
+    };
+    const result = options.customErrorObject?.(
+      request as never,
+      response as never,
+      new Error('private'),
+      { responseTime: 1 },
+    ) as Record<string, unknown>;
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        event: 'http_request_failed',
+        errorId: requestId,
+        alertEligible: false,
+        statusCode: 503,
+        method: 'GET',
+        route: '/api/health/ready',
+        code: 'Z006',
+        appCode: 'Z006',
+      }),
+    );
+    expect(result).not.toHaveProperty('routeTemplate');
+  });
+
+  it('대표 오류가 없는 완료 5xx는 alert notifier로 한 번 전달한다', () => {
+    const notify = jest.fn();
+    const options = createPinoHttpOptions('test', 'info', undefined, { notify });
+    const requestId = '11111111-1111-4111-8111-111111111111';
+    options.customErrorObject?.(
+      { id: requestId, method: 'GET', route: { path: '/health/ready' } } as never,
+      { statusCode: 503 } as never,
+      new Error('private exception message'),
+      {},
+    );
+
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith({
+      event: 'http_request_failed',
+      errorId: requestId,
+      statusCode: 503,
+      method: 'GET',
+      route: '/health/ready',
+    });
+    expect(JSON.stringify(notify.mock.calls)).not.toContain('private exception message');
+  });
+
+  it('대표 오류 marker가 있으면 완료 5xx는 재전달하지 않는다', () => {
+    const notify = jest.fn();
+    const options = createPinoHttpOptions('test', 'info', undefined, { notify });
+    const requestId = '11111111-1111-4111-8111-111111111111';
+    options.customErrorObject?.(
+      { id: requestId, method: 'GET', route: { path: '/health/ready' } } as never,
+      { statusCode: 503, [RESPONSE_ERROR_LOG_MARKER]: { errorId: requestId } } as never,
+      new Error('private exception message'),
+      {},
+    );
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('대표 오류 marker가 없으면 Pino request ID로 완료 5xx alert eligible 오류를 만든다', () => {
+    const options = createPinoHttpOptions('test', 'info');
+    const result = options.customErrorObject?.(
+      { id: 'request-id', method: 'GET', route: { path: '/health/ready' } } as never,
+      { statusCode: 503 } as never,
+      new Error('private'),
+      {},
+    ) as Record<string, unknown>;
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        event: 'http_request_failed',
+        errorId: 'request-id',
+        alertEligible: true,
+      }),
+    );
   });
 });

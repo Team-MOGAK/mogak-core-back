@@ -2,6 +2,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
+      "@mogak/shared": ["libs/shared/src/index.ts"],
       "@api/*": ["apps/api/src/api/*"],
       "@core/*": ["libs/core/src/core/*"],
       "@infra/*": ["libs/modules/src/infrastructure/*"],
