@@ -1,4 +1,3 @@
-import { InternalServerErrorException } from '@nestjs/common';
 import { describe, expect, it, jest } from '@jest/globals';
 
 import { RESPONSE_ERROR_LOG_MARKER } from '@infra/logging/errorAlert.context';
@@ -27,7 +26,6 @@ describe('Pino HTTP logger 설정', () => {
   });
 
   it('잘못된 LOG_LEVEL은 부팅 전에 실패시킨다', () => {
-    expect(() => resolveLogLevel('production', 'verbose')).toThrow(InternalServerErrorException);
     expect(() => resolveLogLevel('production', 'verbose')).toThrow(
       'LOG_LEVEL은 fatal, error, warn, info, debug, trace 중 하나여야 합니다.',
     );

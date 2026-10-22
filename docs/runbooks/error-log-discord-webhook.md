@@ -21,7 +21,7 @@
 
 ## 예외 처리 용어
 
-직접 정의하는 예외 타입과 처리기 이름은 `Exception`을 사용합니다. 업무상 실패는 `DomainException`, 모각 도메인의 데이터 불일치는 `MogakException`, 직접 판단한 환경설정 오류는 Nest의 기본 `InternalServerErrorException`으로 구분합니다. JavaScript 예외의 기반 타입과 외부 라이브러리에서 전달되는 값에는 `Error`를 사용합니다. `errorId`, `AppErrorCode`, 로그의 `error` 레벨은 로그·응답을 나타내는 용어입니다.
+직접 정의하는 예외 타입과 처리기 이름은 `Exception`을 사용합니다. 업무상 실패는 `DomainException`, 모각 도메인의 데이터 불일치는 `MogakException`으로 구분합니다. 설정 검증은 요청을 받기 전 기동 단계에서 수행하며, 잘못된 값은 원인을 담은 일반 `Error`를 던져 기동을 중단합니다. JavaScript 예외의 기반 타입과 외부 라이브러리에서 전달되는 값에도 `Error`를 사용합니다. `errorId`, `AppErrorCode`, 로그의 `error` 레벨은 로그·응답을 나타내는 용어입니다.
 
 ## 로그 설정과 조회
 

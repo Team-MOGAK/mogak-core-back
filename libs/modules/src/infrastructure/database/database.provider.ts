@@ -1,7 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import { InternalServerErrorException } from '@nestjs/common';
 
 import * as schema from './schema';
 import { DATABASE, PG_POOL } from './database.tokens';
@@ -48,7 +47,7 @@ function resolveConnectionString(config: ConfigService): string {
   const jdbcUrl = config.getOrThrow<string>('APP_DB_URL');
   const url = new URL(jdbcUrl.startsWith('jdbc:') ? jdbcUrl.slice('jdbc:'.length) : jdbcUrl);
   if (url.protocol !== 'postgresql:' && url.protocol !== 'postgres:') {
-    throw new InternalServerErrorException('APP_DB_URL은 PostgreSQL 연결 문자열이어야 합니다.');
+    throw new Error('APP_DB_URL은 PostgreSQL 연결 문자열이어야 합니다.');
   }
 
   const username = config.get<string>('APP_DB_USERNAME');

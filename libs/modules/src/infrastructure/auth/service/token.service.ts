@@ -1,7 +1,7 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { createHash } from 'node:crypto';
 
-import { Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { jwtVerify, SignJWT, type JWTPayload } from 'jose';
 
@@ -33,14 +33,12 @@ export class JwtTokenService implements SessionTokenIssuerPort, AuthTokenVerifie
     const configuredSecret =
       config.get<string>('JWT_SECRET') ?? config.get<string>('JWT_SECRET_KEY');
     if (typeof configuredSecret !== 'string' || configuredSecret.trim().length === 0) {
-      throw new InternalServerErrorException('JWT_SECRET 또는 JWT_SECRET_KEY가 비어 있습니다.');
+      throw new Error('JWT_SECRET 또는 JWT_SECRET_KEY가 비어 있습니다.');
     }
 
     const secret = new TextEncoder().encode(configuredSecret);
     if (secret.byteLength < MIN_JWT_SECRET_BYTES) {
-      throw new InternalServerErrorException(
-        `JWT secret은 UTF-8 기준 ${MIN_JWT_SECRET_BYTES}바이트 이상이어야 합니다.`,
-      );
+      throw new Error(`JWT secret은 UTF-8 기준 ${MIN_JWT_SECRET_BYTES}바이트 이상이어야 합니다.`);
     }
     this.secret = secret;
   }
