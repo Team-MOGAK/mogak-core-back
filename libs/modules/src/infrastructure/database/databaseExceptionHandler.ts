@@ -7,7 +7,7 @@ import { LogEvent } from '@mogak/shared';
 import { ALERT_NOTIFIER, type AlertNotifier } from '@infra/alerting/alertNotifier';
 
 @Injectable()
-export class DatabasePoolExceptionHandler {
+export class DatabaseExceptionHandler {
   private readonly logger: Logger;
 
   constructor(

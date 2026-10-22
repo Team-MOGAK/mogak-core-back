@@ -5,7 +5,7 @@ import { ConfigurationException } from '@infra/config/configuration.exception';
 
 import * as schema from './schema';
 import { DATABASE, PG_POOL } from './database.tokens';
-import { DatabasePoolExceptionHandler } from './databasePoolExceptionHandler';
+import { DatabaseExceptionHandler } from './databaseExceptionHandler';
 
 export type Database = NodePgDatabase<typeof schema>;
 
@@ -16,8 +16,8 @@ const DATABASE_IDLE_TIMEOUT_MS = 30_000;
 export const databaseProviders = [
   {
     provide: PG_POOL,
-    inject: [ConfigService, DatabasePoolExceptionHandler],
-    useFactory: (config: ConfigService, exceptionHandler: DatabasePoolExceptionHandler): Pool => {
+    inject: [ConfigService, DatabaseExceptionHandler],
+    useFactory: (config: ConfigService, exceptionHandler: DatabaseExceptionHandler): Pool => {
       const pool = createPool(resolveConnectionString(config));
       // Observe idle client errors before exposing the pool to consumers.
       pool.on('error', (error: Error) => exceptionHandler.handle(error));

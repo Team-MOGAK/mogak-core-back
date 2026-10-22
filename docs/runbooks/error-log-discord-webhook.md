@@ -9,13 +9,13 @@
 
 ## 구현 위치
 
-| 파일                                                                                                              | 역할                                           |
-| ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
-| [alerting.module.ts](../../libs/modules/src/infrastructure/alerting/alerting.module.ts)                           | 알림 provider 등록과 연결                      |
-| [alertNotifier.ts](../../libs/modules/src/infrastructure/alerting/alertNotifier.ts)                               | 공통 알림 인터페이스와 주입 토큰               |
-| [discordWebhookNotifier.ts](../../libs/modules/src/infrastructure/alerting/discordWebhookNotifier.ts)             | Discord 메시지 구성, 웹훅 URL 검사와 HTTP 전송 |
-| [database.provider.ts](../../libs/modules/src/infrastructure/database/database.provider.ts)                       | Pool 생성과 반환 전 오류 리스너 연결           |
-| [databasePoolExceptionHandler.ts](../../libs/modules/src/infrastructure/database/databasePoolExceptionHandler.ts) | DB pool 오류의 로그 기록과 알림 요청           |
+| 파일                                                                                                      | 역할                                           |
+| --------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| [alerting.module.ts](../../libs/modules/src/infrastructure/alerting/alerting.module.ts)                   | 알림 provider 등록과 연결                      |
+| [alertNotifier.ts](../../libs/modules/src/infrastructure/alerting/alertNotifier.ts)                       | 공통 알림 인터페이스와 주입 토큰               |
+| [discordWebhookNotifier.ts](../../libs/modules/src/infrastructure/alerting/discordWebhookNotifier.ts)     | Discord 메시지 구성, 웹훅 URL 검사와 HTTP 전송 |
+| [database.provider.ts](../../libs/modules/src/infrastructure/database/database.provider.ts)               | Pool 생성과 반환 전 오류 리스너 연결           |
+| [databaseExceptionHandler.ts](../../libs/modules/src/infrastructure/database/databaseExceptionHandler.ts) | DB pool 오류의 로그 기록과 알림 요청           |
 
 오류 응답의 상태·코드·메시지는 `libs/shared/src/error/`의 도메인별 파일에서 정의하며, API와 Discord 알림이 같은 정의를 사용합니다.
 
