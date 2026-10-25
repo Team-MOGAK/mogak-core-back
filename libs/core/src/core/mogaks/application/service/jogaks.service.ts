@@ -1,7 +1,7 @@
 import { MAX_DATE_RANGE_DAYS } from '../../../common/resourceLimits';
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { requiredTrimmed } from '@core/common/validation/requiredText';
-import { MogakPersistenceException } from '../../domain/exception/mogakPersistence.exception';
+import { MogakException } from '../../domain/exception/mogak.exception';
 import {
   decideJogakExecutionTransition,
   snapshotJogakTitle,
@@ -373,12 +373,12 @@ function groupScheduleRows(rows: readonly OccurrenceScheduleResult[]): ScheduleR
   for (const row of rows) {
     const categoryName = row.categoryName ?? row.customCategoryName;
     if (categoryName === null) {
-      throw new MogakPersistenceException('Mogak category was not populated');
+      throw new MogakException('Mogak category was not populated');
     }
     const existing = schedules.get(row.scheduleId);
     if (existing === undefined) {
       if (row.scheduleType === 'ONCE' && row.weekday !== null) {
-        throw new MogakPersistenceException(
+        throw new MogakException(
           `Invalid persisted ONCE schedule ${row.scheduleId}: weekday is present`,
         );
       }
@@ -390,7 +390,7 @@ function groupScheduleRows(rows: readonly OccurrenceScheduleResult[]): ScheduleR
     }
     if (row.weekday !== null) {
       if (row.scheduleType === 'ONCE') {
-        throw new MogakPersistenceException(
+        throw new MogakException(
           `Invalid persisted ONCE schedule ${row.scheduleId}: weekday is present`,
         );
       }
@@ -430,7 +430,7 @@ function scheduleRecord(
       categoryName,
     };
   } catch (error) {
-    throw new MogakPersistenceException(
+    throw new MogakException(
       `Invalid persisted Jogak schedule ${row.scheduleId}: ${String(error)}`,
       {
         cause: error,
@@ -513,7 +513,7 @@ function categoryOf(
   customCategoryName: string | null,
 ) {
   const name = categoryName ?? customCategoryName;
-  if (name === null) throw new Error('Mogak category was not populated');
+  if (name === null) throw new MogakException('Mogak category was not populated');
   return { code, name };
 }
 

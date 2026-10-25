@@ -28,7 +28,7 @@ import type {
   OccurrenceScheduleResult,
   OwnedJogakResult,
 } from '@core/mogaks/application/type/jogak.result';
-import { MogakPersistenceException } from '@core/mogaks/domain/exception/mogakPersistence.exception';
+import { MogakException } from '@core/mogaks/domain/exception/mogak.exception';
 import { MAX_JOGAKS_PER_MOGAK } from '@core/mogaks/domain/policy/jogak.policy';
 import { MAX_MOGAKS_PER_MODARAT } from '@core/mogaks/domain/policy/mogak.policy';
 import { JogakExecutionStatus } from '@core/mogaks/domain/vo/jogakExecution.vo';
@@ -82,8 +82,7 @@ export class MogakRepository implements MogakRepositoryPort {
         .insert(modarats)
         .values({ userId: input.userId, title: input.title, color: input.color })
         .returning({ id: modarats.id, title: modarats.title, color: modarats.color });
-      if (created === undefined)
-        throw new MogakPersistenceException('Modarat insert did not return a row');
+      if (created === undefined) throw new MogakException('Modarat insert did not return a row');
       return created;
     });
   }
@@ -165,7 +164,7 @@ export class MogakRepository implements MogakRepositoryPort {
         .select({ userId: modarats.userId })
         .from(modarats)
         .where(eq(modarats.id, input.modaratId));
-      if (ownerInfo === undefined) throw new MogakPersistenceException('Modarat did not exist');
+      if (ownerInfo === undefined) throw new MogakException('Modarat did not exist');
       const locked = await lockUsers(tx, [ownerInfo.userId]);
       if (locked.length !== 1) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       const [owner] = await tx
@@ -173,7 +172,7 @@ export class MogakRepository implements MogakRepositoryPort {
         .from(modarats)
         .where(eq(modarats.id, input.modaratId))
         .for('update');
-      if (owner === undefined) throw new MogakPersistenceException('Modarat did not exist');
+      if (owner === undefined) throw new MogakException('Modarat did not exist');
       const existing = await tx
         .select({ id: mogaks.id })
         .from(mogaks)
@@ -198,8 +197,7 @@ export class MogakRepository implements MogakRepositoryPort {
           categoryId: mogaks.categoryId,
           customCategoryName: mogaks.customCategoryName,
         });
-      if (created === undefined)
-        throw new MogakPersistenceException('Mogak insert did not return a row');
+      if (created === undefined) throw new MogakException('Mogak insert did not return a row');
 
       if (created.categoryId === null) {
         return { ...created, categoryCode: null, categoryName: null };
@@ -208,8 +206,7 @@ export class MogakRepository implements MogakRepositoryPort {
         .select({ code: mogakCategories.code, name: mogakCategories.name })
         .from(mogakCategories)
         .where(eq(mogakCategories.id, created.categoryId));
-      if (category === undefined)
-        throw new MogakPersistenceException('Created Mogak category did not exist');
+      if (category === undefined) throw new MogakException('Created Mogak category did not exist');
       return { ...created, categoryCode: category.code, categoryName: category.name };
     });
   }
@@ -326,7 +323,7 @@ export class MogakRepository implements MogakRepositoryPort {
           )
           .returning({ id: jogakSchedules.id });
         if (updatedSchedule === undefined) {
-          throw new MogakPersistenceException('Jogak schedule update did not return a row');
+          throw new MogakException('Jogak schedule update did not return a row');
         }
         await tx
           .delete(jogakScheduleWeekdays)
@@ -422,7 +419,7 @@ export class MogakRepository implements MogakRepositoryPort {
       const lockedUsers = await lockUsers(tx, [input.userId]);
       if (lockedUsers.length !== 1) throw new DomainException(DomainErrorCode.USER_NOT_FOUND);
       const owner = await lockMogakHierarchyRows(tx, input.mogak.id, input.userId);
-      if (owner === undefined) throw new MogakPersistenceException('Mogak did not exist');
+      if (owner === undefined) throw new MogakException('Mogak did not exist');
       const existing = await tx
         .select({ jogakId: jogaks.id })
         .from(jogaks)
@@ -435,8 +432,7 @@ export class MogakRepository implements MogakRepositoryPort {
         .insert(jogaks)
         .values({ mogakId: input.mogak.id, title: input.title })
         .returning({ id: jogaks.id });
-      if (createdJogak === undefined)
-        throw new MogakPersistenceException('Jogak insert did not return a row');
+      if (createdJogak === undefined) throw new MogakException('Jogak insert did not return a row');
 
       const [schedule] = await tx
         .insert(jogakSchedules)
@@ -448,7 +444,7 @@ export class MogakRepository implements MogakRepositoryPort {
         })
         .returning({ id: jogakSchedules.id });
       if (schedule === undefined)
-        throw new MogakPersistenceException('Jogak schedule insert did not return a row');
+        throw new MogakException('Jogak schedule insert did not return a row');
 
       if (input.schedule.weekdays.length > 0) {
         await tx
@@ -501,7 +497,7 @@ export class MogakRepository implements MogakRepositoryPort {
       try {
         scheduleType = JogakScheduleType.parse(row.scheduleType);
       } catch {
-        throw MogakPersistenceException.unsupportedValue('schedule type', row.scheduleType);
+        throw MogakException.unsupportedValue('schedule type', row.scheduleType);
       }
 
       let weekday: JogakScheduleWeekdayName | null = null;
@@ -509,7 +505,7 @@ export class MogakRepository implements MogakRepositoryPort {
         try {
           weekday = JogakScheduleWeekdayName.parse(row.weekday);
         } catch {
-          throw MogakPersistenceException.unsupportedValue('weekday', row.weekday);
+          throw MogakException.unsupportedValue('weekday', row.weekday);
         }
       }
       return { ...row, scheduleType, weekday };
@@ -534,7 +530,7 @@ export class MogakRepository implements MogakRepositoryPort {
       try {
         scheduleType = JogakScheduleType.parse(row.scheduleType);
       } catch {
-        throw MogakPersistenceException.unsupportedValue('schedule type', row.scheduleType);
+        throw MogakException.unsupportedValue('schedule type', row.scheduleType);
       }
 
       let weekday: JogakScheduleWeekdayName | null = null;
@@ -542,7 +538,7 @@ export class MogakRepository implements MogakRepositoryPort {
         try {
           weekday = JogakScheduleWeekdayName.parse(row.weekday);
         } catch {
-          throw MogakPersistenceException.unsupportedValue('weekday', row.weekday);
+          throw MogakException.unsupportedValue('weekday', row.weekday);
         }
       }
       return { ...row, scheduleType, weekday };
@@ -569,7 +565,7 @@ export class MogakRepository implements MogakRepositoryPort {
       try {
         return { ...execution, status: JogakExecutionStatus.parse(execution.status) };
       } catch {
-        throw MogakPersistenceException.unsupportedValue('execution status', execution.status);
+        throw MogakException.unsupportedValue('execution status', execution.status);
       }
     });
   }
@@ -608,7 +604,7 @@ export class MogakRepository implements MogakRepositoryPort {
     try {
       return { ...execution, status: JogakExecutionStatus.parse(execution.status) };
     } catch {
-      throw MogakPersistenceException.unsupportedValue('execution status', execution.status);
+      throw MogakException.unsupportedValue('execution status', execution.status);
     }
   }
 
@@ -638,7 +634,7 @@ export class MogakRepository implements MogakRepositoryPort {
       try {
         return { ...execution, status: JogakExecutionStatus.parse(execution.status) };
       } catch {
-        throw MogakPersistenceException.unsupportedValue('execution status', execution.status);
+        throw MogakException.unsupportedValue('execution status', execution.status);
       }
     });
   }
@@ -680,7 +676,7 @@ export class MogakRepository implements MogakRepositoryPort {
       try {
         return { ...execution, status: JogakExecutionStatus.parse(execution.status) };
       } catch {
-        throw MogakPersistenceException.unsupportedValue('execution status', execution.status);
+        throw MogakException.unsupportedValue('execution status', execution.status);
       }
     });
   }

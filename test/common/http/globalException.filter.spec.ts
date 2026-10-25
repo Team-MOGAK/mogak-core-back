@@ -1,4 +1,4 @@
-import { HttpStatus, ServiceUnavailableException } from '@nestjs/common';
+import { HttpException, HttpStatus, ServiceUnavailableException } from '@nestjs/common';
 import { jest } from '@jest/globals';
 import { ThrottlerException } from '@nestjs/throttler';
 import { DrizzleQueryError } from 'drizzle-orm';
@@ -8,6 +8,7 @@ import { Writable } from 'node:stream';
 
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { GlobalExceptionFilter } from '@api/common/http/globalException.filter';
+import { RESPONSE_ERROR_LOG_MARKER } from '@infra/logging/errorAlert.context';
 
 const logger = { warn: jest.fn(), error: jest.fn() };
 
@@ -120,7 +121,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     );
 
     expect(warn).toHaveBeenCalledWith({
-      type: 'domain_exception',
+      event: 'domain_exception',
       code: 'U001',
       status: 'NOT_FOUND',
       message: '존재하지 않는 사용자입니다',
@@ -155,7 +156,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     );
 
     expect(warn).toHaveBeenCalledWith({
-      type: 'domain_exception',
+      event: 'domain_exception',
       code: 'T004',
       status: 'FORBIDDEN',
       message: '권한이 부여되지 않았습니다',
@@ -226,7 +227,7 @@ describe('GlobalExceptionFilter의 도메인 예외 처리', () => {
     );
 
     expect(warn).toHaveBeenCalledWith({
-      type: 'domain_exception',
+      event: 'domain_exception',
       code: 'Z005',
       status: 'BAD_REQUEST',
       message: '입력값이 유효하지 않습니다',
@@ -393,7 +394,7 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
       }),
     );
     expect(warn).toHaveBeenCalledWith({
-      type: 'domain_exception',
+      event: 'domain_exception',
       code: 'U001',
       status: 'NOT_FOUND',
       message: '존재하지 않는 사용자입니다',
@@ -429,6 +430,81 @@ describe('GlobalExceptionFilter의 core 예외 처리', () => {
         status: 'INTERNAL_SERVER_ERROR',
         code: 'Z500',
       }),
+    );
+  });
+
+  it('최종 상태가 503인 STORAGE_DISABLED는 canonical error 알림 대상이 된다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const response = { status, [RESPONSE_ERROR_LOG_MARKER]: undefined };
+    const request = {
+      id: '22222222-2222-4222-8222-222222222222',
+      method: 'POST',
+      baseUrl: '/api',
+      route: { path: '/posts' },
+    };
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => request,
+        getResponse: () => response,
+      }),
+    };
+
+    new GlobalExceptionFilter(testLogger()).catch(
+      new DomainException(DomainErrorCode.STORAGE_DISABLED),
+      host as never,
+    );
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.SERVICE_UNAVAILABLE);
+    expect(logger.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'domain_exception',
+        errorId: '22222222-2222-4222-8222-222222222222',
+        statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+        code: 'Z006',
+        appCode: 'Z006',
+        method: 'POST',
+        route: '/api/posts',
+        alertEligible: true,
+      }),
+      'Domain exception',
+    );
+    expect(response[RESPONSE_ERROR_LOG_MARKER]).toEqual({
+      errorId: '22222222-2222-4222-8222-222222222222',
+      appCode: 'Z006',
+    });
+  });
+
+  it('HttpException 4xx는 응답을 유지하면서 warn 로그를 남긴다', () => {
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          id: 'bad-request-id',
+          method: 'GET',
+          baseUrl: '/api',
+          route: { path: '/users/:id' },
+        }),
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter(testLogger()).catch(
+      new HttpException('invalid request', HttpStatus.BAD_REQUEST),
+      host as never,
+    );
+
+    expect(status).toHaveBeenCalledWith(HttpStatus.BAD_REQUEST);
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(
+      {
+        event: 'http_exception',
+        statusCode: HttpStatus.BAD_REQUEST,
+        method: 'GET',
+        route: '/api/users/:id',
+      },
+      'HTTP exception',
     );
   });
 });
@@ -508,13 +584,18 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
     new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
 
     expect(error).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         event: 'unhandled_exception',
+        errorId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+        alertEligible: true,
+        statusCode: 500,
+        code: 'Z500',
+        appCode: 'Z500',
         err: expect.objectContaining({ name: exception.name, message: exception.message }),
-      },
+      }),
       'Unhandled exception',
     );
-    expect(getRequest).not.toHaveBeenCalled();
+    expect(getRequest).toHaveBeenCalled();
     expect(status).toHaveBeenCalledWith(HttpStatus.INTERNAL_SERVER_ERROR);
     expect(json).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -536,14 +617,16 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
     new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
 
     expect(error).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         event: 'unhandled_exception',
+        alertEligible: true,
+        statusCode: 500,
         err: expect.objectContaining({
           name: exception.name,
           message: 'Database operation failed',
           database: { code: '23503', constraint: 'mogak_modarat_id_fkey', table: 'mogak' },
         }),
-      },
+      }),
       'Unhandled exception',
     );
     expect(error.mock.calls[0]?.[0]).toEqual(
@@ -570,20 +653,60 @@ describe('GlobalExceptionFilter의 예상하지 못한 예외 처리', () => {
     new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
 
     expect(error).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         event: 'unhandled_exception',
+        alertEligible: true,
+        statusCode: 500,
         err: {
           name: exception.name,
           message: 'Database operation failed',
           database: { code: '23505', constraint: 'users_nickname_unique', table: 'users' },
         },
-      },
+      }),
       'Unhandled exception',
     );
     const serialized = JSON.stringify(error.mock.calls);
     expect(serialized).not.toContain('query-secret');
     expect(serialized).not.toContain('nickname-secret');
     expect(serialized).not.toContain('duplicate key detail');
+  });
+});
+
+describe('GlobalExceptionFilter의 서버 오류 알림', () => {
+  it('5xx 예외를 안전한 allowlist context로 notifier에 한 번 전달하고 HTTP 응답을 유지한다', () => {
+    const notify = jest.fn();
+    const json = jest.fn();
+    const status = jest.fn(() => ({ json }));
+    const requestId = '11111111-1111-4111-8111-111111111111';
+    const host = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          id: requestId,
+          method: 'GET',
+          route: { path: '/users/:id' },
+          url: '/users/42?token=private',
+        }),
+        getResponse: () => ({ status }),
+      }),
+    };
+
+    new GlobalExceptionFilter(testLogger(), { notify }).catch(
+      new Error('private exception and database details'),
+      host as never,
+    );
+
+    expect(status).toHaveBeenCalledWith(500);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith({
+      event: 'unhandled_exception',
+      errorId: requestId,
+      statusCode: 500,
+      appCode: 'Z500',
+      method: 'GET',
+      route: '/users/:id',
+    });
+    expect(JSON.stringify(notify.mock.calls)).not.toContain('private');
+    expect(JSON.stringify(notify.mock.calls)).not.toContain('/users/42');
   });
 });
 
@@ -609,9 +732,17 @@ describe('GlobalExceptionFilter의 서버 오류 처리', () => {
     new GlobalExceptionFilter(testLogger()).catch(exception, host as never);
 
     expect(error).toHaveBeenCalledWith(
-      { err: expect.objectContaining({ name: exception.name, message: exception.message }) },
+      expect.objectContaining({
+        event: 'http_exception',
+        errorId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
+        alertEligible: true,
+        statusCode: 500,
+        code: 'Z500',
+        appCode: 'Z500',
+        err: expect.objectContaining({ name: exception.name, message: exception.message }),
+      }),
       'Unhandled HTTP exception',
     );
-    expect(getRequest).not.toHaveBeenCalled();
+    expect(getRequest).toHaveBeenCalled();
   });
 });

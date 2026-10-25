@@ -3,8 +3,8 @@ FROM node:24.22.1-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d
 WORKDIR /app
 RUN corepack enable
 
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --filter mogak-core-back... --frozen-lockfile
 
 COPY . ./
 RUN pnpm build
@@ -15,8 +15,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 RUN corepack enable
 
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --prod
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN pnpm install --filter mogak-core-back... --frozen-lockfile --prod
 COPY --from=build /app/dist ./dist
 
 CMD ["node", "dist/main.js"]

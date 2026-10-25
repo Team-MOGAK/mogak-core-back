@@ -1,6 +1,7 @@
 import {
   Catch,
   HttpException,
+  Inject,
   HttpStatus,
   type ArgumentsHost,
   type ExceptionFilter,
@@ -10,9 +11,18 @@ import { DrizzleError, DrizzleQueryError } from 'drizzle-orm';
 import { InjectPinoLogger } from 'nestjs-pino';
 import type { PinoLogger } from 'nestjs-pino';
 import type { Response } from 'express';
+import { LogEvent } from '@mogak/shared';
 
 import { DomainException } from '@core/common/error/domainException';
+import {
+  markResponseErrorLog,
+  requestErrorId,
+  requestMethod,
+  routeTemplate,
+  type RequestLogContext,
+} from '@infra/logging/errorAlert.context';
 import { AppErrorCode, type AppErrorCode as AppErrorDefinition } from './appErrorCode';
+import { ALERT_NOTIFIER, type AlertNotifier } from '@infra/alerting/alertNotifier';
 import { errorResponse } from './apiResponse';
 
 function errorForStatus(status: number): AppErrorDefinition {
@@ -27,11 +37,7 @@ function errorForStatus(status: number): AppErrorDefinition {
   return AppErrorCode.BAD_REQUEST;
 }
 
-type RequestForRateLimitLog = {
-  method: string;
-  baseUrl?: string;
-  route?: { path?: string };
-};
+type RequestForRateLimitLog = RequestLogContext;
 
 type RequestForDomainExceptionLog = RequestForRateLimitLog & {
   body?: unknown;
@@ -40,6 +46,7 @@ type RequestForDomainExceptionLog = RequestForRateLimitLog & {
   query?: unknown;
 };
 
+const DISABLED_ALERT_NOTIFIER: AlertNotifier = { notify: () => undefined };
 const OMIT = Symbol('omit-request-log-value');
 const TRUNCATED = '[TRUNCATED]';
 const SENSITIVE_KEY_PARTS = ['authorization', 'cookie', 'password', 'secret', 'token'];
@@ -58,17 +65,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   constructor(
     @InjectPinoLogger(GlobalExceptionFilter.name)
     private readonly logger: PinoLogger,
+    @Inject(ALERT_NOTIFIER) private readonly alertNotifier: AlertNotifier = DISABLED_ALERT_NOTIFIER,
   ) {}
 
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
     const response = http.getResponse<Response>();
     if (exception instanceof ThrottlerException) {
-      const request = http.getRequest<RequestForRateLimitLog>();
+      const request = requestFromHttp(http);
+      const route = routeTemplate(request);
       this.logger.warn({
         event: 'rate_limit_rejected',
-        method: request.method,
-        route: staticRoute(request),
+        method: requestMethod(request),
+        route,
       });
       response.status(exception.getStatus()).json(throttlerResponse(exception));
       return;
@@ -85,19 +94,65 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof DomainException) {
       const error = appErrorForDomainCode(exception.code);
-      this.logger.warn({
-        type: 'domain_exception',
-        code: error.code,
-        status: HttpStatus[error.httpStatus],
-        message: error.message,
-        ...domainExceptionLog(http.getRequest<RequestForDomainExceptionLog>()),
-      });
+      const request = requestFromHttp(http);
+      if (error.httpStatus >= HttpStatus.INTERNAL_SERVER_ERROR) {
+        reportServerException(
+          this.logger,
+          response,
+          request,
+          LogEvent.DOMAIN_EXCEPTION,
+          error,
+          undefined,
+          'Domain exception',
+          this.alertNotifier,
+        );
+      } else {
+        this.logger.warn({
+          event: LogEvent.DOMAIN_EXCEPTION,
+          code: error.code,
+          status: HttpStatus[error.httpStatus],
+          message: error.message,
+          ...domainExceptionLog(request),
+        });
+      }
     } else if (exception instanceof HttpException) {
-      if (exception.getStatus() >= HttpStatus.INTERNAL_SERVER_ERROR) {
-        this.logger.error({ err: exceptionDetails(exception) }, 'Unhandled HTTP exception');
+      const error = errorForStatus(exception.getStatus());
+      const request = requestFromHttp(http);
+      const route = routeTemplate(request);
+      if (error.httpStatus >= HttpStatus.INTERNAL_SERVER_ERROR) {
+        reportServerException(
+          this.logger,
+          response,
+          request,
+          LogEvent.HTTP_EXCEPTION,
+          error,
+          exceptionDetails(exception),
+          'Unhandled HTTP exception',
+          this.alertNotifier,
+        );
+      } else {
+        this.logger.warn(
+          {
+            event: LogEvent.HTTP_EXCEPTION,
+            statusCode: error.httpStatus,
+            method: requestMethod(request),
+            route,
+          },
+          'HTTP exception',
+        );
       }
     } else {
-      this.logger.error(unhandledExceptionLog(exception), 'Unhandled exception');
+      const request = requestFromHttp(http);
+      reportServerException(
+        this.logger,
+        response,
+        request,
+        LogEvent.UNHANDLED_EXCEPTION,
+        AppErrorCode.INTERNAL_SERVER_ERROR,
+        exceptionDetails(exception),
+        'Unhandled exception',
+        this.alertNotifier,
+      );
     }
 
     const error =
@@ -111,7 +166,58 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   }
 }
 
-type DatabaseErrorDetails = {
+function reportServerException(
+  logger: PinoLogger,
+  response: Response,
+  request: RequestForRateLimitLog,
+  event:
+    | typeof LogEvent.DOMAIN_EXCEPTION
+    | typeof LogEvent.HTTP_EXCEPTION
+    | typeof LogEvent.UNHANDLED_EXCEPTION,
+  error: AppErrorDefinition,
+  details: ExceptionDetails | undefined,
+  message: string,
+  alertNotifier: AlertNotifier,
+): void {
+  const errorId = requestErrorId(request);
+  markResponseErrorLog(response, { errorId, appCode: error.code });
+  const route = routeTemplate(request);
+  logger.error(
+    {
+      event,
+      errorId,
+      alertEligible: true,
+      statusCode: error.httpStatus,
+      code: error.code,
+      appCode: error.code,
+      method: requestMethod(request),
+      route,
+      err: details,
+    },
+    message,
+  );
+  alertNotifier.notify({
+    event,
+    errorId,
+    statusCode: error.httpStatus,
+    appCode: error.code,
+    method: requestMethod(request),
+    route,
+  });
+}
+
+function requestFromHttp(
+  http: ReturnType<ArgumentsHost['switchToHttp']>,
+): RequestForDomainExceptionLog {
+  try {
+    const request = http.getRequest<RequestForDomainExceptionLog>();
+    return isObject(request) ? (request as RequestForDomainExceptionLog) : {};
+  } catch {
+    return {};
+  }
+}
+
+type DatabaseExceptionDetails = {
   code?: string | undefined;
   constraint?: string | undefined;
   table?: string | undefined;
@@ -121,16 +227,16 @@ type ExceptionDetails = Readonly<{
   name: string;
   message: string;
   stack?: string | undefined;
-  database?: DatabaseErrorDetails | undefined;
+  database?: DatabaseExceptionDetails | undefined;
 }>;
 
-function databaseErrorDetails(exception: unknown): DatabaseErrorDetails | undefined {
+function databaseExceptionDetails(exception: unknown): DatabaseExceptionDetails | undefined {
   const seen = new WeakSet<object>();
   let current: unknown = exception;
   let isDatabaseError = false;
-  const details: DatabaseErrorDetails = {};
+  const details: DatabaseExceptionDetails = {};
 
-  while (isErrorLike(current) && !seen.has(current)) {
+  while (isObject(current) && !seen.has(current)) {
     seen.add(current);
     if (current instanceof DrizzleQueryError || current instanceof DrizzleError) {
       isDatabaseError = true;
@@ -159,28 +265,22 @@ function safeDatabaseIdentifier(value: unknown): string | undefined {
   return typeof value === 'string' && /^[A-Za-z0-9_]{1,128}$/.test(value) ? value : undefined;
 }
 
-function isErrorLike(value: unknown): value is Record<string, unknown> {
+function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
-function unhandledExceptionLog(exception: unknown): {
-  event: 'unhandled_exception';
-  err?: ExceptionDetails;
-} {
-  if (!(exception instanceof Error)) return { event: 'unhandled_exception' };
-  return { event: 'unhandled_exception', err: exceptionDetails(exception) };
-}
+function exceptionDetails(exception: unknown): ExceptionDetails | undefined {
+  if (!(exception instanceof Error)) return undefined;
 
-function exceptionDetails(error: Error): ExceptionDetails {
-  const database = databaseErrorDetails(error);
+  const database = databaseExceptionDetails(exception);
   if (database !== undefined) {
-    return { name: error.name, message: 'Database operation failed', database };
+    return { name: exception.name, message: 'Database operation failed', database };
   }
 
   return {
-    name: error.name,
-    message: error.message,
-    stack: error.stack,
+    name: exception.name,
+    message: exception.message,
+    stack: exception.stack,
   };
 }
 
@@ -193,10 +293,11 @@ function domainExceptionLog(request: RequestForDomainExceptionLog) {
   const params = safelySanitizeRequestField(request, 'params');
   const query = safelySanitizeRequestField(request, 'query');
   const body = isMultipartRequest(request) ? OMIT : safelySanitizeRequestField(request, 'body');
+  const route = routeTemplate(request);
 
   return {
     method: request.method,
-    route: staticRoute(request),
+    route,
     request: {
       ...(params === OMIT ? {} : { params }),
       ...(query === OMIT ? {} : { query }),
@@ -283,7 +384,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isMultipartInputError(exception: unknown): exception is { code: string } {
   return (
-    isErrorLike(exception) &&
+    isObject(exception) &&
     typeof exception.code === 'string' &&
     MULTIPART_INPUT_ERROR_CODES.has(exception.code)
   );
@@ -292,11 +393,6 @@ function isMultipartInputError(exception: unknown): exception is { code: string 
 function isSensitiveKey(key: string): boolean {
   const normalized = key.toLowerCase().replaceAll(/[^a-z0-9]/g, '');
   return SENSITIVE_KEY_PARTS.some((part) => normalized.includes(part));
-}
-
-function staticRoute(request: RequestForRateLimitLog): string {
-  const path = request.route?.path;
-  return typeof path === 'string' ? `${request.baseUrl ?? ''}${path}` : 'unknown';
 }
 
 function throttlerResponse(exception: ThrottlerException): object {

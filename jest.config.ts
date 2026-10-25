@@ -8,6 +8,7 @@ const config: Config = {
   testMatch: ['<rootDir>/test/**/*.spec.ts'],
   testPathIgnorePatterns: ['<rootDir>/test/database/.*\\.integration\\.spec\\.ts'],
   moduleNameMapper: {
+    '^@mogak/shared$': '<rootDir>/libs/shared/src/index.ts',
     '^@api/(.*)$': '<rootDir>/apps/api/src/api/$1',
     '^@core/(.*)$': '<rootDir>/libs/core/src/core/$1',
     '^@mogak/core$': '<rootDir>/libs/core/src/index.ts',
