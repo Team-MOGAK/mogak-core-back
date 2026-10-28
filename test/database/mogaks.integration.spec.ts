@@ -595,6 +595,89 @@ describe('모각 PostgreSQL 통합', () => {
         .where(eq(jogakExecutions.id, execution.id)),
     ).resolves.toEqual([{ id: execution.id, title: '문제 풀이' }]);
   });
+
+  it('일정 없는 날 start는 일정을 그대로 두고 그날 일별 목록에만 AD_HOC로 나타난다', async () => {
+    // 2026-07-23은 목요일이다.
+    const fixture = await createJogakFixture({
+      scheduleType: 'WEEKLY',
+      effectiveFrom: '2026-07-20',
+      weekdays: ['MONDAY'],
+    });
+    const schedulesBefore = await db
+      .select({ id: jogakSchedules.id, effectiveFrom: jogakSchedules.effectiveFrom })
+      .from(jogakSchedules)
+      .where(eq(jogakSchedules.jogakId, fixture.jogakId));
+    const service = new JogaksService(
+      new MogakRepository(db as unknown as Database, pinoLoggerStub()),
+      () => '2026-07-23',
+    );
+
+    await expect(
+      service.commandExecution(fixture.userId, fixture.jogakId, '2026-07-23', 'IN_PROGRESS'),
+    ).resolves.toMatchObject({ created: true, execution: { origin: 'AD_HOC', isRoutine: false } });
+
+    await expect(service.listDay(fixture.userId, '2026-07-23')).resolves.toEqual({
+      size: 1,
+      jogaks: [
+        expect.objectContaining({
+          jogakId: fixture.jogakId,
+          scheduledDate: '2026-07-23',
+          origin: 'AD_HOC',
+          status: 'IN_PROGRESS',
+          category: { code: null, name: '직접 입력' },
+        }),
+      ],
+    });
+    await expect(
+      service.listMogakDay(fixture.userId, fixture.mogakId, '2026-07-23'),
+    ).resolves.toEqual([expect.objectContaining({ origin: 'AD_HOC' })]);
+    await expect(service.listDay(fixture.userId, '2026-07-24')).resolves.toEqual({
+      size: 0,
+      jogaks: [],
+    });
+    await expect(service.listOneTime(fixture.userId, '2026-07-23')).resolves.toEqual({
+      size: 0,
+      jogaks: [],
+    });
+    await expect(service.listRoutines(fixture.userId, '2026-07-20', '2026-07-26')).resolves.toEqual(
+      [expect.objectContaining({ scheduledDate: '2026-07-20', origin: 'SCHEDULE' })],
+    );
+
+    await expect(
+      service.commandExecution(fixture.userId, fixture.jogakId, '2026-07-23', 'SUCCESS'),
+    ).resolves.toMatchObject({ created: false, execution: { status: 'SUCCESS' } });
+    await expect(
+      service.resolveOwnedOccurrence(fixture.userId, fixture.jogakId, '2026-07-23'),
+    ).resolves.toMatchObject({ jogakId: fixture.jogakId });
+    await expect(
+      db
+        .select({ id: jogakSchedules.id, effectiveFrom: jogakSchedules.effectiveFrom })
+        .from(jogakSchedules)
+        .where(eq(jogakSchedules.jogakId, fixture.jogakId)),
+    ).resolves.toEqual(schedulesBefore);
+  });
+
+  it('일정 없는 날 같은 조각을 동시에 start해도 실행은 하나만 저장한다', async () => {
+    const fixture = await createJogakFixture({
+      scheduleType: 'WEEKLY',
+      effectiveFrom: '2026-07-20',
+      weekdays: ['MONDAY'],
+    });
+    const service = new JogaksService(
+      new MogakRepository(db as unknown as Database, pinoLoggerStub()),
+      () => '2026-07-23',
+    );
+
+    const results = await Promise.all([
+      service.commandExecution(fixture.userId, fixture.jogakId, '2026-07-24', 'IN_PROGRESS'),
+      service.commandExecution(fixture.userId, fixture.jogakId, '2026-07-24', 'IN_PROGRESS'),
+    ]);
+
+    expect(results.map((result) => result.created).sort()).toEqual([false, true]);
+    await expect(rowCount(jogakExecutions, jogakExecutions.jogakId, fixture.jogakId)).resolves.toBe(
+      1,
+    );
+  });
 });
 
 async function createJogakFixture(

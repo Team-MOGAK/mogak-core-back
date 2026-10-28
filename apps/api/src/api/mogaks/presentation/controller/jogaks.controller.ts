@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Logger,
   Post,
   Res,
   UseGuards,
@@ -41,6 +42,8 @@ import {
 
 @Controller('api')
 export class JogaksController {
+  private readonly logger = new Logger(JogaksController.name);
+
   constructor(@Inject(JogaksService) private readonly jogaks: JogaksService) {}
 
   @Post('jogaks')
@@ -171,6 +174,9 @@ export class JogaksController {
       scheduledDate,
       desiredStatus,
     );
+    if (result.created && result.execution.origin === 'AD_HOC') {
+      this.logger.log({ event: 'adhoc_execution_created', jogakId, scheduledDate });
+    }
     const status = result.created ? HttpStatus.CREATED : HttpStatus.OK;
     response.status(status);
     return successResponse(result.execution, status);

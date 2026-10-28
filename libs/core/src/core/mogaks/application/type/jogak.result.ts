@@ -36,6 +36,17 @@ export type ExecutionResult = Readonly<{
   status: JogakExecutionStatus;
   jogakTitleSnapshot: string;
 }>;
+/** 소유 계층 표시 필드를 함께 담은 실행 행. 일정 밖 회차 병합에 쓴다. */
+export type OwnedExecutionResult = ExecutionResult &
+  Readonly<{
+    mogakTitle: string;
+    color: string | null;
+    categoryCode: string | null;
+    categoryName: string | null;
+    customCategoryName: string | null;
+  }>;
+/** 회차가 일정에서 발생했는지, 일정 없이 실행 기록만으로 존재하는지. */
+export type OccurrenceOrigin = 'SCHEDULE' | 'AD_HOC';
 /** 조각과 첫 일정을 함께 생성한 application 결과. */
 export type CreatedJogakResult = Readonly<{
   jogakId: number;
@@ -59,6 +70,7 @@ export type OccurrenceResult = Readonly<{
   title: string;
   color: string | null;
   isRoutine: boolean;
+  origin: OccurrenceOrigin;
   status: JogakOccurrenceStatus;
   achievements: number;
 }>;

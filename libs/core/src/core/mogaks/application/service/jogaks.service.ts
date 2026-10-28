@@ -4,6 +4,7 @@ import { requiredTrimmed } from '@core/common/validation/requiredText';
 import { MogakException } from '../../domain/exception/mogak.exception';
 import {
   decideJogakExecutionTransition,
+  isAdHocStartDate,
   snapshotJogakTitle,
 } from '../../domain/policy/jogakExecution.policy';
 import { validateJogakCapacity } from '../../domain/policy/jogak.policy';
@@ -30,6 +31,7 @@ import type {
 } from '../type/jogak.command';
 import type {
   ExecutionResult,
+  OccurrenceOrigin,
   OccurrenceResult,
   OccurrenceScheduleResult,
   OwnedJogakResult,
@@ -50,6 +52,11 @@ type ScheduleRecord = Readonly<{
 }>;
 
 type ExecutionResponse = ReturnType<typeof toExecutionResponse>;
+
+/** 실행 응답에 붙는 회차 성격. 일정 밖 실행은 루틴 회차가 아니다. */
+type OccurrenceKind = Readonly<{ isRoutine: boolean; origin: OccurrenceOrigin }>;
+
+const AD_HOC: OccurrenceKind = { isRoutine: false, origin: 'AD_HOC' };
 
 export class JogaksService implements OwnedOccurrencePort {
   constructor(
@@ -89,7 +96,7 @@ export class JogaksService implements OwnedOccurrencePort {
   }
 
   async listDay(userId: number, date: string) {
-    const jogaks = await this.projectOccurrences(userId, date, date);
+    const jogaks = await this.projectOccurrences(userId, date, date, { includeAdHoc: true });
     return { size: jogaks.length, jogaks };
   }
 
@@ -106,7 +113,7 @@ export class JogaksService implements OwnedOccurrencePort {
     if ((await this.repository.findOwnedMogak(userId, mogakId)) === null) {
       throw new DomainException(DomainErrorCode.MOGAK_NOT_FOUND);
     }
-    return this.projectOccurrences(userId, date, date, { mogakId });
+    return this.projectOccurrences(userId, date, date, { mogakId, includeAdHoc: true });
   }
 
   async getDetail(userId: number, jogakId: number) {
@@ -202,26 +209,12 @@ export class JogaksService implements OwnedOccurrencePort {
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
     const occurrenceSchedule = schedules.find(({ schedule }) => occursOn(schedule, scheduledDate));
     if (occurrenceSchedule === undefined) {
-      throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
+      return this.commandAdHocExecution(jogak, scheduledDate, desiredStatus);
     }
-    const isRoutine = occurrenceSchedule.schedule.scheduleType === 'WEEKLY';
-
-    const inserted = await this.repository.insertExecution({
-      jogakId,
-      scheduledDate,
-      status: desiredStatus,
-      jogakTitleSnapshot: snapshotJogakTitle(jogak.title),
+    return this.insertOrTransition(jogak, scheduledDate, desiredStatus, {
+      isRoutine: occurrenceSchedule.schedule.scheduleType === 'WEEKLY',
+      origin: 'SCHEDULE',
     });
-    if (inserted !== null) {
-      return { created: true, execution: toExecutionResponse(inserted, jogak, isRoutine) };
-    }
-
-    const existing = await this.repository.findExecution(jogakId, scheduledDate);
-    if (existing === null) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
-    return {
-      created: false,
-      execution: await this.transitionExisting(existing, desiredStatus, jogak, isRoutine, true),
-    };
   }
 
   async resolveOwnedOccurrence(userId: number, jogakId: number, scheduledDate: string) {
@@ -229,10 +222,59 @@ export class JogaksService implements OwnedOccurrencePort {
     const jogak = await this.repository.findOwnedJogak(userId, jogakId);
     if (jogak === null) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
     const schedules = await this.loadSchedules(userId, scheduledDate, scheduledDate, { jogakId });
-    if (!schedules.some(({ schedule }) => occursOn(schedule, scheduledDate))) {
+    if (
+      !schedules.some(({ schedule }) => occursOn(schedule, scheduledDate)) &&
+      (await this.repository.findExecution(jogakId, scheduledDate)) === null
+    ) {
       throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
     }
     return { jogakId: jogak.id, mogakId: jogak.mogakId, title: jogak.title };
+  }
+
+  /**
+   * 그날 발생하는 일정이 없는 조각의 실행 명령. 이미 실행이 있으면 일반 전이 규칙을 따르고,
+   * 새 실행은 허용 기간 안의 `start`로만 만든다. 일정은 읽기만 한다.
+   */
+  private async commandAdHocExecution(
+    jogak: OwnedJogakResult,
+    scheduledDate: string,
+    desiredStatus: JogakExecutionStatus,
+  ) {
+    const existing = await this.repository.findExecution(jogak.id, scheduledDate);
+    if (existing !== null) {
+      return {
+        created: false,
+        execution: await this.transitionExisting(existing, desiredStatus, jogak, AD_HOC, true),
+      };
+    }
+    if (desiredStatus !== 'IN_PROGRESS' || !isAdHocStartDate(scheduledDate, this.today())) {
+      throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
+    }
+    return this.insertOrTransition(jogak, scheduledDate, desiredStatus, AD_HOC);
+  }
+
+  private async insertOrTransition(
+    jogak: OwnedJogakResult,
+    scheduledDate: string,
+    desiredStatus: JogakExecutionStatus,
+    kind: OccurrenceKind,
+  ) {
+    const inserted = await this.repository.insertExecution({
+      jogakId: jogak.id,
+      scheduledDate,
+      status: desiredStatus,
+      jogakTitleSnapshot: snapshotJogakTitle(jogak.title),
+    });
+    if (inserted !== null) {
+      return { created: true, execution: toExecutionResponse(inserted, jogak, kind) };
+    }
+
+    const existing = await this.repository.findExecution(jogak.id, scheduledDate);
+    if (existing === null) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
+    return {
+      created: false,
+      execution: await this.transitionExisting(existing, desiredStatus, jogak, kind, true),
+    };
   }
 
   private async projectOccurrences(
@@ -243,21 +285,17 @@ export class JogaksService implements OwnedOccurrencePort {
       mogakId?: number;
       jogakId?: number;
       scheduleType?: JogakScheduleType;
+      /** 일정이 발생하지 않는 날의 실행 기록도 AD_HOC 회차로 포함한다. */
+      includeAdHoc?: boolean;
     }> = {},
   ) {
     assertDateRange(startDate, endDate);
-    const schedules = await this.loadSchedules(userId, startDate, endDate, filters);
+    const { includeAdHoc = false, ...scheduleFilters } = filters;
+    const schedules = await this.loadSchedules(userId, startDate, endDate, scheduleFilters);
     const executions = await this.repository.listExecutionsForJogaks(
       [...new Set(schedules.map((schedule) => schedule.jogakId))],
       startDate,
       endDate,
-    );
-    const successCounts = new Map(
-      (
-        await this.repository.listSuccessCounts([
-          ...new Set(schedules.map((schedule) => schedule.jogakId)),
-        ])
-      ).map(({ jogakId, achievements }) => [jogakId, achievements]),
     );
     const executionByNaturalKey = new Map(
       executions.map((execution) => [
@@ -267,13 +305,15 @@ export class JogaksService implements OwnedOccurrencePort {
     );
     const today = this.today();
     const dates = datesInclusive(startDate, endDate);
-    const occurrences: OccurrenceResult[] = [];
+    const occurrences: Omit<OccurrenceResult, 'achievements'>[] = [];
+    const scheduledKeys = new Set<string>();
 
     for (const schedule of schedules) {
       for (const scheduledDate of dates) {
         if (!occursOn(schedule.schedule, scheduledDate)) continue;
-        const execution =
-          executionByNaturalKey.get(executionKey(schedule.jogakId, scheduledDate)) ?? null;
+        const key = executionKey(schedule.jogakId, scheduledDate);
+        scheduledKeys.add(key);
+        const execution = executionByNaturalKey.get(key) ?? null;
         occurrences.push({
           jogakId: schedule.jogakId,
           scheduledDate,
@@ -282,16 +322,53 @@ export class JogaksService implements OwnedOccurrencePort {
           title: execution?.jogakTitleSnapshot ?? schedule.jogakTitle,
           color: schedule.color,
           isRoutine: schedule.schedule.scheduleType === 'WEEKLY',
+          origin: 'SCHEDULE',
           status: deriveOccurrenceStatus(execution?.status ?? null, scheduledDate, today),
-          achievements: successCounts.get(schedule.jogakId) ?? 0,
         });
       }
     }
 
-    return occurrences.sort(
-      (left, right) =>
-        left.scheduledDate.localeCompare(right.scheduledDate) || left.jogakId - right.jogakId,
+    if (includeAdHoc) {
+      const owned = await this.repository.listOwnedExecutionRows({
+        userId,
+        startDate,
+        endDate,
+        ...(scheduleFilters.mogakId === undefined ? {} : { mogakId: scheduleFilters.mogakId }),
+      });
+      for (const execution of owned) {
+        if (scheduledKeys.has(executionKey(execution.jogakId, execution.scheduledDate))) continue;
+        const categoryName = execution.categoryName ?? execution.customCategoryName;
+        if (categoryName === null) throw new MogakException('Mogak category was not populated');
+        occurrences.push({
+          jogakId: execution.jogakId,
+          scheduledDate: execution.scheduledDate,
+          mogakTitle: execution.mogakTitle,
+          category: { code: execution.categoryCode, name: categoryName },
+          title: execution.jogakTitleSnapshot,
+          color: execution.color,
+          isRoutine: AD_HOC.isRoutine,
+          origin: AD_HOC.origin,
+          status: execution.status,
+        });
+      }
+    }
+
+    const successCounts = new Map(
+      (
+        await this.repository.listSuccessCounts([
+          ...new Set(occurrences.map((occurrence) => occurrence.jogakId)),
+        ])
+      ).map(({ jogakId, achievements }) => [jogakId, achievements]),
     );
+    return occurrences
+      .map((occurrence): OccurrenceResult => ({
+        ...occurrence,
+        achievements: successCounts.get(occurrence.jogakId) ?? 0,
+      }))
+      .sort(
+        (left, right) =>
+          left.scheduledDate.localeCompare(right.scheduledDate) || left.jogakId - right.jogakId,
+      );
   }
 
   private async loadSchedules(
@@ -319,11 +396,11 @@ export class JogaksService implements OwnedOccurrencePort {
     existing: ExecutionResult,
     desiredStatus: JogakExecutionStatus,
     jogak: OwnedJogakResult,
-    isRoutine: boolean,
+    kind: OccurrenceKind,
     retryOnce: boolean,
   ): Promise<ExecutionResponse> {
     const transition = decideJogakExecutionTransition(existing.status, desiredStatus);
-    if (transition.type === 'NOOP') return toExecutionResponse(existing, jogak, isRoutine);
+    if (transition.type === 'NOOP') return toExecutionResponse(existing, jogak, kind);
     if (transition.type === 'REJECT') {
       throw new DomainException(DomainErrorCode.INVALID_EXECUTION_TRANSITION);
     }
@@ -334,22 +411,21 @@ export class JogaksService implements OwnedOccurrencePort {
       desiredStatus,
       now: new Date(),
     });
-    if (updated !== null) return toExecutionResponse(updated, jogak, isRoutine);
+    if (updated !== null) return toExecutionResponse(updated, jogak, kind);
     const current = await this.repository.findExecution(existing.jogakId, existing.scheduledDate);
     if (current === null) throw new DomainException(DomainErrorCode.JOGAK_NOT_FOUND);
-    if (!retryOnce)
-      return this.resolveAfterLostTransition(current, desiredStatus, jogak, isRoutine);
-    return this.transitionExisting(current, desiredStatus, jogak, isRoutine, false);
+    if (!retryOnce) return this.resolveAfterLostTransition(current, desiredStatus, jogak, kind);
+    return this.transitionExisting(current, desiredStatus, jogak, kind, false);
   }
 
   private resolveAfterLostTransition(
     current: ExecutionResult,
     desiredStatus: JogakExecutionStatus,
     jogak: OwnedJogakResult,
-    isRoutine: boolean,
+    kind: OccurrenceKind,
   ): ExecutionResponse {
     const transition = decideJogakExecutionTransition(current.status, desiredStatus);
-    if (transition.type === 'NOOP') return toExecutionResponse(current, jogak, isRoutine);
+    if (transition.type === 'NOOP') return toExecutionResponse(current, jogak, kind);
     if (transition.type === 'REJECT') {
       throw new DomainException(DomainErrorCode.INVALID_EXECUTION_TRANSITION);
     }
@@ -493,7 +569,7 @@ function previousDate(date: string): string {
 function toExecutionResponse(
   execution: ExecutionResult,
   jogak: OwnedJogakResult,
-  isRoutine: boolean,
+  kind: OccurrenceKind,
 ) {
   return {
     executionId: execution.id,
@@ -503,7 +579,8 @@ function toExecutionResponse(
     title: execution.jogakTitleSnapshot,
     mogakTitle: jogak.mogakTitle,
     category: categoryOf(jogak.categoryCode, jogak.categoryName, jogak.customCategoryName),
-    isRoutine,
+    isRoutine: kind.isRoutine,
+    origin: kind.origin,
   };
 }
 

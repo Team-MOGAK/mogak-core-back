@@ -7,6 +7,7 @@ import type {
   ExecutionResult,
   CreatedJogakResult,
   OccurrenceScheduleResult,
+  OwnedExecutionResult,
   OwnedJogakResult,
 } from '../type/jogak.result';
 
@@ -86,6 +87,14 @@ export interface MogakRepositoryPort {
     startDate: string,
     endDate: string,
   ): Promise<ExecutionResult[]>;
+  listOwnedExecutionRows(
+    query: Readonly<{
+      userId: number;
+      startDate: string;
+      endDate: string;
+      mogakId?: number;
+    }>,
+  ): Promise<OwnedExecutionResult[]>;
   listSuccessCounts(
     jogakIds: readonly number[],
   ): Promise<ReadonlyArray<Readonly<{ jogakId: number; achievements: number }>>>;

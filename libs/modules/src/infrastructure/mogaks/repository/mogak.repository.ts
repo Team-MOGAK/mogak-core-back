@@ -26,6 +26,7 @@ import type {
   CreatedJogakResult,
   ExecutionResult,
   OccurrenceScheduleResult,
+  OwnedExecutionResult,
   OwnedJogakResult,
 } from '@core/mogaks/application/type/jogak.result';
 import { MogakException } from '@core/mogaks/domain/exception/mogak.exception';
@@ -566,6 +567,40 @@ export class MogakRepository implements MogakRepositoryPort {
         return { ...execution, status: JogakExecutionStatus.parse(execution.status) };
       } catch {
         throw MogakException.unsupportedValue('execution status', execution.status);
+      }
+    });
+  }
+
+  async listOwnedExecutionRows(
+    query: Readonly<{ userId: number; startDate: string; endDate: string; mogakId?: number }>,
+  ): Promise<OwnedExecutionResult[]> {
+    const conditions = [
+      eq(modarats.userId, query.userId),
+      gte(jogakExecutions.scheduledDate, query.startDate),
+      lte(jogakExecutions.scheduledDate, query.endDate),
+    ];
+    if (query.mogakId !== undefined) conditions.push(eq(mogaks.id, query.mogakId));
+
+    const rows = await this.db
+      .select({
+        ...selectExecutionFields(),
+        mogakTitle: mogaks.title,
+        color: mogaks.color,
+        categoryCode: mogakCategories.code,
+        categoryName: mogakCategories.name,
+        customCategoryName: mogaks.customCategoryName,
+      })
+      .from(jogakExecutions)
+      .innerJoin(jogaks, eq(jogakExecutions.jogakId, jogaks.id))
+      .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+      .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+      .leftJoin(mogakCategories, eq(mogaks.categoryId, mogakCategories.id))
+      .where(and(...conditions));
+    return rows.map((row) => {
+      try {
+        return { ...row, status: JogakExecutionStatus.parse(row.status) };
+      } catch {
+        throw MogakException.unsupportedValue('execution status', row.status);
       }
     });
   }
