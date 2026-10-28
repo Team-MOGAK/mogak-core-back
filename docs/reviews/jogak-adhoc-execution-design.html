@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Jogak 이번 한 번 실행 설계</title><style>body{max-width:900px;margin:2rem auto;padding:0 1rem;font:16px/1.6 system-ui,sans-serif;color:#172033}header,section,aside,figure{margin:1rem 0;padding:1rem;border:1px solid #d7dee9;border-radius:8px}nav a{margin-right:.7rem}table{width:100%;border-collapse:collapse}th,td{padding:.55rem;border:1px solid #d7dee9;text-align:left;vertical-align:top}code{background:#f1f5f9;padding:.1rem .25rem}.state{font-weight:700;color:#9a3412}.slide[hidden],.result[hidden]{display:none}.controls{display:flex;gap:.6rem;align-items:center;margin-top:1rem}.result{margin-top:.7rem;padding:.7rem;background:#f1f5f9}button{padding:.4rem .7rem}</style></head>
+<body><header><h1>Jogak 회차 없는 날 “이번 한 번” 실행 설계</h1><dl><dt>목적</dt><dd>그날 일정이 없는 조각도 <code>start</code>로 그날 할 일에 넣고, 목록·체크·게시글이 일반 회차처럼 동작하게 한다.</dd><dt>사용자</dt><dd>Android 조각시작(F41) “조각 가져오기” 시트 사용자, iOS 후속 사용자, API 유지보수 개발자</dd><dt>문제</dt><dd><code>commandExecution</code>은 그날 일정이 없으면 <code>J017 INVALID_TARGET_DATE</code>로 거절한다. 받더라도 <code>projectOccurrences</code>가 일정에서만 목록을 만들기 때문에 <code>GET /api/jogaks?date=</code>에 나타나지 않는다.</dd><dt>핵심 흐름</dt><dd><code>start</code> 검증 → 일정 없음이면 이번 한 번 실행 생성 → 일별 목록에 실행 기반 항목 병합 → <code>success</code>/<code>fail</code>/게시글은 실행 존재로 대상 확인</dd><dt>강도</dt><dd>Standard — 실행 생성 규칙·발생 조회 데이터 경계·게시글 대상 확인 변경, 스키마 변경 없음</dd><dt>범위</dt><dd>JogaksService 실행 명령·발생 조회·대상 확인, MogakRepository 조회 1개 추가, 응답 필드 1개 추가, 단위·통합 테스트</dd><dt>근거 문서</dt><dd>Android <code>BACKEND_TODO.md</code> B-13 (2026-10-27)</dd><dt>생성·갱신</dt><dd><time datetime="2026-10-28T00:00:00+09:00">2026-10-28 KST</time></dd><dt>상태</dt><dd><span class="state">설계 승인됨</span></dd></dl></header>
+<nav aria-label="문서 탐색"><a href="#goal">목표</a><a href="#current">현재 동작</a><a href="#model">변경 모델</a><a href="#decision">결정 기록</a><a href="#invariants">불변식</a><a href="#contract">API 계약</a><a href="#impl">구현 지점</a><a href="#failure">실패 처리</a><a href="#verification">검증</a><a href="#open">미결정</a><a href="#control">이해 점검</a><a href="#approval">승인</a></nav>
+<main><article>
+<section id="goal"><h2>목표와 비목표</h2><p><mark>그날 회차가 없는 조각에 <code>POST /api/jogaks/:jogakId/executions/:scheduledDate/start</code>를 보내면 <strong>일정은 그대로 두고 그날 실행 기록 하나만</strong> 만든다.</mark> 이 실행은 그날 <code>GET /api/jogaks?date=</code>와 <code>GET /api/mogaks/:mogakId/jogaks?date=</code>에 나타나고, <code>success</code>/<code>fail</code>과 게시글 작성을 받는다.</p><p>대상: 그날 요일이 아닌 루틴, 다른 날짜의 한 번 조각, 종료일이 지난 루틴, 아직 시작일 전인 조각. 그날 이미 회차가 있으면 지금 동작을 그대로 유지한다.</p><p><strong>비목표:</strong> 일정(요일·시작일·종료일) 변경, “오늘 할 일에서 빼기”(B-5), 진척 집계(B-1), 지난 날 소급 체크 범위 정책(B-3), 실행 테이블 스키마 변경은 포함하지 않는다.</p></section>
+
+<section id="current"><h2>현재 동작</h2><table><caption>회차가 없는 날짜에 대한 현재 처리</caption><thead><tr><th>경로</th><th>현재 코드</th><th>결과</th></tr></thead><tbody>
+<tr><td><code>start</code>/<code>success</code>/<code>fail</code></td><td><code>JogaksService.commandExecution</code>: <code>occursOn</code>을 만족하는 일정이 없으면 거절</td><td>400 <code>J017</code></td></tr>
+<tr><td><code>GET /api/jogaks?date=</code>, <code>GET /api/mogaks/:id/jogaks?date=</code></td><td><code>projectOccurrences</code>: 일정 × 날짜로 회차를 만들고, 실행은 그 회차에 상태만 붙인다</td><td>일정 없는 날의 실행은 존재해도 보이지 않음</td></tr>
+<tr><td>게시글 작성·조회</td><td><code>PostService</code> → <code>resolveOwnedOccurrence</code>: 일정 발생만 확인</td><td>400 <code>J017</code></td></tr>
+<tr><td>실행 저장</td><td><code>jogak_executions</code>는 <code>(jogak_id, scheduled_date)</code> 유일, 일정 FK 없음</td><td>스키마는 이미 일정과 무관한 실행을 저장할 수 있음</td></tr>
+</tbody></table></section>
+
+<section id="model"><h2>변경 모델</h2><figure><figcaption>회차의 출처를 두 가지로 확장한다</figcaption><pre><code>회차(occurrence) =
+  SCHEDULE : 일정이 그날 발생함 (실행 있으면 상태 반영, 없으면 PENDING/MISSED)
+  AD_HOC   : 그날 발생하는 일정은 없지만 실행 기록이 있음 (상태 = 실행 상태)
+
+start(jogakId, date)
+  ├─ 그날 일정 발생 있음 → 기존 경로 (변경 없음)
+  └─ 일정 발생 없음
+       ├─ date가 허용 범위 밖 → 400 J017
+       └─ 실행 INSERT(IN_PROGRESS) 또는 기존 실행 전이  → origin=AD_HOC
+
+success/fail(jogakId, date)
+  ├─ 그날 일정 발생 있음 → 기존 경로
+  └─ 일정 발생 없음
+       ├─ 그날 실행 있음 → 기존 전이 규칙 적용   → origin=AD_HOC
+       └─ 실행 없음      → 400 J017 (기존과 같음)</code></pre>
+<p><strong>AD_HOC 여부는 저장하지 않고 조회 시점에 파생한다.</strong> “그 실행의 날짜에 발생하는 일정이 있는가”만으로 판정하므로 별도 컬럼·마이그레이션이 없다. 일정이 나중에 바뀌어 그날 발생하게 되면 같은 실행이 자연스럽게 SCHEDULE 회차로 보인다.</p>
+<p>이번 한 번 실행을 <strong>만들 수 있는 명령은 <code>start</code>뿐</strong>이다. 앱의 “조각 가져오기”가 곧 <code>start</code>이고, 위젯·알림의 <code>success</code>/<code>fail</code>은 이미 목록에 있는 회차에만 눌린다. <code>success</code>로 곧바로 만들게 하면 오타 날짜 하나로 기록이 생기는 경로가 늘어난다.</p></figure></section>
+
+<section id="decision"><h2>결정 기록</h2><table><caption>이번 한 번 실행의 표현 방식</caption><thead><tr><th>안</th><th>방식</th><th>장점</th><th>단점</th><th>판단</th></tr></thead><tbody>
+<tr><td><strong>A. 실행 기반 파생 (선택)</strong></td><td>일정 발생이 없는 날의 실행을 AD_HOC 회차로 목록에 병합</td><td>스키마 변경 없음. 실행은 이미 일정과 독립된 이력이라는 기존 원칙(일정 편집 설계)과 일치</td><td>과거 일정 편집으로 일정 밖에 남게 된 실행도 AD_HOC로 다시 보이게 된다 (아래 미결정 1)</td><td>채택</td></tr>
+<tr><td>B. 실행에 <code>origin</code> 컬럼 추가</td><td><code>jogak_executions.origin = SCHEDULE | AD_HOC</code> 저장</td><td>“가져온 조각”을 명시적으로 구분. B-5 대상 판정이 쉬움</td><td>마이그레이션·백필 필요. 일정 편집 뒤 저장값과 실제 발생이 어긋날 수 있어 결국 파생 판정이 또 필요</td><td>보류</td></tr>
+<tr><td>C. 하루짜리 ONCE 일정 생성</td><td>start 시 그날만 발생하는 일정 행 추가</td><td>목록 코드 변경 없음</td><td>“일정은 바꾸지 않는다”는 요구 위반. 조각당 일정 이력·MAX 8개 판정·상세 응답의 대표 일정이 오염됨</td><td>기각</td></tr>
+</tbody></table></section>
+
+<section id="invariants"><h2>지키는 규칙</h2><table><caption>이번 한 번 실행의 불변식</caption><thead><tr><th>상황</th><th>서버가 하는 일</th><th>보장되는 결과</th></tr></thead><tbody>
+<tr><td>회차 없는 날 <code>start</code></td><td>실행 행 하나만 INSERT. 일정·요일 행은 읽기만 한다</td><td>조각 상세의 요일·시작일·종료일이 바뀌지 않는다</td></tr>
+<tr><td>같은 날 이미 회차가 있음</td><td>기존 경로 그대로</td><td>응답·상태 코드가 지금과 같다 (<code>origin=SCHEDULE</code>만 추가)</td></tr>
+<tr><td>같은 요청 반복·동시 요청</td><td>기존 <code>insertExecution</code>의 계층 잠금 + <code>ON CONFLICT DO NOTHING</code>, 기존 전이 규칙 재사용</td><td>실행은 날짜당 하나. 같은 상태는 NOOP 200 (B-15와 동일)</td></tr>
+<tr><td>AD_HOC 실행의 상태 전이</td><td><code>decideJogakExecutionTransition</code> 그대로</td><td>IN_PROGRESS→SUCCESS/FAIL, SUCCESS↔FAIL 허용, 완료 후 <code>start</code>는 400 <code>M003</code></td></tr>
+<tr><td>목록 표시</td><td>AD_HOC 항목의 상태는 실행 상태 그대로. <code>MISSED</code>/<code>PENDING</code>로 파생하지 않는다</td><td>실행이 있어야만 AD_HOC가 존재하므로 상태가 항상 실제 기록이다</td></tr>
+<tr><td>누적 달성 수(<code>achievements</code>)</td><td>기존처럼 조각의 SUCCESS 실행 전체를 센다</td><td>이번 한 번 성공도 달성 수에 포함된다</td></tr>
+<tr><td>모각당 조각 8개 제한</td><td>일정 기준 판정 그대로</td><td>AD_HOC 실행은 제한 계산에 영향을 주지 않는다</td></tr>
+<tr><td>조각·모각·모다라트 삭제</td><td>기존 FK cascade</td><td>AD_HOC 실행도 함께 삭제된다</td></tr>
+</tbody></table></section>
+
+<section id="contract"><h2>API 계약 변경</h2><p>엔드포인트·요청 형식은 바꾸지 않는다. 응답에 필드 하나를 더한다 (추가만, 기존 필드 유지).</p><table><caption>변경 요약</caption><thead><tr><th>API</th><th>변경</th></tr></thead><tbody>
+<tr><td><code>POST …/executions/:date/start</code></td><td>회차 없는 날도 허용 범위 안이면 201(신규)/200(기존). 응답에 <code>origin</code></td></tr>
+<tr><td><code>POST …/executions/:date/success</code>, <code>/fail</code></td><td>회차 없는 날이라도 그날 실행이 있으면 전이. 실행이 없으면 지금처럼 400 <code>J017</code></td></tr>
+<tr><td><code>GET /api/jogaks?date=</code>, <code>GET /api/mogaks/:id/jogaks?date=</code></td><td>AD_HOC 항목 병합. 각 항목에 <code>origin</code></td></tr>
+<tr><td><code>GET /api/jogaks/daily</code>, <code>GET /api/jogaks/routines</code></td><td>변경 없음. 일정 유형별 조회이므로 AD_HOC를 넣지 않는다</td></tr>
+<tr><td>게시글 <code>POST /api/jogaks/:id/posts</code> 등 <code>targetDate</code> 사용 경로</td><td>그날 실행이 있으면 대상으로 인정</td></tr>
+</tbody></table>
+<figure><figcaption>일별 목록 항목 예 (AD_HOC)</figcaption><pre><code>{
+  "jogakId": 101, "scheduledDate": "2026-10-28",
+  "mogakTitle": "이력서", "category": { "code": "JOB_STUDY", "name": "직무공부" },
+  "title": "이력서 한 줄 고치기", "color": "#F98A08",
+  "isRoutine": false, "origin": "AD_HOC",
+  "status": "IN_PROGRESS", "achievements": 4
+}</code></pre><p><code>isRoutine</code>은 “그날 회차가 루틴에서 왔는가”라는 기존 의미를 유지해 AD_HOC에서는 <code>false</code>다. 앱은 “이번 한 번” 표시를 <code>origin</code>으로 판단한다. 조각의 루틴 요일이 필요하면 B-12(<code>days</code> 추가)에서 다룬다.</p></figure></section>
+
+<section id="impl"><h2>구현 지점</h2><ol>
+<li><strong>Repository</strong> — <code>MogakRepositoryPort.listOwnedExecutionRows({ userId, startDate, endDate, mogakId? })</code> 추가. <code>jogak_executions</code> → <code>jogaks</code> → <code>mogaks</code> → <code>modarats</code>(소유자) → <code>mogak_categories</code> 조인으로 실행과 표시 필드(<code>mogakTitle</code>, 카테고리, <code>color</code>, 제목 스냅샷)를 한 번에 가져온다. 기존 <code>(jogak_id, scheduled_date)</code> 유일 인덱스로 날짜 범위 조회가 가능하다.</li>
+<li><strong>projectOccurrences</strong> — <code>includeAdHoc</code> 옵션(일별 목록 두 경로만 <code>true</code>). 일정 회차를 만든 뒤, 위 조회 결과 중 이미 만든 <code>jogakId:date</code> 키에 없는 실행을 AD_HOC 항목으로 추가하고 같은 정렬 규칙을 적용한다. 달성 수 조회 대상에 AD_HOC 조각 ID를 포함한다.</li>
+<li><strong>commandExecution</strong> — 발생 일정이 없을 때 <code>desiredStatus === 'IN_PROGRESS'</code>이고 허용 범위 안이면 기존 INSERT/전이 경로로 진행, 아니면 그날 실행이 있을 때만 전이. 응답의 <code>isRoutine=false</code>, <code>origin='AD_HOC'</code>.</li>
+<li><strong>resolveOwnedOccurrence</strong> — 일정 발생이 없으면 <code>findExecution</code>으로 한 번 더 확인. 게시글 서비스 코드는 바꾸지 않는다.</li>
+<li><strong>응답 타입</strong> — <code>OccurrenceResult</code>와 실행 응답에 <code>origin: 'SCHEDULE' | 'AD_HOC'</code>.</li>
+</ol></section>
+
+<section id="failure"><h2>실패 처리와 관측</h2><table><caption>오류 응답</caption><thead><tr><th>상황</th><th>응답</th></tr></thead><tbody>
+<tr><td>날짜 형식 오류, 허용 범위 밖 <code>start</code>, 회차·실행 둘 다 없는 날 <code>success</code>/<code>fail</code></td><td>400 <code>J017</code> (기존 코드 재사용)</td></tr>
+<tr><td>소유하지 않았거나 없는 조각</td><td>404 조각 없음 (기존)</td></tr>
+<tr><td>완료된 실행에 <code>start</code></td><td>400 <code>M003</code> (기존)</td></tr>
+</tbody></table><p>앱은 여러 조각을 차례로 <code>start</code>하다 실패하면 멈추므로, 범위 밖 거절이 <code>J017</code> 하나로 모이면 문구 매핑이 단순하다. 별도 코드가 필요해지면 B-3 범위 정책과 함께 <code>EXECUTION_DATE_OUT_OF_RANGE</code>를 정의한다.</p><p>관측: 지금은 실행 생성 로그가 없다. AD_HOC 실행을 새로 만들 때만 <code>event: 'adhoc_execution_created'</code> info 로그(조각 ID·날짜, 사용자 식별자 제외)를 남겨 이번 한 번 사용량을 볼 수 있게 한다.</p></section>
+
+<section id="verification"><h2>검증 계획</h2><ol>
+<li>단위(<code>jogaks.service.spec.ts</code>): 요일 아닌 루틴·다른 날 ONCE·종료된 루틴·시작 전 조각에 <code>start</code> → 201, <code>origin=AD_HOC</code>, 일정 저장 호출 없음.</li>
+<li>단위: 회차 없는 날 실행 없이 <code>success</code>/<code>fail</code> → <code>J017</code>. <code>start</code> 뒤 <code>success</code>→<code>fail</code>→<code>success</code> 모두 성공, 같은 상태 반복은 200.</li>
+<li>단위: 허용 범위 밖 <code>start</code> → <code>J017</code>. 그날 회차가 있는 조각은 응답·상태 코드가 지금과 같고 <code>origin=SCHEDULE</code>.</li>
+<li>통합(<code>mogaks.integration.spec.ts</code>): AD_HOC <code>start</code> 뒤 <code>GET /api/jogaks?date=</code>와 모각 일별 목록에 항목이 정렬 규칙대로 나오고, 다음 날 목록에는 나오지 않으며, <code>/jogaks/daily</code>·<code>/routines</code>에는 나오지 않는다. 일정·요일 행 수와 ID가 그대로다.</li>
+<li>통합: 같은 조각·날짜로 동시 <code>start</code> 두 번 → 실행 행 1개.</li>
+<li>통합: AD_HOC 실행 날짜로 게시글 작성·조회 성공, 실행 없는 날은 <code>J017</code>.</li>
+<li>관련 Jest·typecheck·lint.</li>
+</ol></section>
+
+<section id="open"><h2>결정된 사항 (2026-10-28 승인, 권장안 채택)</h2><ol>
+<li><strong>일정 편집으로 일정 밖에 남은 기존 실행 — 결정: 보이게 둔다.</strong> 안 A에서는 이런 실행도 그날 목록에 AD_HOC로 다시 나타난다. 지금은 기록이 있어도 숨겨져 있다. 권장: <em>보이게 둔다</em>. 일정 편집 설계가 “실행은 그날 실제로 남긴 기록”이라고 정했으므로 숨기는 쪽이 오히려 기록 유실처럼 보인다. 배포 전 운영 DB에서 해당 건수를 한 번 조회해 확인한다.</li>
+<li><strong><code>start</code>로 이번 한 번을 만들 수 있는 날짜 범위 — 결정: KST 오늘 ~ 오늘+6일.</strong> 권장: <em>KST 오늘부터 오늘+6일</em>. 앱 시트가 “그날”을 고르는 구조라 미래 날짜는 필요하지만, 과거에 기록을 새로 만드는 것은 B-3(소급 체크) 정책과 함께 정해야 한다. 오늘만 허용하는 더 좁은 안도 가능하다.</li>
+</ol></section>
+
+<section id="design-control-state"><h2>설계 통제 상태</h2><p>미실시 — Q1~Q5가 범위, 불변식, 상태 전이, 실패 처리, 검증을 다룬다.</p></section>
+<section id="control"><h2>설계 이해 점검</h2>
+<div class="slide" data-answer="b" data-explanation="이번 한 번은 실행 기록 하나만 만들고 일정은 읽기만 한다."><fieldset><legend>Q1 — 월·수·금 루틴을 화요일에 start하면 저장되는 것은?</legend><label><input type="radio" name="q1" value="a"> A. 화요일을 요일 행에 추가한다.</label><br><label><input type="radio" name="q1" value="b"> B. 화요일 실행 행 하나만 만든다.</label><br><label><input type="radio" name="q1" value="c"> C. 화요일 하루짜리 ONCE 일정을 만든다.</label></fieldset><div class="result" hidden><strong></strong><p></p><p></p></div></div>
+<div class="slide" data-answer="c" data-explanation="이번 한 번 실행은 start만 만들 수 있다. 실행이 없는 날의 success/fail은 기존처럼 거절한다." hidden><fieldset><legend>Q2 — 회차도 실행도 없는 날에 success를 보내면?</legend><label><input type="radio" name="q2" value="a"> A. SUCCESS 실행을 새로 만든다.</label><br><label><input type="radio" name="q2" value="b"> B. IN_PROGRESS로 만든 뒤 SUCCESS로 바꾼다.</label><br><label><input type="radio" name="q2" value="c"> C. 400 J017로 거절한다.</label></fieldset><div class="result" hidden><strong></strong><p></p><p></p></div></div>
+<div class="slide" data-answer="a" data-explanation="AD_HOC 여부는 저장하지 않고 그날 일정 발생 유무로 조회 시점에 파생한다." hidden><fieldset><legend>Q3 — 목록에서 AD_HOC인지 어떻게 판정하는가?</legend><label><input type="radio" name="q3" value="a"> A. 그날 발생하는 일정이 없고 실행만 있으면 AD_HOC다.</label><br><label><input type="radio" name="q3" value="b"> B. 실행 행의 origin 컬럼을 읽는다.</label><br><label><input type="radio" name="q3" value="c"> C. isRoutine이 false이면 AD_HOC다.</label></fieldset><div class="result" hidden><strong></strong><p></p><p></p></div></div>
+<div class="slide" data-answer="b" data-explanation="AD_HOC는 실행이 있어야 존재하므로 상태는 항상 실행 상태 그대로다." hidden><fieldset><legend>Q4 — 어제 start만 하고 끝내지 않은 AD_HOC 항목의 상태는?</legend><label><input type="radio" name="q4" value="a"> A. MISSED</label><br><label><input type="radio" name="q4" value="b"> B. IN_PROGRESS</label><br><label><input type="radio" name="q4" value="c"> C. 목록에서 사라진다.</label></fieldset><div class="result" hidden><strong></strong><p></p><p></p></div></div>
+<div class="slide" data-answer="a" data-explanation="일정은 그대로여야 하고 실행은 날짜당 하나여야 한다." hidden><fieldset><legend>Q5 — 핵심 회귀 검증은?</legend><label><input type="radio" name="q5" value="a"> A. AD_HOC start 뒤 일정·요일 행이 그대로이고, 동시 start에도 실행 행이 하나인지 확인한다.</label><br><label><input type="radio" name="q5" value="b"> B. start 뒤 일정 행이 하나 늘었는지 확인한다.</label><br><label><input type="radio" name="q5" value="c"> C. /jogaks/daily에 AD_HOC가 나오는지 확인한다.</label></fieldset><div class="result" hidden><strong></strong><p></p><p></p></div></div>
+<div class="controls"><button type="button" id="previous">이전</button><span id="position" aria-live="polite"></span><button type="button" id="submit">현재 답 확인</button><button type="button" id="next">다음</button></div><output id="overall" aria-live="polite"></output></section>
+<section id="approval"><h2>승인 상태</h2><p><strong>설계 승인됨 — 2026-10-28 KST.</strong> 승인 범위: 실행 기반 AD_HOC 파생(안 A), <code>start</code>만 이번 한 번 생성(허용 범위 KST 오늘 ~ 오늘+6일, 범위 밖 <code>J017</code>), 일정 밖에 남은 기존 실행도 AD_HOC로 노출, 일별 목록 두 경로 병합, 응답 <code>origin</code> 추가, 게시글 대상 확인 확장, AD_HOC 생성 info 로그, 관련 단위·통합 테스트. 스키마 변경, B-1·B-3·B-5는 제외한다. 배포 전 운영 DB에서 일정 밖 실행 건수를 확인한다.</p></section></article></main>
+<script>const slides=[...document.querySelectorAll('.slide')];let index=0;function render(){slides.forEach((slide,i)=>slide.hidden=i!==index);document.getElementById('position').textContent=`${index+1} / ${slides.length}`}document.getElementById('previous').onclick=()=>{index=Math.max(0,index-1);render()};document.getElementById('next').onclick=()=>{index=Math.min(slides.length-1,index+1);render()};document.getElementById('submit').onclick=()=>{const slide=slides[index],answer=slide.querySelector('input:checked'),result=slide.querySelector('.result'),ok=answer?.value===slide.dataset.answer;result.hidden=false;result.querySelector('strong').textContent=ok?'확립':'보류';result.querySelectorAll('p')[0].textContent=slide.dataset.explanation;result.querySelectorAll('p')[1].textContent='다음 행동: 설계는 승인됨. 구현 승인은 별도로 결정한다.';document.getElementById('overall').textContent=`답변 진행: ${slides.filter(s=>s.querySelector('input:checked')).length} / ${slides.length}`};render();</script>
+</body></html>
