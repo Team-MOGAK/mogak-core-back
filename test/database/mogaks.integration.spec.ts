@@ -22,6 +22,8 @@ import { AuthRepository } from '@infra/auth/repository/auth.repository';
 import { JogaksService } from '@core/mogaks/application/service/jogaks.service';
 import { MogakService } from '@core/mogaks/application/service/mogak.service';
 import { MogakRepository } from '@infra/mogaks/repository/mogak.repository';
+import { PostService } from '@core/posts/application/service/post.service';
+import { PostRepository } from '@infra/posts/repository/post.repository';
 import { pinoLoggerStub } from '../fixtures/pinoLogger.fixture';
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -655,6 +657,52 @@ describe('모각 PostgreSQL 통합', () => {
         .from(jogakSchedules)
         .where(eq(jogakSchedules.jogakId, fixture.jogakId)),
     ).resolves.toEqual(schedulesBefore);
+  });
+
+  it('일정 없는 날의 AD_HOC 실행에 게시글을 작성하고 날짜로 조회한다', async () => {
+    const fixture = await createJogakFixture({
+      scheduleType: 'WEEKLY',
+      effectiveFrom: '2026-07-20',
+      weekdays: ['MONDAY'],
+    });
+    const jogakService = new JogaksService(
+      new MogakRepository(db as unknown as Database, pinoLoggerStub()),
+      () => '2026-07-23',
+    );
+    const postService = new PostService(
+      new PostRepository(db as never, pinoLoggerStub()),
+      jogakService,
+      { resolvePublicUrl: async () => null } as never,
+      {} as never,
+    );
+
+    await expect(
+      postService.createPost(fixture.userId, {
+        jogakId: fixture.jogakId,
+        targetDate: '2026-07-23',
+        contents: '이번 한 번 회고',
+      }),
+    ).rejects.toMatchObject({ code: DomainErrorCode.INVALID_TARGET_DATE });
+
+    await jogakService.commandExecution(
+      fixture.userId,
+      fixture.jogakId,
+      '2026-07-23',
+      'IN_PROGRESS',
+    );
+    await expect(
+      postService.createPost(fixture.userId, {
+        jogakId: fixture.jogakId,
+        targetDate: '2026-07-23',
+        contents: '이번 한 번 회고',
+      }),
+    ).resolves.toMatchObject({ jogakId: fixture.jogakId, targetDate: '2026-07-23' });
+    await expect(
+      postService.getPostByJogakAndDate(fixture.userId, fixture.jogakId, '2026-07-23'),
+    ).resolves.toMatchObject({ contents: '이번 한 번 회고', targetDate: '2026-07-23' });
+    await expect(rowCount(jogakExecutions, jogakExecutions.jogakId, fixture.jogakId)).resolves.toBe(
+      1,
+    );
   });
 
   it('일정 없는 날 같은 조각을 동시에 start해도 실행은 하나만 저장한다', async () => {
