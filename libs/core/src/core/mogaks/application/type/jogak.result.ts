@@ -53,12 +53,15 @@ export type CreatedJogakResult = Readonly<{
 }>;
 export type OccurrenceResult = Readonly<{
   jogakId: number;
-  scheduledDate: string;
+  scheduledDate: string | null;
   mogakTitle: string;
   category: Readonly<{ code: string | null; name: string }>;
   title: string;
   color: string | null;
   isRoutine: boolean;
-  status: JogakOccurrenceStatus;
+  days: readonly JogakScheduleWeekdayName[];
+  startDate: string;
+  endDate: string | null;
+  status: JogakOccurrenceStatus | null;
   achievements: number;
 }>;

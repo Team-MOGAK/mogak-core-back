@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>모각 조각 통합 조회 설계</title>
+<style>body{font:16px/1.65 system-ui,sans-serif;max-width:900px;margin:40px auto;padding:0 20px;color:#202124}h1,h2{line-height:1.3}code,pre{background:#f3f4f6;border-radius:5px}code{padding:2px 5px}pre{padding:16px;overflow:auto}.state{padding:12px;background:#eef4ff;border-left:4px solid #4775d1}fieldset{margin:18px 0;padding:16px;border:1px solid #bbb;border-radius:8px}label{display:block;margin:8px 0}button{padding:8px 14px}#result{display:none;margin-top:16px;padding:14px;background:#eef8ef}</style>
+</head>
+<body>
+<h1>모각 조각 통합 조회 설계</h1>
+<p class="state"><b>설계 상태:</b> 승인됨 · 구현 중 · 강도: compact</p>
+<h2>목표</h2><p>모각 화면에서 날짜와 무관하게 조각 전체를 일정과 함께 볼 수 있게 하고, 기존 특정 날짜 회차 조회도 유지한다.</p>
+<h2>제안 동작</h2><ul><li><code>GET /api/mogaks/{mogakId}/jogaks</code>: 모각 소속 전체 조각을 반환한다.</li><li><code>GET /api/mogaks/{mogakId}/jogaks?date=YYYY-MM-DD</code>: 해당 날짜의 회차만 반환한다.</li></ul>
+<p>두 경우 모두 동일한 조각 응답 필드를 쓴다. 전체 조회에서는 <code>scheduledDate</code>, <code>status</code>를 null로 둔다. 날짜 조회에서는 회차 날짜와 진행 상태를 채운다. 조각 제목은 항상 현재 제목이다. 일정 필드(<code>isRoutine</code>, <code>days</code>, <code>startDate</code>, <code>endDate</code>)와 기존 조각 표시 정보는 유지한다.</p>
+<pre>{
+  "jogakId": 101,
+  "title": "포트폴리오 정리",
+  "isRoutine": true,
+  "days": ["MONDAY", "WEDNESDAY", "FRIDAY"],
+  "startDate": "2026-10-01",
+  "endDate": null,
+  "scheduledDate": null,
+  "status": null
+}</pre>
+<h2>범위와 불변 조건</h2><ul><li>날짜 없는 조회는 일정 기간과 무관하게 모각에 속한 조각 전체를 반환한다.</li><li>날짜가 있으면 기존 날짜별 포함/상태 판정 규칙을 유지한다.</li><li>양쪽 응답의 필드 구조와 조각 제목 기준을 동일하게 한다.</li><li>실행 기록에 저장된 제목 스냅샷과 DB 필드는 보존하고, 조회 응답에서 현재 조각 제목을 사용한다.</li></ul>
+<h2>검증 계획</h2><p>전체 조회에 미래 일정 및 종료된 루틴이 포함되는지, 날짜 조회가 기존 날짜별 상태를 유지하면서 현재 제목을 내는지, 잘못된 날짜와 권한 없는 모각이 기존 오류 응답을 내는지 확인한다.</p>
+<h2>설계 이해 점검</h2><fieldset><legend>날짜 없이 조회하면 날짜별 진행 상태는 어떻게 표현할까?</legend><label><input type="radio" name="check" value="a"> null로 두고 전체 조각을 반환한다</label><label><input type="radio" name="check" value="b"> 각 조각을 임의의 날짜 기준으로 상태화한다</label><button type="button" id="submit">확인</button><section id="result"><b id="status"></b><p id="why"></p><p id="next"></p></section></fieldset>
+<h2>승인</h2><p>2026-11-02 승인. 승인 범위: 같은 경로에서 date 유무에 따라 전체 조각 또는 날짜별 조각을 조회하며, 응답 모양은 통일하고 제목은 현재 값으로 반환한다. 스냅샷 저장 데이터 삭제는 포함하지 않는다.</p>
+<script>document.getElementById('submit').onclick=()=>{const v=document.querySelector('input[name=check]:checked')?.value;const r=document.getElementById('result');r.style.display='block';document.getElementById('status').textContent=v==='a'?'확립':'보류';document.getElementById('why').textContent=v==='a'?'전체 조회는 특정 날짜의 회차 상태가 없으므로 날짜별 필드를 null로 둔다.':'전체 조회는 기준 날짜를 정하지 않으므로 임의 날짜의 상태를 만들지 않는다.';document.getElementById('next').textContent=v==='a'?'다음 단계: 설계 승인 후 구현':'다음 단계: null 처리 기준을 확인하고 설계를 조정';};</script>
+</body></html>

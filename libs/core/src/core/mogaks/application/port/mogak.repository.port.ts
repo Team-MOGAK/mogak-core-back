@@ -70,8 +70,8 @@ export interface MogakRepositoryPort {
   listOccurrenceScheduleRows(
     query: Readonly<{
       userId: number;
-      startDate: string;
-      endDate: string;
+      startDate?: string;
+      endDate?: string;
       mogakId?: number;
       jogakId?: number;
       scheduleType?: ValidatedJogakSchedule['scheduleType'];

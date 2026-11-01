@@ -19,6 +19,8 @@ export const scheduleRequestSchema = z
 export type ScheduleRequest = z.infer<typeof scheduleRequestSchema>;
 export const dateQuerySchema = z.object({ date: calendarDateSchema }).strict();
 export type DateQueryRequest = z.infer<typeof dateQuerySchema>;
+export const optionalDateQuerySchema = z.object({ date: calendarDateSchema.optional() }).strict();
+export type OptionalDateQueryRequest = z.infer<typeof optionalDateQuerySchema>;
 export const dateRangeQuerySchema = z
   .object({ startDay: calendarDateSchema, endDay: calendarDateSchema })
   .strict()

@@ -103,10 +103,58 @@ export class JogaksService implements OwnedOccurrencePort {
   }
 
   async listMogakDay(userId: number, mogakId: number, date: string) {
+    return this.listMogakJogaks(userId, mogakId, date);
+  }
+
+  async listMogakJogaks(userId: number, mogakId: number, date?: string) {
     if ((await this.repository.findOwnedMogak(userId, mogakId)) === null) {
       throw new DomainException(DomainErrorCode.MOGAK_NOT_FOUND);
     }
-    return this.projectOccurrences(userId, date, date, { mogakId });
+    if (date !== undefined) {
+      return this.projectOccurrences(userId, date, date, { mogakId });
+    }
+    const schedules = groupScheduleRows(
+      await this.repository.listOccurrenceScheduleRows({
+        userId,
+        mogakId,
+      }),
+    );
+    const achievements = new Map(
+      (
+        await this.repository.listSuccessCounts([
+          ...new Set(schedules.map(({ jogakId }) => jogakId)),
+        ])
+      ).map(({ jogakId, achievements }) => [jogakId, achievements]),
+    );
+    const byJogak = new Map<number, ScheduleRecord[]>();
+    for (const record of schedules) {
+      const records = byJogak.get(record.jogakId) ?? [];
+      records.push(record);
+      byJogak.set(record.jogakId, records);
+    }
+    return [...byJogak.values()].map((records) => {
+      const selected = recordAt(
+        records,
+        representativeScheduleIndexOn(
+          records.map(({ schedule }) => schedule),
+          this.today(),
+        ),
+      )!;
+      return {
+        jogakId: selected.jogakId,
+        title: selected.jogakTitle,
+        isRoutine: selected.schedule.scheduleType === 'WEEKLY',
+        days: [...selected.schedule.weekdays],
+        startDate: selected.schedule.effectiveFrom,
+        endDate: selected.schedule.effectiveTo,
+        scheduledDate: null,
+        status: null,
+        mogakTitle: selected.mogakTitle,
+        category: categoryOf(selected.categoryCode, selected.categoryName, null),
+        color: selected.color,
+        achievements: achievements.get(selected.jogakId) ?? 0,
+      };
+    });
   }
 
   async getDetail(userId: number, jogakId: number) {
@@ -279,9 +327,12 @@ export class JogaksService implements OwnedOccurrencePort {
           scheduledDate,
           mogakTitle: schedule.mogakTitle,
           category: { code: schedule.categoryCode, name: schedule.categoryName },
-          title: execution?.jogakTitleSnapshot ?? schedule.jogakTitle,
+          title: schedule.jogakTitle,
           color: schedule.color,
           isRoutine: schedule.schedule.scheduleType === 'WEEKLY',
+          days: [...schedule.schedule.weekdays],
+          startDate: schedule.schedule.effectiveFrom,
+          endDate: schedule.schedule.effectiveTo,
           status: deriveOccurrenceStatus(execution?.status ?? null, scheduledDate, today),
           achievements: successCounts.get(schedule.jogakId) ?? 0,
         });
@@ -290,7 +341,8 @@ export class JogaksService implements OwnedOccurrencePort {
 
     return occurrences.sort(
       (left, right) =>
-        left.scheduledDate.localeCompare(right.scheduledDate) || left.jogakId - right.jogakId,
+        (left.scheduledDate ?? '').localeCompare(right.scheduledDate ?? '') ||
+        left.jogakId - right.jogakId,
     );
   }
 
