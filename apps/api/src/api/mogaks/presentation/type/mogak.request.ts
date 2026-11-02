@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
-import { positiveIdSchema, requiredTextSchema } from '@api/common/validation/requestSchema';
+import {
+  calendarDateSchema,
+  positiveIdSchema,
+  requiredTextSchema,
+} from '@api/common/validation/requestSchema';
 
 export const moderatRequestSchema = z
   .object({ title: requiredTextSchema(1, 100), color: requiredTextSchema(1, 100) })
@@ -38,5 +42,7 @@ export const mogakPatchRequestSchema = z
 export type MogakPatchRequest = z.infer<typeof mogakPatchRequestSchema>;
 export const moderatIdParamSchema = z.object({ modaratId: positiveIdSchema }).strict();
 export type ModaratIdParams = z.infer<typeof moderatIdParamSchema>;
+export const progressDateQuerySchema = z.object({ date: calendarDateSchema }).strict();
+export type ProgressDateQuery = z.infer<typeof progressDateQuerySchema>;
 export const mogakIdParamSchema = z.object({ mogakId: positiveIdSchema }).strict();
 export type MogakIdParams = z.infer<typeof mogakIdParamSchema>;

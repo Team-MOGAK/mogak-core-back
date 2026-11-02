@@ -14,18 +14,20 @@ import { CurrentUser } from '@api/auth/presentation/controller/currentUser.decor
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
 import { successResponse } from '@api/common/http/apiResponse';
 import { MergePatch } from '@api/common/http/mergePatch.decorator';
-import { ZodBody, ZodParams } from '@api/common/validation/zodParameter.decorator';
+import { ZodBody, ZodParams, ZodQuery } from '@api/common/validation/zodParameter.decorator';
 import { MogakService } from '@core/mogaks/application/service/mogak.service';
 import {
   moderatIdParamSchema,
   moderatPatchRequestSchema,
   moderatRequestSchema,
+  progressDateQuerySchema,
   mogakIdParamSchema,
   mogakRequestSchema,
   mogakPatchRequestSchema,
   type ModaratIdParams,
   type ModaratPatchRequest,
   type ModaratRequest,
+  type ProgressDateQuery,
   type MogakIdParams,
   type MogakRequest,
   type MogakPatchRequest,
@@ -64,6 +66,18 @@ export class ModaratMogakController {
     @ZodParams(moderatIdParamSchema) params: ModaratIdParams,
   ) {
     return successResponse(await this.mogakService.getModarat(user.userId, params.modaratId));
+  }
+
+  @Get('modarats/:modaratId/progress')
+  @UseGuards(AccessTokenGuard, RegisteredUserGuard)
+  async getProgress(
+    @CurrentUser() user: AuthenticatedUser,
+    @ZodParams(moderatIdParamSchema) params: ModaratIdParams,
+    @ZodQuery(progressDateQuerySchema) query: ProgressDateQuery,
+  ) {
+    return successResponse(
+      await this.mogakService.getProgress(user.userId, params.modaratId, query.date),
+    );
   }
 
   @MergePatch('modarats/:modaratId')

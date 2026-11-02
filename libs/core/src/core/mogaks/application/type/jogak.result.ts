@@ -14,6 +14,7 @@ export type OwnedJogakResult = Readonly<{
   categoryName: string | null;
   customCategoryName: string | null;
 }>;
+export type JogakParentResult = Readonly<{ jogakId: number; mogakId: number }>;
 export type OccurrenceScheduleResult = Readonly<{
   scheduleId: number;
   jogakId: number;

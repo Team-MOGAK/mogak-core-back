@@ -221,6 +221,18 @@ export class MogakRepository implements MogakRepositoryPort {
     return rows;
   }
 
+  async listJogakParentsForOwnedModarat(
+    userId: number,
+    modaratId: number,
+  ): Promise<ReadonlyArray<Readonly<{ jogakId: number; mogakId: number }>>> {
+    return this.db
+      .select({ jogakId: jogaks.id, mogakId: mogaks.id })
+      .from(jogaks)
+      .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+      .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+      .where(and(eq(modarats.userId, userId), eq(modarats.id, modaratId)));
+  }
+
   async findOwnedMogak(userId: number, mogakId: number): Promise<MogakResult | null> {
     const [mogak] = await this.db
       .select(selectMogakFields())
@@ -481,6 +493,7 @@ export class MogakRepository implements MogakRepositoryPort {
       );
       if (activeInRange !== undefined) conditions.push(activeInRange);
     }
+    if (query.modaratId !== undefined) conditions.push(eq(modarats.id, query.modaratId));
     if (query.mogakId !== undefined) conditions.push(eq(mogaks.id, query.mogakId));
     if (query.jogakId !== undefined) conditions.push(eq(jogaks.id, query.jogakId));
     if (query.scheduleType !== undefined) {

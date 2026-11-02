@@ -8,6 +8,7 @@ import type {
   CreatedJogakResult,
   OccurrenceScheduleResult,
   OwnedJogakResult,
+  JogakParentResult,
 } from '../type/jogak.result';
 
 export const MOGAK_REPOSITORY = Symbol('MOGAK_REPOSITORY');
@@ -33,6 +34,10 @@ export interface MogakRepositoryPort {
     }>,
   ): Promise<MogakResult>;
   listMogaksForOwnedModarat(userId: number, modaratId: number): Promise<MogakResult[]>;
+  listJogakParentsForOwnedModarat(
+    userId: number,
+    modaratId: number,
+  ): Promise<ReadonlyArray<JogakParentResult>>;
   findOwnedMogak(userId: number, mogakId: number): Promise<MogakResult | null>;
   updateOwnedMogak(
     input: Readonly<{ userId: number; mogakId: number; now: Date }> &
@@ -72,6 +77,7 @@ export interface MogakRepositoryPort {
       userId: number;
       startDate?: string;
       endDate?: string;
+      modaratId?: number;
       mogakId?: number;
       jogakId?: number;
       scheduleType?: ValidatedJogakSchedule['scheduleType'];

@@ -9,3 +9,13 @@ export type MogakResult = Readonly<{
   customCategoryName: string | null;
 }>;
 export type MogakCategoryResult = Readonly<{ id: number; code: string; name: string }>;
+export type ProgressCounts = Readonly<{
+  percent: number;
+  doneCount: number;
+  plannedCount: number;
+}>;
+export type ModaratProgressResult = ProgressCounts &
+  Readonly<{
+    weekStart: string;
+    mogaks: readonly (ProgressCounts & Readonly<{ mogakId: number }>)[];
+  }>;
