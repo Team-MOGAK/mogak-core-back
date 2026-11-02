@@ -25,6 +25,7 @@ import {
   createJogakRequestSchema,
   dateQuerySchema,
   dateRangeQuerySchema,
+  optionalDateQuerySchema,
   executionParamSchema,
   jogakIdParamSchema,
   mogakJogakParamSchema,
@@ -32,6 +33,7 @@ import {
   type CreateJogakRequest,
   type DateQueryRequest,
   type DateRangeQueryRequest,
+  type OptionalDateQueryRequest,
   type ExecutionParams,
   type JogakIdParams,
   type MogakJogakParams,
@@ -85,9 +87,13 @@ export class JogaksController {
   async listMogakDay(
     @CurrentUser() user: AuthenticatedUser,
     @ZodParams(mogakJogakParamSchema) params: MogakJogakParams,
-    @ZodQuery(dateQuerySchema) query: DateQueryRequest,
+    @ZodQuery(optionalDateQuerySchema) query: OptionalDateQueryRequest,
   ) {
-    return successResponse(await this.jogaks.listMogakDay(user.userId, params.mogakId, query.date));
+    return successResponse(
+      query.date === undefined
+        ? await this.jogaks.listMogakJogaks(user.userId, params.mogakId)
+        : await this.jogaks.listMogakDay(user.userId, params.mogakId, query.date),
+    );
   }
 
   @Get('jogaks')

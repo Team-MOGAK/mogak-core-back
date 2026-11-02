@@ -221,6 +221,18 @@ export class MogakRepository implements MogakRepositoryPort {
     return rows;
   }
 
+  async listJogakParentsForOwnedModarat(
+    userId: number,
+    modaratId: number,
+  ): Promise<ReadonlyArray<Readonly<{ jogakId: number; mogakId: number }>>> {
+    return this.db
+      .select({ jogakId: jogaks.id, mogakId: mogaks.id })
+      .from(jogaks)
+      .innerJoin(mogaks, eq(jogaks.mogakId, mogaks.id))
+      .innerJoin(modarats, eq(mogaks.modaratId, modarats.id))
+      .where(and(eq(modarats.userId, userId), eq(modarats.id, modaratId)));
+  }
+
   async findOwnedMogak(userId: number, mogakId: number): Promise<MogakResult | null> {
     const [mogak] = await this.db
       .select(selectMogakFields())
@@ -472,11 +484,16 @@ export class MogakRepository implements MogakRepositoryPort {
   async listOccurrenceScheduleRows(
     query: OccurrenceScheduleQuery,
   ): Promise<OccurrenceScheduleResult[]> {
-    const conditions = [
-      eq(modarats.userId, query.userId),
-      lte(jogakSchedules.effectiveFrom, query.endDate),
-      or(isNull(jogakSchedules.effectiveTo), gte(jogakSchedules.effectiveTo, query.startDate)),
-    ];
+    const conditions = [eq(modarats.userId, query.userId)];
+    if (query.startDate !== undefined && query.endDate !== undefined) {
+      conditions.push(lte(jogakSchedules.effectiveFrom, query.endDate));
+      const activeInRange = or(
+        isNull(jogakSchedules.effectiveTo),
+        gte(jogakSchedules.effectiveTo, query.startDate),
+      );
+      if (activeInRange !== undefined) conditions.push(activeInRange);
+    }
+    if (query.modaratId !== undefined) conditions.push(eq(modarats.id, query.modaratId));
     if (query.mogakId !== undefined) conditions.push(eq(mogaks.id, query.mogakId));
     if (query.jogakId !== undefined) conditions.push(eq(jogaks.id, query.jogakId));
     if (query.scheduleType !== undefined) {
@@ -720,6 +737,7 @@ function selectOccurrenceScheduleFields() {
     scheduleId: jogakSchedules.id,
     jogakId: jogaks.id,
     mogakId: mogaks.id,
+    modaratId: modarats.id,
     mogakTitle: mogaks.title,
     jogakTitle: jogaks.title,
     color: mogaks.color,

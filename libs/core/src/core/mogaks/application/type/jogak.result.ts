@@ -14,10 +14,12 @@ export type OwnedJogakResult = Readonly<{
   categoryName: string | null;
   customCategoryName: string | null;
 }>;
+export type JogakParentResult = Readonly<{ jogakId: number; mogakId: number }>;
 export type OccurrenceScheduleResult = Readonly<{
   scheduleId: number;
   jogakId: number;
   mogakId: number;
+  modaratId: number;
   mogakTitle: string;
   jogakTitle: string;
   color: string | null;
@@ -53,12 +55,17 @@ export type CreatedJogakResult = Readonly<{
 }>;
 export type OccurrenceResult = Readonly<{
   jogakId: number;
-  scheduledDate: string;
+  mogakId: number;
+  modaratId: number;
+  scheduledDate: string | null;
   mogakTitle: string;
   category: Readonly<{ code: string | null; name: string }>;
   title: string;
   color: string | null;
   isRoutine: boolean;
-  status: JogakOccurrenceStatus;
+  days: readonly JogakScheduleWeekdayName[];
+  startDate: string;
+  endDate: string | null;
+  status: JogakOccurrenceStatus | null;
   achievements: number;
 }>;

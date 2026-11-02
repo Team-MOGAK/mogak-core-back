@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { configureApp } from '@api/app.setup';
 import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
@@ -20,6 +21,7 @@ describe('모다랏과 모각 HTTP 계약', () => {
   const mogaks = {
     createModarat: testMock(),
     listModarats: testMock(),
+    getProgress: testMock(),
     getModarat: testMock(),
     updateModarat: testMock(),
     deleteModarat: testMock(),
@@ -75,6 +77,38 @@ describe('모다랏과 모각 HTTP 계약', () => {
 
     await request(app.getHttpServer()).delete('/api/modarats/3').expect(200).expect('');
     expect(mogaks.deleteModarat).toHaveBeenCalledWith(7, 3);
+  });
+
+  it('요청 날짜로 모다랏 주간 진척을 조회한다', async () => {
+    mogaks.getProgress.mockResolvedValue({
+      weekStart: '2026-10-25',
+      percent: 36,
+      doneCount: 9,
+      plannedCount: 25,
+      mogaks: [{ mogakId: 12, percent: 33, doneCount: 2, plannedCount: 6 }],
+    });
+
+    await request(app.getHttpServer())
+      .get('/api/modarats/3/progress?date=2026-10-29')
+      .expect(200)
+      .expect(({ body }) => expect(body.result.weekStart).toBe('2026-10-25'));
+
+    expect(mogaks.getProgress).toHaveBeenCalledWith(7, 3, '2026-10-29');
+  });
+
+  it('진척 날짜가 없거나 유효하지 않으면 거부한다', async () => {
+    await request(app.getHttpServer()).get('/api/modarats/3/progress').expect(400);
+    await request(app.getHttpServer()).get('/api/modarats/3/progress?date=2026-02-30').expect(400);
+    expect(mogaks.getProgress).not.toHaveBeenCalled();
+  });
+
+  it('서비스가 주간 경계 날짜를 거부하면 INVALID_TARGET_DATE로 400을 반환한다', async () => {
+    mogaks.getProgress.mockRejectedValue(new DomainException(DomainErrorCode.INVALID_TARGET_DATE));
+
+    await request(app.getHttpServer())
+      .get('/api/modarats/3/progress?date=9999-12-31')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('J017'));
   });
 
   it('공백뿐인 모다랏 제목을 잘못된 요청으로 거부한다', async () => {

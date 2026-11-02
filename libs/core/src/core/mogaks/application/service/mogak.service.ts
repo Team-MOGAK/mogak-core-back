@@ -1,6 +1,8 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { MogakException } from '../../domain/exception/mogak.exception';
 import { patchText, requiredTrimmed } from '@core/common/validation/requiredText';
+import { datesInclusive } from '../../domain/policy/jogakSchedule.policy';
+import { isDateOnly, weekdayFor } from '../../domain/vo/jogakScheduleDate.vo';
 import { selectMogakCategory, validateMogakCapacity } from '../../domain/policy/mogak.policy';
 import type { MogakRepositoryPort } from '../port/mogak.repository.port';
 import type {
@@ -9,7 +11,12 @@ import type {
   PatchModaratCommand,
   PatchMogakCommand,
 } from '../type/mogak.command';
-import type { MogakResult, ModaratResult } from '../type/mogak.result';
+import type {
+  MogakResult,
+  ModaratProgressResult,
+  ModaratResult,
+  ProgressCounts,
+} from '../type/mogak.result';
 import type { OwnedMogakPort } from '../port/ownedMogak.port';
 
 export class MogakService implements OwnedMogakPort {
@@ -25,6 +32,85 @@ export class MogakService implements OwnedMogakPort {
 
   async listModarats(userId: number): Promise<ModaratResult[]> {
     return this.repository.listModarats(userId);
+  }
+
+  async getProgress(
+    userId: number,
+    modaratId: number,
+    date: string,
+  ): Promise<ModaratProgressResult> {
+    if (!isDateOnly(date)) throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
+    const { weekStart, weekEnd, dates } = weekContaining(date);
+    await this.requireOwnedModarat(userId, modaratId);
+    const mogaks = await this.repository.listMogaksForOwnedModarat(userId, modaratId);
+    const jogakParents = await this.repository.listJogakParentsForOwnedModarat(userId, modaratId);
+    const jogakIds = jogakParents.map(({ jogakId }) => jogakId);
+    const mogakIdByJogak = new Map(jogakParents.map(({ jogakId, mogakId }) => [jogakId, mogakId]));
+    const scheduleRows = await this.repository.listOccurrenceScheduleRows({
+      userId,
+      modaratId,
+      startDate: weekStart,
+      endDate: weekEnd,
+    });
+    const executions = await this.repository.listExecutionsForJogaks(jogakIds, weekStart, weekEnd);
+
+    const plannedByMogak = new Map(mogaks.map(({ id }) => [id, new Set<string>()]));
+    const scheduledKeys = new Set<string>();
+    for (const row of scheduleRows) {
+      if (
+        (row.scheduleType === 'ONCE' && row.weekday !== null) ||
+        (row.scheduleType === 'WEEKLY' && row.weekday === null)
+      ) {
+        throw new MogakException(`Invalid persisted Jogak schedule ${row.scheduleId}`);
+      }
+      for (const occurrenceDate of dates) {
+        if (
+          occurrenceDate < row.effectiveFrom ||
+          (row.effectiveTo !== null && occurrenceDate > row.effectiveTo)
+        ) {
+          continue;
+        }
+        if (
+          row.scheduleType === 'ONCE'
+            ? occurrenceDate !== row.effectiveFrom
+            : row.weekday === null || weekdayFor(occurrenceDate) !== row.weekday
+        ) {
+          continue;
+        }
+        const key = occurrenceKey(row.jogakId, occurrenceDate);
+        scheduledKeys.add(key);
+        plannedByMogak.get(row.mogakId)?.add(key);
+      }
+    }
+
+    const doneByMogak = new Map(mogaks.map(({ id }) => [id, new Set<string>()]));
+    for (const execution of executions) {
+      const key = occurrenceKey(execution.jogakId, execution.scheduledDate);
+      const executionMogakId = mogakIdByJogak.get(execution.jogakId);
+      if (executionMogakId === undefined) continue;
+      if (!scheduledKeys.has(key)) {
+        plannedByMogak.get(executionMogakId)?.add(key);
+      }
+      if (execution.status === 'SUCCESS') {
+        doneByMogak.get(executionMogakId)?.add(key);
+      }
+    }
+
+    const mogakProgress = mogaks.map(({ id }) => ({
+      mogakId: id,
+      ...progressCounts(plannedByMogak.get(id)!, doneByMogak.get(id)!),
+    }));
+    const plannedKeys = new Set(
+      mogakProgress.flatMap(({ mogakId }) => [...plannedByMogak.get(mogakId)!]),
+    );
+    const doneKeys = new Set(
+      mogakProgress.flatMap(({ mogakId }) => [...doneByMogak.get(mogakId)!]),
+    );
+    return {
+      weekStart,
+      ...progressCounts(plannedKeys, doneKeys),
+      mogaks: mogakProgress,
+    };
   }
 
   async getModarat(userId: number, modaratId: number) {
@@ -163,5 +249,32 @@ function toMogakResponse(record: MogakResult) {
     title: record.title,
     color: record.color,
     category: { code: record.categoryCode, name },
+  };
+}
+
+function weekContaining(date: string) {
+  const start = new Date(`${date}T00:00:00.000Z`);
+  start.setUTCDate(start.getUTCDate() - start.getUTCDay());
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  if (start.getUTCFullYear() < 1 || end.getUTCFullYear() > 9999) {
+    throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
+  }
+  const weekStart = start.toISOString().slice(0, 10);
+  const weekEnd = end.toISOString().slice(0, 10);
+  return { weekStart, weekEnd, dates: datesInclusive(weekStart, weekEnd) };
+}
+
+function occurrenceKey(jogakId: number, date: string) {
+  return `${jogakId}:${date}`;
+}
+
+function progressCounts(planned: ReadonlySet<string>, done: ReadonlySet<string>): ProgressCounts {
+  const plannedCount = planned.size;
+  const doneCount = done.size;
+  return {
+    plannedCount,
+    doneCount,
+    percent: plannedCount === 0 ? 0 : Math.round((doneCount / plannedCount) * 100),
   };
 }
