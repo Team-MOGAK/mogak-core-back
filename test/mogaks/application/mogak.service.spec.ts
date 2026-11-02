@@ -139,6 +139,48 @@ describe('모각 서비스', () => {
     });
   });
 
+  it.each(['0001-01-01', '9999-12-31'])(
+    '표현할 수 없는 주간 경계의 날짜 %s를 거부한다',
+    async (date) => {
+      const mogaks = repository();
+
+      await expect(new MogakService(mogaks).getProgress(7, 3, date)).rejects.toEqual(
+        new DomainException(DomainErrorCode.INVALID_TARGET_DATE),
+      );
+      expect(mogaks.listMogaksForOwnedModarat).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    { date: '0001-01-07', weekStart: '0001-01-07', weekEnd: '0001-01-13' },
+    { date: '9999-12-25', weekStart: '9999-12-19', weekEnd: '9999-12-25' },
+  ])('$date의 표현 가능한 주간 경계를 정상 계산한다', async ({ date, weekStart, weekEnd }) => {
+    const mogaks = repository();
+    jest.mocked(mogaks.findOwnedModarat).mockResolvedValue({
+      id: 3,
+      title: '여름 목표',
+      color: 'blue',
+    });
+    jest.mocked(mogaks.listMogaksForOwnedModarat).mockResolvedValue([]);
+    jest.mocked(mogaks.listJogakParentsForOwnedModarat).mockResolvedValue([]);
+    jest.mocked(mogaks.listOccurrenceScheduleRows).mockResolvedValue([]);
+    jest.mocked(mogaks.listExecutionsForJogaks).mockResolvedValue([]);
+
+    await expect(new MogakService(mogaks).getProgress(7, 3, date)).resolves.toEqual({
+      weekStart,
+      plannedCount: 0,
+      doneCount: 0,
+      percent: 0,
+      mogaks: [],
+    });
+    expect(mogaks.listOccurrenceScheduleRows).toHaveBeenCalledWith({
+      userId: 7,
+      modaratId: 3,
+      startDate: weekStart,
+      endDate: weekEnd,
+    });
+  });
+
   it('모다랫 생성 중 잠금 후 사용자가 사라지면 USER_NOT_FOUND로 변환한다', async () => {
     const mogaks = repository();
     jest

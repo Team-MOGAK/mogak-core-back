@@ -1,7 +1,6 @@
 import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { MogakException } from '../../domain/exception/mogak.exception';
 import { patchText, requiredTrimmed } from '@core/common/validation/requiredText';
-import { MogakPersistenceException } from '../../domain/exception/mogakPersistence.exception';
 import { datesInclusive } from '../../domain/policy/jogakSchedule.policy';
 import { isDateOnly, weekdayFor } from '../../domain/vo/jogakScheduleDate.vo';
 import { selectMogakCategory, validateMogakCapacity } from '../../domain/policy/mogak.policy';
@@ -41,8 +40,8 @@ export class MogakService implements OwnedMogakPort {
     date: string,
   ): Promise<ModaratProgressResult> {
     if (!isDateOnly(date)) throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
-    await this.requireOwnedModarat(userId, modaratId);
     const { weekStart, weekEnd, dates } = weekContaining(date);
+    await this.requireOwnedModarat(userId, modaratId);
     const mogaks = await this.repository.listMogaksForOwnedModarat(userId, modaratId);
     const jogakParents = await this.repository.listJogakParentsForOwnedModarat(userId, modaratId);
     const jogakIds = jogakParents.map(({ jogakId }) => jogakId);
@@ -62,7 +61,7 @@ export class MogakService implements OwnedMogakPort {
         (row.scheduleType === 'ONCE' && row.weekday !== null) ||
         (row.scheduleType === 'WEEKLY' && row.weekday === null)
       ) {
-        throw new MogakPersistenceException(`Invalid persisted Jogak schedule ${row.scheduleId}`);
+        throw new MogakException(`Invalid persisted Jogak schedule ${row.scheduleId}`);
       }
       for (const occurrenceDate of dates) {
         if (
@@ -256,9 +255,12 @@ function toMogakResponse(record: MogakResult) {
 function weekContaining(date: string) {
   const start = new Date(`${date}T00:00:00.000Z`);
   start.setUTCDate(start.getUTCDate() - start.getUTCDay());
-  const weekStart = start.toISOString().slice(0, 10);
   const end = new Date(start);
   end.setUTCDate(end.getUTCDate() + 6);
+  if (start.getUTCFullYear() < 1 || end.getUTCFullYear() > 9999) {
+    throw new DomainException(DomainErrorCode.INVALID_TARGET_DATE);
+  }
+  const weekStart = start.toISOString().slice(0, 10);
   const weekEnd = end.toISOString().slice(0, 10);
   return { weekStart, weekEnd, dates: datesInclusive(weekStart, weekEnd) };
 }

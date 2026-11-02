@@ -4,6 +4,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
+import { DomainErrorCode, DomainException } from '@core/common/error/domainException';
 import { configureApp } from '@api/app.setup';
 import { AccessTokenGuard } from '@api/auth/presentation/controller/accessToken.guard';
 import { RegisteredUserGuard } from '@api/auth/presentation/controller/registeredUser.guard';
@@ -99,6 +100,15 @@ describe('모다랏과 모각 HTTP 계약', () => {
     await request(app.getHttpServer()).get('/api/modarats/3/progress').expect(400);
     await request(app.getHttpServer()).get('/api/modarats/3/progress?date=2026-02-30').expect(400);
     expect(mogaks.getProgress).not.toHaveBeenCalled();
+  });
+
+  it('서비스가 주간 경계 날짜를 거부하면 INVALID_TARGET_DATE로 400을 반환한다', async () => {
+    mogaks.getProgress.mockRejectedValue(new DomainException(DomainErrorCode.INVALID_TARGET_DATE));
+
+    await request(app.getHttpServer())
+      .get('/api/modarats/3/progress?date=9999-12-31')
+      .expect(400)
+      .expect(({ body }) => expect(body.code).toBe('J017'));
   });
 
   it('공백뿐인 모다랏 제목을 잘못된 요청으로 거부한다', async () => {
