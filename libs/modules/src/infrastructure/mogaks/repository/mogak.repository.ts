@@ -724,6 +724,7 @@ function selectOccurrenceScheduleFields() {
     scheduleId: jogakSchedules.id,
     jogakId: jogaks.id,
     mogakId: mogaks.id,
+    modaratId: modarats.id,
     mogakTitle: mogaks.title,
     jogakTitle: jogaks.title,
     color: mogaks.color,

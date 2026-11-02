@@ -42,6 +42,7 @@ type ScheduleRecord = Readonly<{
   schedule: ValidatedJogakSchedule;
   jogakId: number;
   mogakId: number;
+  modaratId: number;
   mogakTitle: string;
   jogakTitle: string;
   color: string | null;
@@ -142,6 +143,8 @@ export class JogaksService implements OwnedOccurrencePort {
       )!;
       return {
         jogakId: selected.jogakId,
+        mogakId: selected.mogakId,
+        modaratId: selected.modaratId,
         title: selected.jogakTitle,
         isRoutine: selected.schedule.scheduleType === 'WEEKLY',
         days: [...selected.schedule.weekdays],
@@ -324,6 +327,8 @@ export class JogaksService implements OwnedOccurrencePort {
           executionByNaturalKey.get(executionKey(schedule.jogakId, scheduledDate)) ?? null;
         occurrences.push({
           jogakId: schedule.jogakId,
+          mogakId: schedule.mogakId,
+          modaratId: schedule.modaratId,
           scheduledDate,
           mogakTitle: schedule.mogakTitle,
           category: { code: schedule.categoryCode, name: schedule.categoryName },
@@ -475,6 +480,7 @@ function scheduleRecord(
       }),
       jogakId: row.jogakId,
       mogakId: row.mogakId,
+      modaratId: row.modaratId,
       mogakTitle: row.mogakTitle,
       jogakTitle: row.jogakTitle,
       color: row.color,

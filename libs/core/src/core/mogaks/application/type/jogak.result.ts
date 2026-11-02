@@ -18,6 +18,7 @@ export type OccurrenceScheduleResult = Readonly<{
   scheduleId: number;
   jogakId: number;
   mogakId: number;
+  modaratId: number;
   mogakTitle: string;
   jogakTitle: string;
   color: string | null;
@@ -53,6 +54,8 @@ export type CreatedJogakResult = Readonly<{
 }>;
 export type OccurrenceResult = Readonly<{
   jogakId: number;
+  mogakId: number;
+  modaratId: number;
   scheduledDate: string | null;
   mogakTitle: string;
   category: Readonly<{ code: string | null; name: string }>;
