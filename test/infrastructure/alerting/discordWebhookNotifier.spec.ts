@@ -3,7 +3,10 @@ import type { AddressInfo } from 'node:net';
 import { Logger } from '@nestjs/common';
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
-import { DiscordWebhookNotifier } from '@infra/alerting/discordWebhookNotifier';
+import {
+  ALERT_DEDUP_WINDOW_MS,
+  DiscordWebhookNotifier,
+} from '@infra/alerting/discordWebhookNotifier';
 
 const ERROR_ID = 'request-id';
 const WEBHOOK = 'https://discord.com/api/webhooks/123456789012345678/secret-token';
@@ -131,5 +134,59 @@ describe('DiscordWebhookNotifier', () => {
     };
     expect(requestBody.content).not.toContain('/users/123');
     expect(requestBody.content).not.toContain('secret');
+  });
+  it('같은 종류 알림은 window 동안 한 번만 보내고 다음 알림에 억제 건수를 붙인다', () => {
+    let now = 1_000_000;
+    const fetchImpl = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    const notifier = new DiscordWebhookNotifier(WEBHOOK, fetchImpl, {}, () => now);
+    const alert = {
+      event: 'http_request_failed',
+      errorId: ERROR_ID,
+      statusCode: 503,
+      method: 'GET',
+      route: '/users/:id',
+    };
+
+    for (let i = 0; i < 10; i += 1) {
+      notifier.notify(alert);
+      now += 2_000;
+    }
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    notifier.notify({ ...alert, route: '/mogaks/:id' });
+    notifier.notify({ ...alert, statusCode: 500 });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+
+    now += ALERT_DEDUP_WINDOW_MS;
+    notifier.notify(alert);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+    const body = JSON.parse(fetchImpl.mock.calls[3]?.[1]?.body as string) as { content: string };
+    expect(body.content).toContain('Suppressed: 9 similar alert(s) in the previous 5m window');
+
+    now += ALERT_DEDUP_WINDOW_MS;
+    notifier.notify(alert);
+    const next = JSON.parse(fetchImpl.mock.calls[4]?.[1]?.body as string) as { content: string };
+    expect(next.content).not.toContain('Suppressed');
+  });
+
+  it('readiness 복구 알림은 5xx가 아니어도 보낸다', () => {
+    const fetchImpl = jest
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    const notifier = new DiscordWebhookNotifier(WEBHOOK, fetchImpl, {});
+
+    notifier.notify({
+      event: 'readiness_recovered',
+      errorId: ERROR_ID,
+      method: 'GET',
+      route: '/health/ready',
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(fetchImpl.mock.calls[0]?.[1]?.body as string) as { content: string };
+    expect(body.content).toContain('✅ Readiness check recovered');
+    expect(body.content).not.toContain('Status:');
   });
 });
