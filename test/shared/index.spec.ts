@@ -23,6 +23,8 @@ describe('@mogak/shared 공개 메타데이터', () => {
       'unhandled_exception',
       'http_request_failed',
       'database_pool_error',
+      'readiness_failed',
+      'readiness_recovered',
       'unknown_error',
     ]);
     expect(LogEventSummary[LogEvent.HTTP_REQUEST_FAILED]).toBe('HTTP request failed');

@@ -4,6 +4,8 @@ export const LogEvent = {
   UNHANDLED_EXCEPTION: 'unhandled_exception',
   HTTP_REQUEST_FAILED: 'http_request_failed',
   DATABASE_POOL_ERROR: 'database_pool_error',
+  READINESS_FAILED: 'readiness_failed',
+  READINESS_RECOVERED: 'readiness_recovered',
   UNKNOWN_ERROR: 'unknown_error',
 } as const;
 
@@ -15,5 +17,7 @@ export const LogEventSummary: Readonly<Record<LogEvent, string>> = {
   unhandled_exception: 'Unhandled API exception',
   http_request_failed: 'HTTP request failed',
   database_pool_error: 'Database pool failure',
+  readiness_failed: 'Readiness check failed (database unavailable)',
+  readiness_recovered: 'Readiness check recovered',
   unknown_error: 'Unknown API error',
 };
